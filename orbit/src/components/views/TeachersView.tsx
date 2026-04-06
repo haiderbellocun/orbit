@@ -34,6 +34,15 @@ function mapTeacherFromApi(row: Record<string, unknown>): Teacher {
   const status: Teacher['status'] =
     st === 'active' ? 'active' : st === 'on-leave' ? 'on-leave' : 'inactive';
 
+  const lite_name =
+    row.lite_name != null && String(row.lite_name).trim() !== ''
+      ? String(row.lite_name).trim()
+      : undefined;
+  const lite_document =
+    row.lite_document != null && String(row.lite_document).trim() !== ''
+      ? String(row.lite_document).trim()
+      : undefined;
+
   return {
     id: String(row.id ?? ''),
     name: `${first} ${last}`.trim() || String(row.name ?? ''),
@@ -47,6 +56,8 @@ function mapTeacherFromApi(row: Record<string, unknown>): Teacher {
       row.start_date != null
         ? String(row.start_date).slice(0, 10)
         : '',
+    ...(lite_name != null ? { lite_name } : {}),
+    ...(lite_document != null ? { lite_document } : {}),
   };
 }
 
@@ -360,6 +371,11 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                       </div>
                       <span>{teacher.campus}</span>
                     </div>
+                    {teacher.lite_name && (
+                      <div className="flex items-center gap-1 text-xs text-violet-600">
+                        <span>LITE: {teacher.lite_name}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="pt-6 border-t border-white/40 flex items-center justify-between">
