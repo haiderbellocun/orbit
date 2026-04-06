@@ -50,6 +50,18 @@ export async function getTeacher(id: number): Promise<unknown> {
   return handleJson(response);
 }
 
+export async function getTeacherByDocument(
+  document: string
+): Promise<unknown> {
+  const url = new URL(`${BASE_URL}/teachers`);
+  url.searchParams.set("search", document);
+  url.searchParams.set("limit", "1");
+  const res = await fetch(url.toString(), { headers: jsonHeaders });
+  if (!res.ok) throw new Error("Error");
+  const data = (await res.json()) as { data?: unknown[] };
+  return data.data?.[0] ?? null;
+}
+
 export async function createTeacher(data: Partial<Teacher>): Promise<unknown> {
   const response = await fetch(`${BASE_URL}/teachers`, {
     method: "POST",
@@ -76,6 +88,7 @@ export async function getVacancies(params?: {
   status?: string;
   program?: string;
   campus?: string;
+  period?: string;
   page?: number;
   limit?: number;
 }): Promise<PaginatedResponse> {
@@ -83,6 +96,7 @@ export async function getVacancies(params?: {
   if (params?.status) url.searchParams.set("status", params.status);
   if (params?.program) url.searchParams.set("program", params.program);
   if (params?.campus) url.searchParams.set("campus", params.campus);
+  if (params?.period) url.searchParams.set("period", params.period);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await fetch(url.toString(), { headers: jsonHeaders });

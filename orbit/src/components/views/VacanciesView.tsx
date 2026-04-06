@@ -80,6 +80,8 @@ function mapVacancyFromApi(row: Record<string, unknown>): Vacancy {
     createdAt = Number.isNaN(d.getTime()) ? s.slice(0, 10) : d.toISOString().slice(0, 10);
   }
 
+  const periodStr = row.period != null ? String(row.period).trim() : '';
+
   return {
     id: String(row.id ?? ''),
     title,
@@ -89,6 +91,7 @@ function mapVacancyFromApi(row: Record<string, unknown>): Vacancy {
     status,
     createdAt,
     priority: dedicationToPriority(dedication),
+    ...(periodStr !== '' ? { period: periodStr } : {}),
   };
 }
 
@@ -120,17 +123,24 @@ const SortableVacancyCard: React.FC<SortableVacancyCardProps> = ({ vacancy, onCl
         onClick={onClick}
         className="glass-card p-4 hover:border-violet-200/50 cursor-grab active:cursor-grabbing group transition-all duration-300"
       >
-        <div className="flex justify-between items-start mb-2">
-          <span className={cn(
-            "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md",
-            vacancy.priority === 'high' 
-              ? "bg-red-50 text-red-600 border border-red-100" 
-              : vacancy.priority === 'medium'
-                ? "bg-amber-50 text-amber-600 border border-amber-100"
-                : "bg-slate-50 text-slate-500 border border-slate-100"
-          )}>
-            {vacancy.priority}
-          </span>
+        <div className="flex justify-between items-start mb-2 gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={cn(
+              "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md",
+              vacancy.priority === 'high' 
+                ? "bg-red-50 text-red-600 border border-red-100" 
+                : vacancy.priority === 'medium'
+                  ? "bg-amber-50 text-amber-600 border border-amber-100"
+                  : "bg-slate-50 text-slate-500 border border-slate-100"
+            )}>
+              {vacancy.priority}
+            </span>
+            {vacancy.period && (
+              <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-cyan-50 text-cyan-700 border border-cyan-100">
+                {vacancy.period}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-slate-400 font-bold font-mono">#{vacancy.id}</span>
             <Bars2Icon className="h-3 w-3 text-slate-300 group-hover:text-violet-400 transition-colors" />
@@ -192,13 +202,14 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const listKeyRef = useRef<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [periodFilter, setPeriodFilter] = useState('');
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const key = searchQuery;
+        const key = `${searchQuery}|${periodFilter}`;
         let pageToUse = currentPage;
         if (listKeyRef.current !== key) {
           if (listKeyRef.current !== null) {
@@ -211,6 +222,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         const res = await getVacancies({
           page: pageToUse,
           limit: 50,
+          ...(periodFilter ? { period: periodFilter } : {}),
         });
         if (!cancelled) {
           const list = Array.isArray(res.data)
@@ -235,7 +247,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [currentPage, searchQuery]);
+  }, [currentPage, searchQuery, periodFilter]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -347,6 +359,28 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
             <span>Nueva Vacante</span>
           </button>
         </div>
+      </div>
+
+      <div className="glass-panel p-3 flex flex-col sm:flex-row sm:items-center gap-3 relative z-10">
+        <label
+          htmlFor="vacancy-period-filter"
+          className="text-[10px] font-bold text-slate-500 uppercase tracking-widest shrink-0"
+        >
+          Periodo
+        </label>
+        <select
+          id="vacancy-period-filter"
+          className="glass-input py-2.5 px-3 text-sm max-w-xs"
+          value={periodFilter}
+          onChange={(e) => setPeriodFilter(e.target.value)}
+        >
+          <option value="">Todos los periodos</option>
+          <option value="2026A">2026A</option>
+          <option value="2026B">2026B</option>
+          <option value="26V01">26V01</option>
+          <option value="26ES1">26ES1</option>
+          <option value="25V06">25V06</option>
+        </select>
       </div>
 
       {loading ? (

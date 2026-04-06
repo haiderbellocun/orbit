@@ -11,6 +11,8 @@ router.get("/vacancies", async (req, res) => {
       typeof req.query.program === "string" ? req.query.program.trim() : undefined;
     const campus =
       typeof req.query.campus === "string" ? req.query.campus.trim() : undefined;
+    const period =
+      typeof req.query.period === "string" ? req.query.period.trim() : undefined;
     const priorityRaw = req.query.priority;
     const priorityOpen =
       priorityRaw === "open" ||
@@ -34,6 +36,11 @@ router.get("/vacancies", async (req, res) => {
     if (campus) {
       conditions.push(`v.campus ILIKE $${p}`);
       values.push(`%${campus}%`);
+      p++;
+    }
+    if (period) {
+      conditions.push(`v.period = $${p}`);
+      values.push(period);
       p++;
     }
 

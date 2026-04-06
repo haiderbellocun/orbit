@@ -25,6 +25,8 @@ export interface Teacher {
   campus: string;
   joinDate: string;
   avatar?: string;
+  lite_name?: string;
+  lite_document?: string;
 }
 
 export interface Vacancy {
@@ -36,6 +38,7 @@ export interface Vacancy {
   status: 'open' | 'in-progress' | 'filled' | 'cancelled';
   createdAt: string;
   priority: 'low' | 'medium' | 'high';
+  period?: string;
 }
 
 export interface Reinstatement {

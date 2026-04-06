@@ -9,8 +9,11 @@
     "start": "node dist/index.js",
     "migrate": "ts-node src/db/migrate.ts",
     "migrate:v2": "ts-node src/db/migrate_v2.ts",
+    "migrate:v3": "ts-node src/db/migrate_v3.ts",
     "seed": "ts-node src/db/seed.ts",
-    "seed:v2": "ts-node src/db/seed_v2.ts"
+    "seed:v2": "ts-node src/db/seed_v2.ts",
+    "seed:v3": "ts-node src/db/seed_v3.ts",
+    "seed:v4": "ts-node src/db/seed_v4.ts"
   },
   "keywords": [],
   "license": "ISC",

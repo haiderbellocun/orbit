@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   RectangleGroupIcon, 
@@ -18,6 +18,124 @@ import {
 } from '@heroicons/react/24/solid';
 import { Teacher, View, Coordinator, Vacancy } from '@/src/types';
 import { Header } from '@/src/components/layout/Header';
+import {
+  getTeacher,
+  getTeacherByDocument,
+  getTeacherAcademicLoad,
+} from '@/src/lib/api';
+
+type ApiTeacherRow = Record<string, unknown>;
+type AcademicLoadRow = Record<string, unknown>;
+
+function str(v: unknown): string {
+  if (v == null) return '';
+  return String(v);
+}
+
+function formatDateDDMMYYYY(val: unknown): string {
+  if (val == null || val === '') return '—';
+  const s = String(val).slice(0, 10);
+  const parts = s.split('-');
+  if (parts.length >= 3) {
+    const [y, m, d] = parts;
+    return `${d}/${m}/${y}`;
+  }
+  return String(val);
+}
+
+function contractLabel(ct: unknown): string {
+  const c = str(ct).trim().toUpperCase();
+  if (c === 'F') return 'Fijo';
+  if (c === 'I') return 'Indefinido';
+  if (c === 'L') return 'Licencia';
+  return c || '—';
+}
+
+function modalityDisplay(m: unknown): string {
+  const raw = str(m).trim();
+  if (!raw) return '—';
+  const u = raw.toUpperCase();
+  if (u === 'P' || u === 'PRESENCIAL') return 'Presencial';
+  if (u === 'V' || u === 'VIRTUAL') return 'Virtual';
+  return raw;
+}
+
+function teacherStatusLabel(status: unknown): string {
+  const s = str(status).toLowerCase();
+  if (s === 'active') return 'Activo';
+  if (s === 'inactive') return 'Inactivo';
+  return s ? str(status) : '—';
+}
+
+function normalizeAcademicLoad(raw: unknown): AcademicLoadRow[] {
+  if (Array.isArray(raw)) return raw as AcademicLoadRow[];
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { data?: unknown }).data)) {
+    return (raw as { data: AcademicLoadRow[] }).data;
+  }
+  return [];
+}
+
+function apiRowToTeacherDisplay(row: ApiTeacherRow | null, fallback: Teacher): {
+  fullName: string;
+  document: string;
+  email: string;
+  program: string;
+  school: string;
+  sede: string;
+  contractType: string;
+  startDate: string;
+  endDate: string;
+  modality: string;
+  coordinator: string;
+  lite: string;
+  statusLabel: string;
+  statusActive: boolean;
+  payrollClass: string;
+} {
+  if (!row) {
+    return {
+      fullName: fallback.name,
+      document: fallback.document,
+      email: fallback.email,
+      program: fallback.program,
+      school: '—',
+      sede: fallback.campus,
+      contractType: '—',
+      startDate: fallback.joinDate,
+      endDate: 'Indefinido',
+      modality: '—',
+      coordinator: '—',
+      lite: fallback.lite_name ?? '—',
+      statusLabel: fallback.status === 'inactive' ? 'Inactivo' : 'Activo',
+      statusActive: fallback.status !== 'inactive',
+      payrollClass: '—',
+    };
+  }
+  const campus = str(row.campus);
+  const area = str(row.area);
+  const sede = campus || area || '—';
+  const endRaw = row.end_date;
+  const endDate =
+    endRaw == null || endRaw === '' ? 'Indefinido' : formatDateDDMMYYYY(endRaw);
+  const st = str(row.status).toLowerCase();
+  return {
+    fullName: `${str(row.first_name)} ${str(row.last_name)}`.trim() || fallback.name,
+    document: str(row.document) || fallback.document,
+    email: str(row.email) || fallback.email,
+    program: str(row.program) || fallback.program,
+    school: str(row.school) || '—',
+    sede,
+    contractType: contractLabel(row.contract_type),
+    startDate: formatDateDDMMYYYY(row.start_date),
+    endDate,
+    modality: modalityDisplay(row.modality),
+    coordinator: str(row.coordinator_name) || '—',
+    lite: str(row.lite_name) || fallback.lite_name || '—',
+    statusLabel: teacherStatusLabel(row.status),
+    statusActive: st === 'active' || st === '',
+    payrollClass: str(row.payroll_class) || '—',
+  };
+}
 
 interface TeacherDetailViewProps {
   teacher: Teacher;
@@ -41,6 +159,68 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
   const [teacher, setTeacher] = useState(initialTeacher);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState(initialTeacher);
+  const [fullTeacher, setFullTeacher] = useState<ApiTeacherRow | null>(null);
+  const [academicLoad, setAcademicLoad] = useState<AcademicLoadRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setTeacher(initialTeacher);
+    setEditForm(initialTeacher);
+  }, [initialTeacher.id, initialTeacher.document]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const doc = initialTeacher.document;
+    (async () => {
+      setLoading(true);
+      setFullTeacher(null);
+      setAcademicLoad([]);
+      try {
+        let detail: unknown = null;
+        const idNum = Number(initialTeacher.id);
+        if (Number.isFinite(idNum) && idNum > 0) {
+          try {
+            detail = await getTeacher(idNum);
+          } catch {
+            detail = null;
+          }
+        }
+        if (detail == null) {
+          try {
+            detail = await getTeacherByDocument(doc);
+          } catch {
+            detail = null;
+          }
+        }
+        let loadRows: AcademicLoadRow[] = [];
+        try {
+          const loadRaw = await getTeacherAcademicLoad(doc);
+          loadRows = normalizeAcademicLoad(loadRaw);
+        } catch {
+          loadRows = [];
+        }
+        if (cancelled) return;
+        setFullTeacher(
+          detail && typeof detail === 'object' && !Array.isArray(detail)
+            ? (detail as ApiTeacherRow)
+            : null
+        );
+        setAcademicLoad(loadRows);
+      } catch {
+        if (!cancelled) {
+          setFullTeacher(null);
+          setAcademicLoad([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialTeacher.document]);
+
+  const display = apiRowToTeacherDisplay(fullTeacher, initialTeacher);
 
   const handleSave = () => {
     setTeacher(editForm);
@@ -67,6 +247,14 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
         <span className="text-xs uppercase tracking-widest">Volver a Docentes</span>
       </button>
 
+      {loading ? (
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <div className="flex flex-col items-center gap-4 text-slate-500">
+            <ArrowPathIcon className="h-12 w-12 animate-spin text-violet-600" />
+            <span className="text-sm font-medium">Cargando ficha…</span>
+          </div>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         {/* Profile Header Card */}
         <div className="lg:col-span-12 glass-panel p-10 bg-white border-white/50 overflow-hidden relative group shadow-2xl shadow-slate-200/50">
@@ -85,29 +273,53 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
             </div>
             <div className="text-center md:text-left flex-1 space-y-4">
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
-                <h1 className="text-5xl font-bold tracking-tight font-display text-slate-900">{teacher.name}</h1>
-                <span className="px-4 py-1.5 bg-emerald-500 text-white text-[10px] font-bold rounded-full uppercase tracking-widest shadow-lg shadow-emerald-500/20">Activo</span>
+                <h1 className="text-5xl font-bold tracking-tight font-display text-slate-900">{display.fullName}</h1>
+                <span
+                  className={`px-4 py-1.5 text-white text-[10px] font-bold rounded-full uppercase tracking-widest shadow-lg ${
+                    display.statusActive
+                      ? 'bg-emerald-500 shadow-emerald-500/20'
+                      : 'bg-slate-400 shadow-slate-400/20'
+                  }`}
+                >
+                  {display.statusLabel}
+                </span>
               </div>
-              <p className="text-violet-600 text-xl font-semibold tracking-wide">{teacher.program} <span className="mx-2 text-slate-200">•</span> {teacher.campus}</p>
+              <p className="text-violet-600 text-xl font-semibold tracking-wide">{display.program} <span className="mx-2 text-slate-200">•</span> {display.sede}</p>
               <div className="flex flex-wrap justify-center md:justify-start gap-8 pt-2">
                 <div className="flex items-center gap-3 text-slate-500 text-sm font-medium">
                   <div className="p-2 bg-violet-50 rounded-xl border border-violet-100">
                     <EnvelopeIcon className="h-4 w-4 text-violet-600" />
                   </div>
-                  <span>{teacher.email}</span>
+                  <span>{display.email}</span>
                 </div>
                 <div className="flex items-center gap-3 text-slate-500 text-sm font-medium">
                   <div className="p-2 bg-violet-50 rounded-xl border border-violet-100">
                     <PhoneIcon className="h-4 w-4 text-violet-600" />
                   </div>
-                  <span>{teacher.phone}</span>
+                  <span>{teacher.phone || '—'}</span>
                 </div>
                 <div className="flex items-center gap-3 text-slate-500 text-sm font-medium">
                   <div className="p-2 bg-violet-50 rounded-xl border border-violet-100">
                     <CalendarIcon className="h-4 w-4 text-violet-600" />
                   </div>
-                  <span>Ingreso: {teacher.joinDate}</span>
+                  <span>Inicio: {display.startDate}</span>
                 </div>
+                <div className="flex items-center gap-3 text-slate-500 text-sm font-medium">
+                  <div className="p-2 bg-violet-50 rounded-xl border border-violet-100">
+                    <DocumentTextIcon className="h-4 w-4 text-violet-600" />
+                  </div>
+                  <span>Doc. {display.document}</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap justify-center md:justify-start gap-6 pt-2 text-sm text-slate-600">
+                <span><span className="font-bold text-slate-400 text-[10px] uppercase tracking-widest">Escuela</span> {display.school}</span>
+                <span><span className="font-bold text-slate-400 text-[10px] uppercase tracking-widest">Modalidad</span> {display.modality}</span>
+                <span><span className="font-bold text-slate-400 text-[10px] uppercase tracking-widest">Contrato</span> {display.contractType}</span>
+                <span><span className="font-bold text-slate-400 text-[10px] uppercase tracking-widest">Fin</span> {display.endDate}</span>
+                <span><span className="font-bold text-slate-400 text-[10px] uppercase tracking-widest">Coordinador</span> {display.coordinator}</span>
+                {display.lite && display.lite !== '—' && (
+                  <span><span className="font-bold text-slate-400 text-[10px] uppercase tracking-widest">LITE</span> {display.lite}</span>
+                )}
               </div>
             </div>
             <div className="flex gap-4">
@@ -153,39 +365,64 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
             </div>
           </div>
 
-          {/* Academic Assignments */}
+          {/* Carga Académica */}
           <div className="glass-panel p-8">
-            <h3 className="text-2xl font-bold text-slate-900 mb-10 flex items-center gap-4 font-display">
+            <h3 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-4 font-display">
               <div className="p-2 bg-violet-50 rounded-xl border border-violet-100">
                 <RectangleGroupIcon className="h-6 w-6 text-violet-600" />
               </div>
-              Asignaciones Académicas
+              Carga Académica
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {[
-                { subject: 'Inteligencia Artificial I', hours: 4, group: 'A1', days: 'Lun, Mie' },
-                { subject: 'Estructuras de Datos', hours: 4, group: 'B2', days: 'Mar, Jue' },
-                { subject: 'Proyecto de Grado', hours: 2, group: 'P1', days: 'Vie' },
-                { subject: 'Investigación Aplicada', hours: 6, group: 'INV', days: 'Remoto' },
-              ].map((item, i) => (
-                <div key={i} className="glass-card p-6 bg-white/40 border-white/60 group hover:border-violet-200 transition-all">
-                  <div className="flex justify-between items-start mb-4">
-                    <h4 className="font-bold text-slate-900 group-hover:text-violet-600 transition-colors">{item.subject}</h4>
-                    <span className="px-3 py-1 bg-white border border-white/80 text-[10px] font-bold rounded-xl shadow-sm uppercase tracking-widest">{item.group}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                    <div className="flex items-center gap-2">
-                      <CalendarIcon className="h-3.5 w-3.5 text-violet-400" />
-                      <span>{item.hours}h / semana</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <ClockIcon className="h-3.5 w-3.5 text-violet-400" />
-                      <span>{item.days}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <p className="text-sm font-bold text-slate-600 mb-6">
+              {academicLoad.length} materia{academicLoad.length === 1 ? '' : 's'} asignada{academicLoad.length === 1 ? '' : 's'}
+            </p>
+            {academicLoad.length === 0 ? (
+              <p className="text-sm text-slate-500 py-8 text-center">Sin carga académica registrada</p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-white/60 bg-white/30">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200/80 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      <th className="px-4 py-3">Materia</th>
+                      <th className="px-4 py-3">Programa</th>
+                      <th className="px-4 py-3">Modalidad</th>
+                      <th className="px-4 py-3">Créditos</th>
+                      <th className="px-4 py-3">Periodo</th>
+                      <th className="px-4 py-3">Tipo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {academicLoad.map((row, i) => {
+                      const tipo = str(row.type).toLowerCase();
+                      const isCurrent = tipo === 'current';
+                      const isProjection = tipo === 'projection';
+                      return (
+                        <tr key={i} className="border-b border-slate-100/80 last:border-0 hover:bg-white/40">
+                          <td className="px-4 py-3 font-semibold text-slate-900">{str(row.subject_name) || '—'}</td>
+                          <td className="px-4 py-3 text-slate-600">{str(row.unit_name) || str(row.pensum_code) || '—'}</td>
+                          <td className="px-4 py-3 text-slate-600">{modalityDisplay(row.modality)}</td>
+                          <td className="px-4 py-3 text-slate-600">{row.credits != null ? str(row.credits) : '—'}</td>
+                          <td className="px-4 py-3 text-slate-600">{str(row.period) || '—'}</td>
+                          <td className="px-4 py-3">
+                            {isCurrent ? (
+                              <span className="inline-block px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200/80">
+                                Actual
+                              </span>
+                            ) : isProjection ? (
+                              <span className="inline-block px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-800 border border-violet-200/80">
+                                Proyección
+                              </span>
+                            ) : (
+                              <span className="text-slate-500">{str(row.type) || '—'}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
 
@@ -195,13 +432,13 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
             <h3 className="text-lg font-bold text-slate-900 mb-8 font-display">Información de Contrato</h3>
             <div className="space-y-6">
               {[
-                { label: 'Tipo', value: 'Tiempo Completo' },
-                { label: 'Escalafón', value: 'Asociado II' },
-                { label: 'Vencimiento', value: '31 Dic 2024' },
+                { label: 'Tipo', value: display.contractType },
+                { label: 'Escalafón', value: display.payrollClass },
+                { label: 'Vencimiento', value: display.endDate },
               ].map((row, i) => (
                 <div key={i} className="flex justify-between items-center py-3 border-b border-white/40">
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{row.label}</span>
-                  <span className="text-sm font-bold text-slate-900">{row.value}</span>
+                  <span className="text-sm font-bold text-slate-900 text-right max-w-[60%]">{row.value}</span>
                 </div>
               ))}
             </div>
@@ -229,6 +466,7 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* Edit Profile Modal */}
       <AnimatePresence>
