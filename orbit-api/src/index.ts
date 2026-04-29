@@ -8,6 +8,7 @@ import teachersRouter from "./routes/teachers";
 import vacanciesRouter from "./routes/vacancies";
 import litesRouter from "./routes/lites";
 import academicLoadRouter from "./routes/academic_load";
+import importRouter from "./routes/import";
 
 const app = express();
 const port = Number.parseInt(process.env.PORT ?? "4000", 10);
@@ -21,6 +22,7 @@ app.use("/api", coordinatorsRouter);
 app.use("/api", reinstatementsRouter);
 app.use("/api", litesRouter);
 app.use("/api", academicLoadRouter);
+app.use("/api", importRouter);
 
 app.get("/health", async (_req, res) => {
   try {

@@ -1,6 +1,11 @@
 import type { Teacher } from "@/src/types";
 
-const BASE_URL = "http://localhost:3001/api";
+const BASE_URL =
+  (import.meta.env.VITE_API_URL as string | undefined) ??
+  "http://localhost:4000/api";
+const IMPORT_BASE_URL =
+  (import.meta.env.VITE_IMPORT_API_URL as string | undefined) ??
+  "http://localhost:4000/api";
 
 export type PaginationMeta = {
   total: number;
@@ -12,6 +17,32 @@ export type PaginationMeta = {
 export type PaginatedResponse<T = unknown> = {
   data: T[];
   pagination: PaginationMeta;
+};
+
+export type ImportTeachersResponse = {
+  success: boolean;
+  importId: string;
+  summary: {
+    totalRows: number;
+    processedRows: number;
+    skippedRows: number;
+    created: {
+      persons: number;
+      contractTypes: number;
+      roles: number;
+      cities: number;
+      schools: number;
+      programs: number;
+    };
+    updated: {
+      persons: number;
+    };
+    errors: Array<{
+      row: number;
+      reason: string;
+    }>;
+    duration_ms: number;
+  };
 };
 
 async function handleJson<T>(response: Response): Promise<T> {
@@ -229,5 +260,20 @@ export async function getTeacherAcademicLoad(document: string): Promise<unknown>
   const response = await fetch(`${BASE_URL}/academic-load/teacher/${enc}`, {
     headers: jsonHeaders,
   });
+  return handleJson(response);
+}
+
+// Importacion docentes
+export async function importTeachersExcel(
+  file: File
+): Promise<ImportTeachersResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${IMPORT_BASE_URL}/import/docentes`, {
+    method: "POST",
+    body: formData,
+  });
+
   return handleJson(response);
 }
