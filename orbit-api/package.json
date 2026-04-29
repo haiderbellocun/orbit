@@ -10,6 +10,8 @@
     "migrate": "ts-node src/db/migrate.ts",
     "migrate:v2": "ts-node src/db/migrate_v2.ts",
     "migrate:v3": "ts-node src/db/migrate_v3.ts",
+    "migrate:core": "ts-node src/db/migrate_core.ts",
+    "migrate:audit": "ts-node src/db/migrate_audit.ts",
     "seed": "ts-node src/db/seed.ts",
     "seed:v2": "ts-node src/db/seed_v2.ts",
     "seed:v3": "ts-node src/db/seed_v3.ts",
@@ -21,14 +23,18 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
+    "multer": "^1.4.5-lts.1",
     "pg": "^8.13.1",
+    "uuid": "^9.0.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.11",
     "@types/node": "^22.9.0",
     "@types/pg": "^8.11.10",
+    "@types/uuid": "^10.0.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.6.3"

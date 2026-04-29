@@ -344,21 +344,37 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
               </div>
               Historial Operativo
             </h3>
+
             <div className="space-y-10 ml-4">
               {[
-                { date: '25 Mar 2024', title: 'Actualización de Asignación', desc: 'Se asignaron 12 horas adicionales para el periodo 2024-1.', type: 'academic' },
-                { date: '10 Feb 2024', title: 'Renovación de Contrato', desc: 'Contrato renovado bajo modalidad de Tiempo Completo.', type: 'contract' },
-                { date: '15 Nov 2023', title: 'Registro de Novedad', desc: 'Incapacidad médica por 3 días procesada.', type: 'news' },
-              ].map((item, i) => (
+                {
+                  date: 'Próximamente',
+                  title: 'Historial operativo en construcción',
+                  desc: 'Esta sección mostrará actualizaciones, renovaciones, novedades y movimientos asociados al docente.',
+                  type: 'coming-soon',
+                },
+              ].map((item, i, arr) => (
                 <div key={i} className="flex gap-8 relative">
-                  {i !== 2 && <div className="absolute left-[15px] top-10 bottom-0 w-[1px] bg-slate-100"></div>}
+                  {i !== arr.length - 1 && (
+                    <div className="absolute left-[15px] top-10 bottom-0 w-[1px] bg-slate-100"></div>
+                  )}
+
                   <div className="w-8 h-8 rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center z-10 shrink-0">
                     <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500"></div>
                   </div>
+
                   <div className="space-y-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.date}</p>
-                    <h4 className="text-lg font-bold text-slate-900 tracking-tight">{item.title}</h4>
-                    <p className="text-sm text-slate-500 leading-relaxed max-w-lg">{item.desc}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      {item.date}
+                    </p>
+
+                    <h4 className="text-lg font-bold text-slate-900 tracking-tight">
+                      {item.title}
+                    </h4>
+
+                    <p className="text-sm text-slate-500 leading-relaxed max-w-lg">
+                      {item.desc}
+                    </p>
                   </div>
                 </div>
               ))}

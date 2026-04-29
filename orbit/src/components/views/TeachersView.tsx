@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   MagnifyingGlassIcon, 
@@ -15,12 +15,13 @@ import {
   PhoneIcon,
   DocumentTextIcon,
   CalendarIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  ArrowUpTrayIcon
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
 import { Teacher, View, Coordinator, Vacancy } from '@/src/types';
-import { getTeachers } from '@/src/lib/api';
+import { getTeachers, importTeachersExcel, type ImportTeachersResponse } from '@/src/lib/api';
 
 function mapTeacherFromApi(row: Record<string, unknown>): Teacher {
   const first = String(row.first_name ?? '');
@@ -88,40 +89,55 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
   const [showForm, setShowForm] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<ImportTeachersResponse | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const loadTeachers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const key = `${searchQuery}|${filter}`;
+      let pageToUse = currentPage;
+      if (listKeyRef.current !== key) {
+        if (listKeyRef.current !== null) {
+          pageToUse = 1;
+          if (currentPage !== 1) setCurrentPage(1);
+        }
+        listKeyRef.current = key;
+      }
+
+      const statusParam =
+        filter === 'all' || filter === 'on-leave' ? undefined : filter;
+      const res = await getTeachers({
+        search: searchQuery.trim() || undefined,
+        status: statusParam,
+        page: pageToUse,
+        limit: 50,
+      });
+      const list = Array.isArray(res.data)
+        ? res.data.map((r) =>
+            mapTeacherFromApi(r as Record<string, unknown>)
+          )
+        : [];
+      setTeachers(list);
+      setTotalCount(res.pagination?.total ?? 0);
+      setTotalPages(res.pagination?.totalPages ?? 0);
+    } catch {
+      setTeachers([]);
+      setTotalCount(0);
+      setTotalPages(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, filter, searchQuery]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      setLoading(true);
       try {
-        const key = `${searchQuery}|${filter}`;
-        let pageToUse = currentPage;
-        if (listKeyRef.current !== key) {
-          if (listKeyRef.current !== null) {
-            pageToUse = 1;
-            if (currentPage !== 1) setCurrentPage(1);
-          }
-          listKeyRef.current = key;
-        }
-
-        const statusParam =
-          filter === 'all' || filter === 'on-leave' ? undefined : filter;
-        const res = await getTeachers({
-          search: searchQuery.trim() || undefined,
-          status: statusParam,
-          page: pageToUse,
-          limit: 50,
-        });
-        if (!cancelled) {
-          const list = Array.isArray(res.data)
-            ? res.data.map((r) =>
-                mapTeacherFromApi(r as Record<string, unknown>)
-              )
-            : [];
-          setTeachers(list);
-          setTotalCount(res.pagination?.total ?? 0);
-          setTotalPages(res.pagination?.totalPages ?? 0);
-        }
+        if (!cancelled) await loadTeachers();
       } catch {
         if (!cancelled) {
           setTeachers([]);
@@ -135,7 +151,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [currentPage, searchQuery, filter]);
+  }, [loadTeachers, reloadKey]);
 
   const filteredTeachers = useMemo(() => {
     if (filter === 'on-leave') {
@@ -184,6 +200,36 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
     e.stopPropagation();
     setEditingTeacher(teacher);
     setShowForm(true);
+  };
+
+  const openImportPicker = () => {
+    if (isImporting) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImportError(null);
+    setImportResult(null);
+    setIsImporting(true);
+
+    try {
+      const result = await importTeachersExcel(file);
+      setImportResult(result);
+      if (result.success) {
+        setCurrentPage(1);
+        setReloadKey((prev) => prev + 1);
+      }
+    } catch (error) {
+      setImportError(
+        error instanceof Error ? error.message : 'Error al cargar el archivo.'
+      );
+    } finally {
+      setIsImporting(false);
+      event.target.value = '';
+    }
   };
 
   const containerVariants = {
@@ -238,6 +284,22 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                 <RectangleGroupIcon className="h-4.5 w-4.5" />
                 <span>Vista: Cards</span>
               </button>
+              <button
+                type="button"
+                onClick={openImportPicker}
+                disabled={isImporting}
+                className="glass-button-secondary flex-1 md:flex-none py-3 px-6 text-xs font-bold uppercase tracking-widest disabled:opacity-60 disabled:pointer-events-none"
+              >
+                <ArrowUpTrayIcon className="h-4.5 w-4.5" />
+                <span>{isImporting ? 'Cargando...' : 'Cargar Excel'}</span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleImportFile}
+                className="hidden"
+              />
             </div>
           </div>
           <motion.button 
@@ -286,6 +348,35 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {importError && (
+        <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-700 text-sm font-medium">
+          {importError}
+        </div>
+      )}
+
+      {importResult?.success && (
+        <div className="glass-panel p-5 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-emerald-600">Carga completada</span>
+            <span className="text-xs text-slate-500">Import ID: {importResult.importId}</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div className="rounded-xl bg-white/60 p-3"><strong>Procesadas:</strong> {importResult.summary.processedRows}</div>
+            <div className="rounded-xl bg-white/60 p-3"><strong>Omitidas:</strong> {importResult.summary.skippedRows}</div>
+            <div className="rounded-xl bg-white/60 p-3"><strong>Creadas:</strong> {importResult.summary.created.persons}</div>
+            <div className="rounded-xl bg-white/60 p-3"><strong>Actualizadas:</strong> {importResult.summary.updated.persons}</div>
+          </div>
+          <p className="text-xs text-slate-500">
+            Catálogos creados: contratos {importResult.summary.created.contractTypes}, roles {importResult.summary.created.roles}, escuelas {importResult.summary.created.schools}, programas {importResult.summary.created.programs}, ciudades {importResult.summary.created.cities}.
+          </p>
+          {importResult.summary.errors.length > 0 && (
+            <p className="text-xs text-amber-600">
+              Se registraron {importResult.summary.errors.length} errores por fila en la importación.
+            </p>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="glass-panel p-20 flex flex-col items-center justify-center text-center space-y-4">

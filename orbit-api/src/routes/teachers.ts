@@ -3,6 +3,23 @@ import { pool } from "../db/connection";
 
 const router = Router();
 
+async function hasLegacyTeachersTable(): Promise<boolean> {
+  const result = await pool.query(
+    "SELECT to_regclass('teachers') AS table_name"
+  );
+  return result.rows[0]?.table_name != null;
+}
+
+function splitFullName(fullName: string): { firstName: string; lastName: string } {
+  const normalized = fullName.trim().replace(/\s+/g, " ");
+  if (!normalized) return { firstName: "", lastName: "" };
+  const parts = normalized.split(" ");
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  const firstName = parts.slice(0, -1).join(" ");
+  const lastName = parts[parts.length - 1];
+  return { firstName, lastName };
+}
+
 router.get("/teachers", async (req, res) => {
   try {
     const search =
@@ -57,15 +74,101 @@ router.get("/teachers", async (req, res) => {
     const offsetIdx = p + 1;
     const queryValues = [...values, limit, offset];
 
-    const { rows } = await pool.query(
-      `SELECT t.*, c.name AS coordinator_name, COUNT(*) OVER() AS total_count
-       FROM teachers t
-       LEFT JOIN coordinators c ON c.id = t.coordinator_id
-       ${where}
-       ORDER BY t.last_name ASC NULLS LAST
-       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-      queryValues
-    );
+    const useLegacy = await hasLegacyTeachersTable();
+    let rows: Record<string, unknown>[] = [];
+
+    if (useLegacy) {
+      const result = await pool.query(
+        `SELECT t.*, c.name AS coordinator_name, COUNT(*) OVER() AS total_count
+         FROM teachers t
+         LEFT JOIN coordinators c ON c.id = t.coordinator_id
+         ${where}
+         ORDER BY t.last_name ASC NULLS LAST
+         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+        queryValues
+      );
+      rows = result.rows;
+    } else {
+      const personFilters: string[] = [];
+      const personValues: unknown[] = [];
+      let idx = 1;
+
+      if (search) {
+        personFilters.push(
+          `(p.full_name ILIKE $${idx} OR p.email ILIKE $${idx} OR p.document ILIKE $${idx})`
+        );
+        personValues.push(`%${search}%`);
+        idx++;
+      }
+      if (status && status !== "active") {
+        res.json({
+          data: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        });
+        return;
+      }
+      if (program) {
+        personFilters.push(`pr.name ILIKE $${idx}`);
+        personValues.push(`%${program}%`);
+        idx++;
+      }
+      if (campus) {
+        personFilters.push(`(a.name ILIKE $${idx} OR ci.name ILIKE $${idx})`);
+        personValues.push(`%${campus}%`);
+        idx++;
+      }
+
+      const personWhere =
+        personFilters.length > 0 ? `WHERE ${personFilters.join(" AND ")}` : "";
+      const pLimitIdx = idx;
+      const pOffsetIdx = idx + 1;
+      const personQueryValues = [...personValues, limit, offset];
+
+      const result = await pool.query(
+        `SELECT
+           p.id,
+           p.document,
+           p.full_name,
+           p.email,
+           pr.name AS program,
+           s.name AS school,
+           COALESCE(a.name, ci.name, '') AS campus,
+           a.name AS area,
+           ct.modality,
+           ct.name AS contract_type,
+           ct.start_date,
+           ct.end_date,
+           'active'::text AS status,
+           r.name AS position,
+           NULL::text AS payroll_class,
+           NULL::integer AS coordinator_id,
+           NULL::text AS coordinator_name,
+           COUNT(*) OVER() AS total_count
+         FROM person p
+         LEFT JOIN program pr ON pr.id = p.program_id
+         LEFT JOIN school s ON s.id = p.school_id
+         LEFT JOIN area a ON a.id = p.area_id
+         LEFT JOIN city ci ON ci.id = p.city_id
+         LEFT JOIN contract_type ct ON ct.id = p.contract_type_id
+         LEFT JOIN role r ON r.id = p.role_id
+         ${personWhere ? `${personWhere} AND` : "WHERE"}
+         r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')
+         ORDER BY p.full_name ASC NULLS LAST
+         LIMIT $${pLimitIdx} OFFSET $${pOffsetIdx}`,
+        personQueryValues
+      );
+
+      rows = result.rows.map((row) => {
+        const fullName = String(row.full_name ?? "");
+        const names = splitFullName(fullName);
+        return {
+          ...row,
+          first_name: names.firstName,
+          last_name: names.lastName,
+          name: fullName,
+        };
+      });
+    }
 
     const total =
       rows.length > 0 ? Number(rows[0].total_count) : 0;
@@ -83,7 +186,8 @@ router.get("/teachers", async (req, res) => {
         totalPages: Math.ceil(total / limit),
       },
     });
-  } catch {
+  } catch (e: unknown) {
+    console.error("GET /teachers failed:", e);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -96,13 +200,60 @@ router.get("/teachers/:id", async (req, res) => {
       return;
     }
 
-    const { rows } = await pool.query(
-      `SELECT t.*, c.name AS coordinator_name
-       FROM teachers t
-       LEFT JOIN coordinators c ON c.id = t.coordinator_id
-       WHERE t.id = $1`,
-      [id]
-    );
+    const useLegacy = await hasLegacyTeachersTable();
+    let rows: Record<string, unknown>[] = [];
+
+    if (useLegacy) {
+      const result = await pool.query(
+        `SELECT t.*, c.name AS coordinator_name
+         FROM teachers t
+         LEFT JOIN coordinators c ON c.id = t.coordinator_id
+         WHERE t.id = $1`,
+        [id]
+      );
+      rows = result.rows;
+    } else {
+      const result = await pool.query(
+        `SELECT
+           p.id,
+           p.document,
+           p.full_name,
+           p.email,
+           pr.name AS program,
+           s.name AS school,
+           COALESCE(a.name, ci.name, '') AS campus,
+           a.name AS area,
+           ct.modality,
+           ct.name AS contract_type,
+           ct.start_date,
+           ct.end_date,
+           'active'::text AS status,
+           r.name AS position,
+           NULL::text AS payroll_class,
+           NULL::integer AS coordinator_id,
+           NULL::text AS coordinator_name
+         FROM person p
+         LEFT JOIN program pr ON pr.id = p.program_id
+         LEFT JOIN school s ON s.id = p.school_id
+         LEFT JOIN area a ON a.id = p.area_id
+         LEFT JOIN city ci ON ci.id = p.city_id
+         LEFT JOIN contract_type ct ON ct.id = p.contract_type_id
+         LEFT JOIN role r ON r.id = p.role_id
+         WHERE p.id = $1`,
+        [id]
+      );
+
+      rows = result.rows.map((row) => {
+        const fullName = String(row.full_name ?? "");
+        const names = splitFullName(fullName);
+        return {
+          ...row,
+          first_name: names.firstName,
+          last_name: names.lastName,
+          name: fullName,
+        };
+      });
+    }
 
     if (rows.length === 0) {
       res.status(404).json({ error: "Not found" });
@@ -110,7 +261,8 @@ router.get("/teachers/:id", async (req, res) => {
     }
 
     res.json(rows[0]);
-  } catch {
+  } catch (e: unknown) {
+    console.error("GET /teachers/:id failed:", e);
     res.status(500).json({ error: "Internal server error" });
   }
 });
