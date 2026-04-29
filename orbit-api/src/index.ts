@@ -9,6 +9,7 @@ import vacanciesRouter from "./routes/vacancies";
 import litesRouter from "./routes/lites";
 import academicLoadRouter from "./routes/academic_load";
 import importRouter from "./routes/import";
+import dashboardRouter from "./routes/dashboard";
 
 const app = express();
 const port = Number.parseInt(process.env.PORT ?? "4000", 10);
@@ -23,6 +24,7 @@ app.use("/api", reinstatementsRouter);
 app.use("/api", litesRouter);
 app.use("/api", academicLoadRouter);
 app.use("/api", importRouter);
+app.use("/api", dashboardRouter);
 
 app.get("/health", async (_req, res) => {
   try {
