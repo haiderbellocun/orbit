@@ -45,6 +45,28 @@ export type ImportTeachersResponse = {
   };
 };
 
+export type DashboardTrendType = "up" | "down" | "flat";
+
+export type DashboardSummaryMetric = {
+  value: number;
+  trend: number;
+  trendType: DashboardTrendType;
+  detail: string;
+};
+
+export type DashboardSummaryResponse = {
+  activeTeachers: DashboardSummaryMetric & {
+    capacityPercentage: number | null;
+  };
+  openVacancies: DashboardSummaryMetric & {
+    averageDaysToClose: number | null;
+  };
+  todayNews: DashboardSummaryMetric & {
+    criticalCount: number;
+  };
+  updatedAt: string;
+};
+
 async function handleJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new Error(await response.text().catch(() => `HTTP ${response.status}`));
@@ -258,6 +280,14 @@ export async function getAcademicLoadSummary(): Promise<unknown> {
 export async function getTeacherAcademicLoad(document: string): Promise<unknown> {
   const enc = encodeURIComponent(document);
   const response = await fetch(`${BASE_URL}/academic-load/teacher/${enc}`, {
+    headers: jsonHeaders,
+  });
+  return handleJson(response);
+}
+
+// Dashboard
+export async function getDashboardSummary(): Promise<DashboardSummaryResponse> {
+  const response = await fetch(`${BASE_URL}/dashboard/summary`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
