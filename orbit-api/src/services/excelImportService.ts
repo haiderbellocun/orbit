@@ -75,7 +75,8 @@ export function processExcelRows(
   const records: NormalizedRecord[] = [];
 
   // Find header row
-  const columnMap = findHeaderRow(rawData);
+  const headerDetection = findHeaderRow(rawData);
+  const columnMap = headerDetection?.columnMap ?? null;
   const columnErrors = validateRequiredColumns(columnMap);
 
   if (columnErrors.length > 0) {
@@ -94,27 +95,15 @@ export function processExcelRows(
     return { records: [], headerRowIndex: -1, columnMap: null, errors };
   }
 
-  // Find where header row is
-  let headerRowIndex = 0;
-  for (let i = 0; i < Math.min(5, rawData.length); i++) {
-    const map = extractColumnsFromRow(rawData[i], columnMap);
-    if (map === null) {
-      // Check if this is the header row itself
-      const firstCell = String(rawData[i][0] || "").trim().toLowerCase();
-      if (
-        firstCell === "identificación" ||
-        firstCell === "identificacion"
-      ) {
-        headerRowIndex = i;
-        break;
-      }
-    }
-  }
+  // Last header line (0-based). Data starts on next row.
+  const headerRowIndex = headerDetection?.headerRowIndex ?? 0;
 
   // Process data rows
+  // Business rule for "Carga Actual": first 2 rows are headers/informative rows.
+  const dataStartIndex = Math.max(headerRowIndex + 1, 2);
   let processedRows = 0;
   for (
-    let i = headerRowIndex + 1;
+    let i = dataStartIndex;
     i < rawData.length && processedRows < maxRows;
     i++
   ) {

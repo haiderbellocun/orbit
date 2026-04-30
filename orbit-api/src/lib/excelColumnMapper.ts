@@ -19,6 +19,12 @@ export interface ColumnMap {
   nombreArea: number;
 }
 
+export interface HeaderDetectionResult {
+  columnMap: ColumnMap;
+  // 0-based index of the last header row
+  headerRowIndex: number;
+}
+
 const COLUMN_NAMES = {
   identificacion: ["Identificación", "Identificacion", "Document", "ID"],
   nombres: ["Nombres", "First Name", "Nombre"],
@@ -69,16 +75,15 @@ const COLUMN_NAMES = {
  * Searches for header row in raw data
  * Returns map of column names to indices or null if headers not found
  */
-export function findHeaderRow(rawData: any[][]): ColumnMap | null {
+export function findHeaderRow(rawData: any[][]): HeaderDetectionResult | null {
   if (rawData.length === 0) return null;
 
-  // Search in first rows for headers (including row 1 in Excel).
-  for (let rowIdx = 0; rowIdx < Math.min(6, rawData.length); rowIdx++) {
-    const row = rawData[rowIdx];
-    const headerMap = mapColumnsInRow(row);
+  // Search in first rows for a 2-row header (N and N+1).
+  for (let rowIdx = 0; rowIdx < Math.min(6, rawData.length - 1); rowIdx++) {
+    const headerMap = mapColumnsInTwoRows(rawData[rowIdx], rawData[rowIdx + 1]);
 
     if (headerMap && isValidHeaderMap(headerMap)) {
-      return headerMap;
+      return { columnMap: headerMap, headerRowIndex: rowIdx + 1 };
     }
   }
 
@@ -110,6 +115,24 @@ function mapColumnsInRow(row: any[]): Partial<ColumnMap> | null {
   }
 
   return map;
+}
+
+function mapColumnsInTwoRows(
+  topRow: any[],
+  bottomRow: any[]
+): Partial<ColumnMap> | null {
+  if (!Array.isArray(topRow) || !Array.isArray(bottomRow)) return null;
+  const maxCols = Math.max(topRow.length, bottomRow.length);
+  if (maxCols === 0) return null;
+
+  const merged: string[] = [];
+  for (let i = 0; i < maxCols; i++) {
+    const a = String(topRow[i] ?? "").trim();
+    const b = String(bottomRow[i] ?? "").trim();
+    merged.push([a, b].filter(Boolean).join(" ").trim());
+  }
+
+  return mapColumnsInRow(merged);
 }
 
 /**
