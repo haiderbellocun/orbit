@@ -2,20 +2,15 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   MagnifyingGlassIcon, 
-  PlusIcon, 
-  FunnelIcon, 
   RectangleGroupIcon, 
   UserCircleIcon, 
   EnvelopeIcon, 
   MapPinIcon, 
   ArrowRightIcon,
-  UserPlusIcon,
   XMarkIcon,
   PencilSquareIcon,
   PhoneIcon,
   DocumentTextIcon,
-  CalendarIcon,
-  CheckCircleIcon,
   ArrowUpTrayIcon
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
@@ -88,7 +83,6 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
   const [filter, setFilter] = useState<'all' | 'active' | 'on-leave' | 'inactive'>('all');
   const [showForm, setShowForm] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
-  const [showSuccess, setShowSuccess] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportTeachersResponse | null>(null);
@@ -169,28 +163,20 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
 
   const handleSaveTeacher = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!editingTeacher) return;
     const formData = new FormData(e.currentTarget);
     const teacherData: Partial<Teacher> = {
       name: formData.get('name') as string,
+      document: formData.get('document') as string,
       email: formData.get('email') as string,
       phone: formData.get('phone') as string,
       program: formData.get('program') as string,
       campus: formData.get('campus') as string,
       status: formData.get('status') as any,
-      joinDate: formData.get('joinDate') as string || new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }),
+      joinDate: formData.get('joinDate') as string || new Date().toISOString().split('T')[0],
     };
 
-    if (editingTeacher) {
-      setTeachers(prev => prev.map(t => t.id === editingTeacher.id ? { ...t, ...teacherData } : t));
-    } else {
-      const newTeacher: Teacher = {
-        ...teacherData as Teacher,
-        id: Math.random().toString(36).substr(2, 9),
-      };
-      setTeachers(prev => [newTeacher, ...prev]);
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
-    }
+    setTeachers(prev => prev.map(t => t.id === editingTeacher.id ? { ...t, ...teacherData } : t));
     
     setShowForm(false);
     setEditingTeacher(null);
@@ -284,15 +270,6 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                 <RectangleGroupIcon className="h-4.5 w-4.5" />
                 <span>Vista: Cards</span>
               </button>
-              <button
-                type="button"
-                onClick={openImportPicker}
-                disabled={isImporting}
-                className="glass-button-secondary flex-1 md:flex-none py-3 px-6 text-xs font-bold uppercase tracking-widest disabled:opacity-60 disabled:pointer-events-none"
-              >
-                <ArrowUpTrayIcon className="h-4.5 w-4.5" />
-                <span>{isImporting ? 'Cargando...' : 'Cargar Excel'}</span>
-              </button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -305,11 +282,13 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
           <motion.button 
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => { setEditingTeacher(null); setShowForm(true); }}
+            type="button"
+            onClick={openImportPicker}
+            disabled={isImporting}
             className="glass-button-primary px-8 py-4 h-fit text-sm font-bold tracking-tight w-full lg:w-auto flex justify-center items-center"
           >
-            <UserPlusIcon className="h-5 w-5" />
-            <span>Registrar Nuevo</span>
+            <ArrowUpTrayIcon className="h-5 w-5" />
+            <span>{isImporting ? 'Cargando...' : 'Cargar Excel'}</span>
           </motion.button>
         </div>
 
@@ -332,22 +311,6 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
           ))}
         </div>
       </div>
-
-      <AnimatePresence>
-        {showSuccess && (
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-4 text-emerald-600"
-          >
-            <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
-              <CheckCircleIcon className="h-5 w-5" />
-            </div>
-            <p className="text-sm font-bold tracking-tight">Docente registrado exitosamente y agregado al listado.</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {importError && (
         <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-700 text-sm font-medium">
@@ -530,11 +493,11 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
               <div className="flex justify-between items-center mb-8">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center text-violet-600">
-                    {editingTeacher ? <PencilSquareIcon className="h-6 w-6" /> : <UserPlusIcon className="h-6 w-6" />}
+                    <PencilSquareIcon className="h-6 w-6" />
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900 font-display">
-                      {editingTeacher ? 'Editar Perfil' : 'Nuevo Registro'}
+                      Editar Perfil
                     </h2>
                     <p className="text-xs text-slate-500 font-medium tracking-wide uppercase">
                       Información académica y personal
@@ -667,7 +630,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                   <div className="space-y-2">
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Fecha de Ingreso</label>
                     <div className="relative">
-                      <CalendarIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <DocumentTextIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                       <input 
                         name="joinDate"
                         type="date" 
@@ -690,7 +653,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                     type="submit"
                     className="flex-[2] glass-button-primary py-4 text-xs font-bold uppercase tracking-widest"
                   >
-                    {editingTeacher ? 'Guardar Cambios' : 'Registrar Docente'}
+                    Guardar Cambios
                   </button>
                 </div>
               </form>
