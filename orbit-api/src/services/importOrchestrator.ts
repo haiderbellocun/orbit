@@ -6,12 +6,15 @@
 import { v4 as uuidv4 } from "uuid";
 import { Pool } from "pg";
 import {
+  AcademicWorkloadParsedData,
+  CurrentLoadRecord,
+  AcademicProjectionRecord,
   NormalizedRecord,
   ImportResult,
   ImportError,
-  ForeignKeyIds,
 } from "../types/import";
 import {
+  parseAcademicSchemasFromExcel,
   readExcelSheet,
   processExcelRows,
   validateExcelFile,
@@ -23,12 +26,29 @@ import {
   findOrCreateSchool,
   findOrCreateProgram,
   findOrCreateHierarchyByLevel,
-  CatalogResult,
 } from "./catalogService";
 import {
   createOrUpdatePerson,
   getPersonByDocument,
 } from "./personBulkService";
+import {
+  upsertAcademicLoad,
+  upsertClassGroup,
+  upsertClassPreparation,
+  upsertSubject,
+} from "./academicWorkloadBulkService";
+import {
+  upsertProject,
+  upsertSubstantiveFunction,
+} from "./substantiveHoursBulkService";
+
+interface CorePersonLink {
+  personId: number;
+  programId: number | null;
+  cityId: number | null;
+  regionId: number | null;
+  campusId: number | null;
+}
 
 export class ImportOrchestrator {
   private pool: Pool;
@@ -48,8 +68,15 @@ export class ImportOrchestrator {
     createdCities: 0,
     createdSchools: 0,
     createdPrograms: 0,
+    createdSubjects: 0,
+    createdClassGroups: 0,
+    createdClassPreparations: 0,
+    createdAcademicLoads: 0,
+    createdProjects: 0,
+    createdSubstantiveFunctions: 0,
   };
   private errors: ImportError[] = [];
+  private warnings: ImportError[] = [];
 
   constructor(
     pool: Pool,
@@ -81,9 +108,15 @@ export class ImportOrchestrator {
         rawData,
         10000
       );
+      const academicSchemasData = parseAcademicSchemasFromExcel(this.filePath);
 
-      this.counters.totalRows = records.length + parseErrors.length;
+      this.counters.totalRows =
+        records.length +
+        parseErrors.length +
+        academicSchemasData.currentLoadRecords.length +
+        academicSchemasData.projectionRecords.length;
       this.errors.push(...parseErrors);
+      this.warnings.push(...academicSchemasData.warnings);
 
       const hierarchyResult = await findOrCreateHierarchyByLevel(this.pool, 5);
       this.hierarchyLevelFiveId = hierarchyResult.id;
@@ -92,6 +125,7 @@ export class ImportOrchestrator {
       for (const record of records) {
         await this.processRow(record);
       }
+      await this.processAcademicSchemasData(academicSchemasData);
 
       // Build response
       return this.buildSuccessResult();
@@ -193,6 +227,295 @@ export class ImportOrchestrator {
     }
   }
 
+  private async processAcademicSchemasData(
+    parsedData: AcademicWorkloadParsedData
+  ): Promise<void> {
+    const coreByDocument = await this.loadCorePersonMap(parsedData);
+    const periodSemesterByDocument = this.buildPeriodSemesterByDocument(
+      parsedData.projectionRecords
+    );
+    const currentByDocument = this.buildCurrentByDocument(
+      parsedData.currentLoadRecords
+    );
+    const programNameById = await this.loadProgramNames(coreByDocument);
+
+    const subjectCache = new Set<string>();
+    const classGroupCache = new Set<string>();
+    const classPreparationByPerson = new Map<number, number | null>();
+    const projectByName = new Map<string, { id: number; hours: number | null }>();
+
+    if (parsedData.projectionRecords.length === 0) {
+      this.warnings.push({
+        row: 0,
+        reason:
+          "No se detectaron filas validas en ACA Proyeccion; solo se cargaran datos posibles desde Carga Actual.",
+      });
+    }
+
+    // Phase 1: load entities that come from Carga Actual only.
+    for (const currentRecord of parsedData.currentLoadRecords) {
+      const coreLink = coreByDocument.get(currentRecord.document);
+      if (!coreLink) {
+        this.warnings.push({
+          row: currentRecord.rowNumber,
+          reason: `No se encontro person_id en CORE para documento ${currentRecord.document}`,
+        });
+        continue;
+      }
+
+      if (!classPreparationByPerson.has(coreLink.personId)) {
+        if (
+          currentRecord.classPreparationHours != null &&
+          currentRecord.classPreparationHours > 0
+        ) {
+          const classPreparationResult = await upsertClassPreparation(this.pool, {
+            personId: coreLink.personId,
+            classPreparationHours: currentRecord.classPreparationHours,
+          });
+          if (classPreparationResult.isNew) {
+            this.counters.createdClassPreparations++;
+          }
+          classPreparationByPerson.set(coreLink.personId, classPreparationResult.id);
+        } else {
+          classPreparationByPerson.set(coreLink.personId, null);
+        }
+      }
+
+      if (currentRecord.projectName && !projectByName.has(currentRecord.projectName)) {
+        const projectResult = await upsertProject(this.pool, currentRecord.projectName);
+        if (projectResult.isNew) this.counters.createdProjects++;
+        if (projectResult.id != null) {
+          const substantiveResult = await upsertSubstantiveFunction(
+            this.pool,
+            projectResult.id,
+            this.calculateSubstantiveHours(currentRecord),
+            currentRecord.observations
+          );
+          if (substantiveResult.isNew) {
+            this.counters.createdSubstantiveFunctions++;
+          }
+          projectByName.set(currentRecord.projectName, {
+            id: projectResult.id,
+            hours: substantiveResult.hoursQuantity,
+          });
+        }
+      }
+    }
+
+    // Phase 2: load entities dependent on ACA Proyeccion.
+    for (const projection of parsedData.projectionRecords) {
+      const coreLink = coreByDocument.get(projection.document);
+      if (!coreLink) {
+        this.warnings.push({
+          row: projection.rowNumber,
+          reason: `No se encontro person_id en CORE para documento ${projection.document}`,
+        });
+        continue;
+      }
+
+      if (!subjectCache.has(projection.subjectCode)) {
+        const subjectResult = await upsertSubject(this.pool, {
+          subjectCode: projection.subjectCode,
+          name: projection.subjectName,
+          creditsQuantity: projection.creditsQuantity,
+        });
+        if (subjectResult.isNew) this.counters.createdSubjects++;
+        subjectCache.add(projection.subjectCode);
+      }
+
+      const classGroupKey = `${projection.subjectCode}|${projection.groupCode}`;
+      if (!classGroupCache.has(classGroupKey)) {
+        const currentRecord = currentByDocument.get(projection.document);
+        const classGroupResult = await upsertClassGroup(this.pool, {
+          subjectCode: projection.subjectCode,
+          groupCode: projection.groupCode,
+          startDate: projection.startDate,
+          endDate: projection.endDate,
+          classroomName: projection.classroomName,
+          capacity: projection.capacity,
+          block: projection.block,
+          scheduleTime: projection.scheduleTime,
+          modality: currentRecord?.modality ?? null,
+        });
+        if (classGroupResult.isNew) this.counters.createdClassGroups++;
+        classGroupCache.add(classGroupKey);
+      }
+
+      let projectId: number | null = null;
+      let substantiveHoursQuantity: number | null = null;
+      const currentRecord = currentByDocument.get(projection.document);
+      if (currentRecord?.projectName) {
+        const cachedProject = projectByName.get(currentRecord.projectName);
+        if (cachedProject != null) {
+          projectId = cachedProject.id;
+          substantiveHoursQuantity = cachedProject.hours;
+        }
+      }
+
+      const dedupInfo = periodSemesterByDocument.get(projection.document);
+      const academicLoadResult = await upsertAcademicLoad(this.pool, {
+        personId: coreLink.personId,
+        periodCode: dedupInfo?.periodCode ?? projection.periodCode,
+        semester: dedupInfo?.semester ?? projection.semester,
+        programId: coreLink.programId,
+        programName:
+          (coreLink.programId != null
+            ? programNameById.get(coreLink.programId)
+            : null) ?? null,
+        subjectCode: projection.subjectCode,
+        groupCode: projection.groupCode,
+        enrolledQuantity: currentRecord?.enrolledQuantity ?? null,
+        regionId: coreLink.regionId,
+        cityId: coreLink.cityId,
+        campusId: coreLink.campusId,
+        projectId,
+        substantiveHoursQuantity,
+        classPreparationId: classPreparationByPerson.get(coreLink.personId) ?? null,
+      });
+
+      if (academicLoadResult.isNew) {
+        this.counters.createdAcademicLoads++;
+      }
+    }
+  }
+
+  private async loadCorePersonMap(
+    parsedData: AcademicWorkloadParsedData
+  ): Promise<Map<string, CorePersonLink>> {
+    const documents = Array.from(
+      new Set([
+        ...parsedData.currentLoadRecords.map((x) => x.document),
+        ...parsedData.projectionRecords.map((x) => x.document),
+      ])
+    );
+    if (documents.length === 0) return new Map();
+
+    const availableColumnsResult = await this.pool.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_name = 'person'`
+    );
+    const availableColumns = new Set<string>(
+      availableColumnsResult.rows.map((row) => String(row.column_name))
+    );
+
+    const hasRegionId = availableColumns.has("region_id");
+    const hasCampusId = availableColumns.has("campus_id");
+
+    const result = await this.pool.query(
+      `SELECT
+         document,
+         id,
+         program_id,
+         city_id,
+         ${hasRegionId ? "region_id" : "NULL::INTEGER AS region_id"},
+         ${hasCampusId ? "campus_id" : "NULL::INTEGER AS campus_id"}
+       FROM person
+       WHERE document = ANY($1::text[])`,
+      [documents]
+    );
+
+    const out = new Map<string, CorePersonLink>();
+    for (const row of result.rows) {
+      out.set(String(row.document), {
+        personId: row.id as number,
+        programId: (row.program_id as number | null) ?? null,
+        cityId: (row.city_id as number | null) ?? null,
+        regionId: (row.region_id as number | null) ?? null,
+        campusId: (row.campus_id as number | null) ?? null,
+      });
+    }
+    return out;
+  }
+
+  private async loadProgramNames(
+    coreByDocument: Map<string, CorePersonLink>
+  ): Promise<Map<number, string>> {
+    const programIds = Array.from(
+      new Set(
+        Array.from(coreByDocument.values())
+          .map((value) => value.programId)
+          .filter((value): value is number => value != null)
+      )
+    );
+    if (programIds.length === 0) return new Map();
+
+    const result = await this.pool.query(
+      `SELECT id, name
+       FROM program
+       WHERE id = ANY($1::int[])`,
+      [programIds]
+    );
+
+    const out = new Map<number, string>();
+    for (const row of result.rows) {
+      out.set(row.id as number, String(row.name));
+    }
+    return out;
+  }
+
+  private buildPeriodSemesterByDocument(
+    rows: AcademicProjectionRecord[]
+  ): Map<string, { periodCode: string | null; semester: string | null }> {
+    const map = new Map<string, { periodCode: string | null; semester: string | null }>();
+    for (const row of rows) {
+      const existing = map.get(row.document);
+      if (!existing) {
+        map.set(row.document, {
+          periodCode: row.periodCode,
+          semester: row.semester,
+        });
+        continue;
+      }
+
+      const periodConflict =
+        existing.periodCode != null &&
+        row.periodCode != null &&
+        existing.periodCode !== row.periodCode;
+      const semesterConflict =
+        existing.semester != null &&
+        row.semester != null &&
+        existing.semester !== row.semester;
+
+      if (periodConflict || semesterConflict) {
+        this.warnings.push({
+          row: row.rowNumber,
+          reason: `Conflicto de periodo/semestre para documento ${row.document}. Se conserva el primer valor encontrado.`,
+        });
+      }
+
+      if (!existing.periodCode && row.periodCode) {
+        existing.periodCode = row.periodCode;
+      }
+      if (!existing.semester && row.semester) {
+        existing.semester = row.semester;
+      }
+    }
+    return map;
+  }
+
+  private buildCurrentByDocument(
+    rows: CurrentLoadRecord[]
+  ): Map<string, CurrentLoadRecord> {
+    const map = new Map<string, CurrentLoadRecord>();
+    for (const row of rows) {
+      if (!map.has(row.document)) {
+        map.set(row.document, row);
+      }
+    }
+    return map;
+  }
+
+  private calculateSubstantiveHours(currentRecord: CurrentLoadRecord): number | null {
+    const values = [
+      currentRecord.substantiveHours1,
+      currentRecord.substantiveHours2,
+      currentRecord.substantiveHours3,
+    ].filter((value): value is number => value != null);
+    if (values.length === 0) return null;
+    return values.reduce((acc, val) => acc + val, 0);
+  }
+
   /**
    * Builds successful import result
    */
@@ -215,11 +538,18 @@ export class ImportOrchestrator {
           cities: this.counters.createdCities,
           schools: this.counters.createdSchools,
           programs: this.counters.createdPrograms,
+          subjects: this.counters.createdSubjects,
+          classGroups: this.counters.createdClassGroups,
+          classPreparations: this.counters.createdClassPreparations,
+          academicLoads: this.counters.createdAcademicLoads,
+          projects: this.counters.createdProjects,
+          substantiveFunctions: this.counters.createdSubstantiveFunctions,
         },
         updated: {
           persons: this.counters.updatedPersons,
         },
         errors: this.errors,
+        warnings: this.warnings,
         duration_ms: duration,
       },
     };
@@ -243,6 +573,12 @@ export class ImportOrchestrator {
           cities: 0,
           schools: 0,
           programs: 0,
+          subjects: 0,
+          classGroups: 0,
+          classPreparations: 0,
+          academicLoads: 0,
+          projects: 0,
+          substantiveFunctions: 0,
         },
         updated: {
           persons: 0,
@@ -253,6 +589,7 @@ export class ImportOrchestrator {
             reason: message,
           },
         ],
+        warnings: [],
         duration_ms: new Date().getTime() - this.startTime.getTime(),
       },
     };
