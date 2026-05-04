@@ -8,7 +8,6 @@ import {
   ChevronRightIcon, 
   ChartBarIcon, 
   ClockIcon, 
-  ArrowDownTrayIcon, 
   ExclamationCircleIcon,
   UserPlusIcon
 } from '@heroicons/react/24/solid';
