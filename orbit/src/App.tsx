@@ -139,7 +139,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="flex-1 md:ml-64 p-4 md:p-10 min-h-screen w-full relative">
+      <main className="flex-1 md:ml-64 p-3 md:p-5 xl:p-6 min-h-screen w-full relative">
         {/* Mobile Header Toggle */}
         <div className="md:hidden sticky top-0 -mx-4 px-4 py-3 mb-6 bg-white/80 backdrop-blur-lg border-b border-slate-200/50 flex items-center justify-between z-40">
           <div className="flex items-center gap-3">
@@ -157,16 +157,16 @@ export default function App() {
         </div>
 
         <AnimatePresence mode="wait">
-          <motion.div
-            key={view}
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-            className="max-w-7xl mx-auto"
-          >
-            {renderView()}
-          </motion.div>
+        <motion.div
+          key={view}
+          initial={{ opacity: 0, x: 10 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -10 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+          className="px-40 mx-auto"
+        >
+          {renderView()}
+        </motion.div>
         </AnimatePresence>
       </main>
     </div>
