@@ -11,7 +11,12 @@ import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import { pool } from "../db/connection";
 import { ImportOrchestrator } from "../services/importOrchestrator";
-import { ImportAuditLog } from "../types/import";
+import {
+  emitImportStream,
+  subscribeImportStream,
+  deleteImportRoom,
+  type ImportStreamEvent,
+} from "../services/importProgressHub";
 
 const router = Router();
 
@@ -63,9 +68,103 @@ const upload = multer({
 });
 
 /**
+ * GET /api/import/docentes/stream/:importId
+ * Server-Sent Events: progreso en vivo del import asíncrono (tras POST ?async=1).
+ */
+router.get(
+  "/import/docentes/stream/:importId",
+  (req: Request, res: Response): void => {
+    const { importId } = req.params;
+
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    if (typeof (res as Response & { flushHeaders?: () => void }).flushHeaders === "function") {
+      (res as Response & { flushHeaders: () => void }).flushHeaders();
+    }
+
+    let ended = false;
+    const ping = setInterval(() => {
+      if (!ended) {
+        res.write(`: ping\n\n`);
+      }
+    }, 20000);
+
+    const send = (event: ImportStreamEvent) => {
+      if (ended) return;
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      if (event.type === "complete" || event.type === "error") {
+        ended = true;
+        clearInterval(ping);
+        res.end();
+      }
+    };
+
+    const unsub = subscribeImportStream(importId, send);
+
+    req.on("close", () => {
+      clearInterval(ping);
+      unsub();
+    });
+  }
+);
+
+function runImportInBackground(
+  importId: string,
+  filePath: string,
+  fileName: string,
+  sheetName: string
+): void {
+  void (async () => {
+    try {
+      const orchestrator = new ImportOrchestrator(pool, filePath, sheetName, {
+        importId,
+      });
+      const result = await orchestrator.execute();
+
+      if (result.success) {
+        await logImportToDatabase(
+          pool,
+          result.importId,
+          fileName,
+          result.summary.totalRows,
+          result.summary.processedRows - result.summary.skippedRows,
+          result.summary.errors.length,
+          result.summary.skippedRows,
+          result.summary.created,
+          result.summary.updated,
+          result.summary.errors,
+          result.summary.duration_ms
+        );
+      }
+
+      emitImportStream(importId, { type: "complete", result });
+    } catch (error) {
+      console.error("Import async error:", error);
+      emitImportStream(importId, {
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "Internal server error",
+      });
+    } finally {
+      if (fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+        } catch (unlinkErr) {
+          console.error("Temp file cleanup:", unlinkErr);
+        }
+      }
+      setTimeout(() => deleteImportRoom(importId), 120_000);
+    }
+  })();
+}
+
+/**
  * POST /api/import/docentes
  * Bulk import from Excel file
  * Body: multipart/form-data with file input named "file"
+ * Query async=1 → 202 + importId; progreso por GET .../stream/:importId (SSE)
  */
 router.post(
   "/import/docentes",
@@ -87,7 +186,22 @@ router.post(
       // Optional: get sheet name from query params (default to "Carga Actual")
       const sheetName = (req.query.sheet as string) || "Carga Actual";
 
-      // Execute import orchestrator
+      const asyncImport =
+        req.query.async === "1" ||
+        req.query.stream === "1" ||
+        req.get("x-import-async") === "1";
+
+      if (asyncImport) {
+        const importId = uuidv4();
+        runImportInBackground(importId, filePath, fileName, sheetName);
+        res.status(202).json({
+          importId,
+          streamUrl: `/api/import/docentes/stream/${importId}`,
+        });
+        return;
+      }
+
+      // Execute import orchestrator (modo síncrono)
       const orchestrator = new ImportOrchestrator(
         pool,
         filePath,
