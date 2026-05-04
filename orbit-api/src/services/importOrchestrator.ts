@@ -50,6 +50,27 @@ interface CorePersonLink {
   campusId: number | null;
 }
 
+function normalizeGroupModality(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const trimmed = String(raw).trim();
+  if (trimmed.length === 0) return null;
+  const upper = trimmed.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  if (upper === "P" || upper === "PRESENCIAL" || upper.startsWith("PRES")) return "P";
+  if (upper === "V" || upper === "VIRTUAL" || upper.startsWith("VIR")) return "V";
+  return trimmed.length > 120 ? trimmed.slice(0, 120) : trimmed;
+}
+
+function resolveClassGroupModality(
+  projection: AcademicProjectionRecord,
+  currentRecord: CurrentLoadRecord | undefined
+): string | null {
+  return (
+    normalizeGroupModality(projection.modalityPrimary) ??
+    normalizeGroupModality(projection.modalitySecondary) ??
+    normalizeGroupModality(currentRecord?.modality)
+  );
+}
+
 export class ImportOrchestrator {
   private pool: Pool;
   private filePath: string;
@@ -335,7 +356,7 @@ export class ImportOrchestrator {
           capacity: projection.capacity,
           block: projection.block,
           scheduleTime: projection.scheduleTime,
-          modality: currentRecord?.modality ?? null,
+          modality: resolveClassGroupModality(projection, currentRecord),
         });
         if (classGroupResult.isNew) this.counters.createdClassGroups++;
         classGroupCache.add(classGroupKey);
