@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import pg from "pg";
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const schema = (process.env.DB_SCHEMA ?? "public").trim();
 

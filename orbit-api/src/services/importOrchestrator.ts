@@ -41,6 +41,7 @@ import {
   upsertProject,
   upsertSubstantiveFunction,
 } from "./substantiveHoursBulkService";
+import { emitImportStream } from "./importProgressHub";
 
 interface CorePersonLink {
   personId: number;
@@ -98,17 +99,52 @@ export class ImportOrchestrator {
   };
   private errors: ImportError[] = [];
   private warnings: ImportError[] = [];
+  private lastProgressAt = 0;
 
   constructor(
     pool: Pool,
     filePath: string,
-    sheetName: string = "Carga Actual"
+    sheetName: string = "Carga Actual",
+    options?: { importId?: string }
   ) {
     this.pool = pool;
     this.filePath = filePath;
     this.sheetName = sheetName;
-    this.importId = uuidv4();
+    this.importId = options?.importId ?? uuidv4();
     this.startTime = new Date();
+  }
+
+  /** Eventos en tiempo real (SSE); si nadie escucha, quedan en buffer acotado en el hub */
+  private progress(
+    phase: string,
+    label: string,
+    current?: number,
+    total?: number,
+    force = false
+  ): void {
+    const now = Date.now();
+    if (
+      !force &&
+      current != null &&
+      total != null &&
+      current !== total &&
+      now - this.lastProgressAt < 250
+    ) {
+      return;
+    }
+    this.lastProgressAt = now;
+    let percent: number | undefined;
+    if (current != null && total != null && total > 0) {
+      percent = Math.min(100, Math.round((current / total) * 100));
+    }
+    emitImportStream(this.importId, {
+      type: "progress",
+      phase,
+      label,
+      current,
+      total,
+      percent,
+    });
   }
 
   /**
@@ -117,12 +153,14 @@ export class ImportOrchestrator {
    */
   async execute(): Promise<ImportResult> {
     try {
+      this.progress("validate", "Validando archivo Excel…", 0, 1, true);
       // Validate file exists
       const validation = validateExcelFile(this.filePath);
       if (!validation.valid) {
         return this.errorResult(validation.error || "File validation failed");
       }
 
+      this.progress("parse", "Leyendo hoja Excel y parseando filas…", 0, 1, true);
       // Read and parse Excel
       const rawData = readExcelSheet(this.filePath, this.sheetName);
       const { records, errors: parseErrors } = processExcelRows(
@@ -139,13 +177,38 @@ export class ImportOrchestrator {
       this.errors.push(...parseErrors);
       this.warnings.push(...academicSchemasData.warnings);
 
+      this.progress(
+        "parse",
+        `Detectadas ${records.length} filas CORE + hojas académicas`,
+        records.length,
+        Math.max(records.length, 1),
+        true
+      );
+
+      this.progress("hierarchy", "Resolviendo jerarquía académica (nivel 5)…", 0, 1, true);
       const hierarchyResult = await findOrCreateHierarchyByLevel(this.pool, 5);
       this.hierarchyLevelFiveId = hierarchyResult.id;
 
+      const totalCore = records.length;
       // Process each normalized record
-      for (const record of records) {
-        await this.processRow(record);
+      for (let i = 0; i < records.length; i++) {
+        await this.processRow(records[i]);
+        const step = i + 1;
+        if (
+          step === 1 ||
+          step === totalCore ||
+          step % 50 === 0
+        ) {
+          this.progress(
+            "core",
+            `Docentes / catálogo CORE: ${step} / ${totalCore}`,
+            step,
+            Math.max(totalCore, 1),
+            step === totalCore
+          );
+        }
       }
+
       await this.processAcademicSchemasData(academicSchemasData);
 
       // Build response
@@ -251,6 +314,13 @@ export class ImportOrchestrator {
   private async processAcademicSchemasData(
     parsedData: AcademicWorkloadParsedData
   ): Promise<void> {
+    this.progress(
+      "academic",
+      "Resolviendo vínculos CORE para carga académica…",
+      0,
+      1,
+      true
+    );
     const coreByDocument = await this.loadCorePersonMap(parsedData);
     const periodSemesterByDocument = this.buildPeriodSemesterByDocument(
       parsedData.projectionRecords
@@ -274,7 +344,10 @@ export class ImportOrchestrator {
     }
 
     // Phase 1: load entities that come from Carga Actual only.
-    for (const currentRecord of parsedData.currentLoadRecords) {
+    const caRows = parsedData.currentLoadRecords;
+    const caTotal = caRows.length;
+    for (let ci = 0; ci < caTotal; ci++) {
+      const currentRecord = caRows[ci];
       const coreLink = coreByDocument.get(currentRecord.document);
       if (!coreLink) {
         this.warnings.push({
@@ -321,10 +394,28 @@ export class ImportOrchestrator {
           });
         }
       }
+
+      const stepCa = ci + 1;
+      if (
+        stepCa === 1 ||
+        stepCa === caTotal ||
+        stepCa % 30 === 0
+      ) {
+        this.progress(
+          "carga_actual",
+          `Carga actual: ${stepCa} / ${Math.max(caTotal, 1)}`,
+          stepCa,
+          Math.max(caTotal, 1),
+          stepCa === caTotal
+        );
+      }
     }
 
     // Phase 2: load entities dependent on ACA Proyeccion.
-    for (const projection of parsedData.projectionRecords) {
+    const projRows = parsedData.projectionRecords;
+    const projTotal = projRows.length;
+    for (let pi = 0; pi < projTotal; pi++) {
+      const projection = projRows[pi];
       const coreLink = coreByDocument.get(projection.document);
       if (!coreLink) {
         this.warnings.push({
@@ -396,6 +487,21 @@ export class ImportOrchestrator {
 
       if (academicLoadResult.isNew) {
         this.counters.createdAcademicLoads++;
+      }
+
+      const stepP = pi + 1;
+      if (
+        stepP === 1 ||
+        stepP === projTotal ||
+        stepP % 30 === 0
+      ) {
+        this.progress(
+          "proyeccion",
+          `ACA Proyección: ${stepP} / ${Math.max(projTotal, 1)}`,
+          stepP,
+          Math.max(projTotal, 1),
+          stepP === projTotal
+        );
       }
     }
   }
