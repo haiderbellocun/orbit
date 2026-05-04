@@ -17,7 +17,6 @@ import { CoordinatorsView } from './components/views/CoordinatorsView';
 import { LitesView } from './components/views/LitesView';
 import { AcademicLoadView } from './components/views/AcademicLoadView';
 import { AuditView } from './components/views/AuditView';
-import { ExportView } from './components/views/ExportView';
 import { ProgramsView } from './components/views/ProgramsView';
 import { View, Teacher, Vacancy } from './types';
 import { VacancyDetailView } from './components/views/VacancyDetailView';
@@ -93,8 +92,6 @@ export default function App() {
         return <AcademicLoadView {...commonProps} />;
       case 'audit':
         return <AuditView {...commonProps} />;
-      case 'export':
-        return <ExportView {...commonProps} />;
       case 'programs':
         return <ProgramsView setView={setView} {...commonProps} />;
       default:
