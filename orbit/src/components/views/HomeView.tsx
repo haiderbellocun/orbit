@@ -211,7 +211,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ setView }) => {
           <h3 className="text-xl font-bold mb-6 relative z-10 font-display text-white drop-shadow-sm">Acciones Rápidas</h3>
           <div className="space-y-4 relative z-10">
             {[
-              { label: 'Registrar Docente', icon: UserPlusIcon, action: () => setView('teachers') },
+              { label: 'Cargue Masivo de Docentes', icon: UserPlusIcon, action: () => setView('teachers') },
               { label: 'Nueva Vacante', icon: PlusIcon, action: () => setView('vacancies') },
               { label: 'Reportar Novedad', icon: ExclamationCircleIcon, action: () => setView('news') },
             ].map((btn, i) => (
