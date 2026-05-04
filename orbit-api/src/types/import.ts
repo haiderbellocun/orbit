@@ -38,6 +38,8 @@ export interface NormalizedRecord {
 export interface AcademicProjectionRecord {
   rowNumber: number;
   document: string;
+  modalityPrimary: string | null;
+  modalitySecondary: string | null;
   periodCode: string | null;
   semester: string | null;
   subjectCode: string;

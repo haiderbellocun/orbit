@@ -3,6 +3,23 @@ import { pool } from "../db/connection";
 
 const router = Router();
 
+function normalizeModalityQueryParam(value: string): {
+  code: "P" | "V" | null;
+  literal: string | null;
+} {
+  const trimmed = value.trim();
+  if (!trimmed) return { code: null, literal: null };
+  const ascii = trimmed
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (ascii === "p") return { code: "P", literal: null };
+  if (ascii === "v") return { code: "V", literal: null };
+  if (ascii.startsWith("pres")) return { code: "P", literal: null };
+  if (ascii.startsWith("vir")) return { code: "V", literal: null };
+  return { code: null, literal: trimmed };
+}
+
 router.get("/academic-load", async (req: Request, res: Response) => {
   try {
     const {
@@ -37,13 +54,26 @@ router.get("/academic-load", async (req: Request, res: Response) => {
       values.push(`%${unit_name}%`);
       i++;
     }
-    if (modality) {
-      conditions.push(`cg.modality = $${i++}`);
-      values.push(modality);
+    if (modality && typeof modality === "string") {
+      const { code, literal } = normalizeModalityQueryParam(modality);
+      if (code) {
+        conditions.push(
+          `(UPPER(TRIM(cg.modality)) = $${i} OR LOWER(TRIM(cg.modality)) LIKE $${i + 1})`
+        );
+        values.push(code, `${code === "P" ? "pres" : "vir"}%`);
+        i += 2;
+      } else if (literal) {
+        conditions.push(`cg.modality ILIKE $${i++}`);
+        values.push(`%${literal}%`);
+      }
     }
-    if (type) {
-      conditions.push(`$${i++} = 'projection'`);
-      values.push(type);
+    if (type && typeof type === "string") {
+      const normalizedType = type.trim().toLowerCase();
+      if (normalizedType === "current") {
+        // Sin tabla de “carga actual” separada, no aplicamos filtro (evita resultado vacío).
+      } else if (normalizedType === "projection") {
+        // Todas las filas provienen de importación ACA Proyeccion.
+      }
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";

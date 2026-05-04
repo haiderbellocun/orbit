@@ -411,6 +411,8 @@ export function parseAcademicSchemasFromExcel(
       "num_identificacion",
       "num identificacion",
     ],
+    modalityPrimary: ["modalidad"],
+    modalitySecondary: ["modalidad2"],
     periodCode: ["cod_periodo", "cod periodo", "periodo"],
     semester: ["num_nivel", "num nivel"],
     subjectCode: ["cod_materia", "cod materia"],
@@ -517,6 +519,12 @@ export function parseAcademicSchemasFromExcel(
     projectionRecords.push({
       rowNumber: i + 1,
       document,
+      modalityPrimary: normalizeCellToString(
+        getCellFromMappedRow(row, projectionIndexMap, "modalityPrimary")
+      ),
+      modalitySecondary: normalizeCellToString(
+        getCellFromMappedRow(row, projectionIndexMap, "modalitySecondary")
+      ),
       periodCode: normalizeCellToString(
         getCellFromMappedRow(row, projectionIndexMap, "periodCode")
       ),
