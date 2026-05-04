@@ -215,7 +215,6 @@ export const HomeView: React.FC<HomeViewProps> = ({ setView }) => {
               { label: 'Registrar Docente', icon: UserPlusIcon, action: () => setView('teachers') },
               { label: 'Nueva Vacante', icon: PlusIcon, action: () => setView('vacancies') },
               { label: 'Reportar Novedad', icon: ExclamationCircleIcon, action: () => setView('news') },
-              { label: 'Generar Reporte', icon: ArrowDownTrayIcon, action: () => setView('export') },
             ].map((btn, i) => (
               <motion.button 
                 key={i}
