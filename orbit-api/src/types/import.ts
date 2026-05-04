@@ -35,6 +35,42 @@ export interface NormalizedRecord {
   cityName: string;
 }
 
+export interface AcademicProjectionRecord {
+  rowNumber: number;
+  document: string;
+  periodCode: string | null;
+  semester: string | null;
+  subjectCode: string;
+  subjectName: string;
+  creditsQuantity: number | null;
+  groupCode: string;
+  startDate: string | null;
+  endDate: string | null;
+  classroomName: string | null;
+  capacity: number | null;
+  block: string | null;
+  scheduleTime: string | null;
+}
+
+export interface CurrentLoadRecord {
+  rowNumber: number;
+  document: string;
+  modality: string | null;
+  classPreparationHours: number | null;
+  enrolledQuantity: number | null;
+  projectName: string | null;
+  substantiveHours1: number | null;
+  substantiveHours2: number | null;
+  substantiveHours3: number | null;
+  observations: string | null;
+}
+
+export interface AcademicWorkloadParsedData {
+  currentLoadRecords: CurrentLoadRecord[];
+  projectionRecords: AcademicProjectionRecord[];
+  warnings: ImportError[];
+}
+
 export interface ForeignKeyIds {
   contractTypeId: number;
   roleId: number;
@@ -72,10 +108,17 @@ export interface ImportSummary {
     cities: number;
     schools: number;
     programs: number;
+    subjects?: number;
+    classGroups?: number;
+    classPreparations?: number;
+    academicLoads?: number;
+    projects?: number;
+    substantiveFunctions?: number;
   };
   updated: {
     persons: number;
   };
+  warnings?: ImportError[];
 }
 
 export interface ImportError {
@@ -97,11 +140,18 @@ export interface ImportResult {
       cities: number;
       schools: number;
       programs: number;
+      subjects?: number;
+      classGroups?: number;
+      classPreparations?: number;
+      academicLoads?: number;
+      projects?: number;
+      substantiveFunctions?: number;
     };
     updated: {
       persons: number;
     };
     errors: ImportError[];
+    warnings?: ImportError[];
     duration_ms: number;
   };
 }
