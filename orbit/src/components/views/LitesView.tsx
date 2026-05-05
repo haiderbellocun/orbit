@@ -109,7 +109,7 @@ export const LitesView: React.FC<LitesViewProps> = ({
 
       <Header
         title="Gestión de LITEs"
-        subtitle="Líderes de Investigación y Trabajo Estudiantil"
+        subtitle="Líderes de Investigación y Transformación EDU"
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         searchResults={searchResults}

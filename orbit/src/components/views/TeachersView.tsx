@@ -62,6 +62,34 @@ function mapTeacherFromApi(row: Record<string, unknown>): Teacher {
   };
 }
 
+const IMPORT_PHASE_LABELS_ES: Record<string, string> = {
+  validate: 'Validación del archivo',
+  parse: 'Lectura del Excel',
+  hierarchy: 'Jerarquía académica',
+  core: 'Docentes y catálogo CORE',
+  academic: 'Carga académica',
+  carga_actual: 'Carga actual',
+  proyeccion: 'ACA Proyección',
+};
+
+function formatImportPhaseEs(phase: string): string {
+  return IMPORT_PHASE_LABELS_ES[phase] ?? phase.replace(/_/g, ' ');
+}
+
+function formatImportDurationEs(ms: number): string {
+  if (ms >= 60000) {
+    const min = Math.floor(ms / 60000);
+    const sec = Math.round((ms % 60000) / 1000);
+    return sec > 0 ? `${min} min ${sec} s` : `${min} min`;
+  }
+  if (ms >= 1000) {
+    const sec = ms / 1000;
+    const rounded = sec >= 10 ? Math.round(sec) : Math.round(sec * 10) / 10;
+    return `${String(rounded).replace('.', ',')} s`;
+  }
+  return `${ms} ms`;
+}
+
 interface TeachersViewProps {
   onSelectTeacher: (t: Teacher) => void;
   searchQuery?: string;
@@ -333,7 +361,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
           </div>
           {importProgress?.phase != null && importProgress.phase.length > 0 && (
             <p className="text-[10px] uppercase tracking-wider text-slate-500">
-              {importProgress.phase.replace(/_/g, ' ')}
+              {formatImportPhaseEs(importProgress.phase)}
             </p>
           )}
           <div className="h-2.5 rounded-full bg-slate-200/80 overflow-hidden">
@@ -361,7 +389,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
             <span className="text-xs font-bold uppercase tracking-widest text-amber-800">
               Importación con errores
             </span>
-            <span className="text-xs text-slate-500">Import ID: {importResult.importId}</span>
+            <span className="text-xs text-slate-500">ID de importación: {importResult.importId}</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
             <div className="rounded-xl bg-white/60 p-3">
@@ -371,12 +399,12 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
               <strong>Errores (filas):</strong> {importResult.summary.errors.length}
             </div>
             <div className="rounded-xl bg-white/60 p-3">
-              <strong>Duración:</strong> {importResult.summary.duration_ms} ms
+              <strong>Duración:</strong> {formatImportDurationEs(importResult.summary.duration_ms)}
             </div>
           </div>
           {importResult.summary.errors[0] && (
             <p className="text-xs text-amber-900 font-medium">
-              Ejemplo: fila {importResult.summary.errors[0].row}:{' '}
+              Detalle (ejemplo — fila {importResult.summary.errors[0].row}):{' '}
               {importResult.summary.errors[0].reason}
             </p>
           )}
@@ -387,7 +415,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
         <div className="glass-panel p-5 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-bold uppercase tracking-widest text-emerald-600">Carga completada</span>
-            <span className="text-xs text-slate-500">Import ID: {importResult.importId}</span>
+            <span className="text-xs text-slate-500">ID de importación: {importResult.importId}</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
             <div className="rounded-xl bg-white/60 p-3"><strong>Procesadas:</strong> {importResult.summary.processedRows}</div>
