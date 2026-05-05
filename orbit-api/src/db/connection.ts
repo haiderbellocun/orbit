@@ -1,15 +1,10 @@
 import dotenv from "dotenv";
-import { Pool, type PoolConfig } from "pg";
+import { Pool } from "pg";
 
 dotenv.config({ override: true });
 
-function parseBool(value: string | undefined, defaultValue: boolean): boolean {
-  if (value === undefined || value.trim() === "") return defaultValue;
-  const v = value.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(v)) return true;
-  if (["0", "false", "no", "off"].includes(v)) return false;
-  return defaultValue;
-}
+const port = Number.parseInt(process.env.DB_PORT ?? "5432", 10);
+const schema = (process.env.DB_SCHEMA ?? "public").trim();
 
 function isLocalHost(host: string | undefined): boolean {
   const h = String(host ?? "")
@@ -62,32 +57,7 @@ export const pool = new Pool({
   database: process.env.DB_NAME,
   ssl: resolveSsl(),
   options: `-c search_path=${schema},public`,
-};
-
-if (dbSsl) {
-  poolConfig.ssl = { rejectUnauthorized: false };
-}
-
-export const pool = new Pool(poolConfig);
-
-/** Safe for logs: never includes DB_PASSWORD. */
-export function getDatabaseConfigSummary(): {
-  host: string;
-  port: number;
-  user: string;
-  database: string;
-  schema: string;
-  ssl: boolean;
-} {
-  return {
-    host: dbHost,
-    port: dbPort,
-    user: dbUser,
-    database: dbName,
-    schema,
-    ssl: dbSsl,
-  };
-}
+});
 
 export async function verifyConnection(): Promise<boolean> {
   const client = await pool.connect();
