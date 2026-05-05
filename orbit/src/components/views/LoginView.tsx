@@ -154,15 +154,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               )}
             </div>
           </div>
-          
-          <div className="mt-10 pt-8 border-t border-white/40 text-center relative z-10">
-            <p className="text-xs text-slate-400 font-medium tracking-wide">
-              ¿Problemas para acceder? <br />
-              <a href="#" className="text-violet-600 font-bold hover:underline transition-all inline-flex items-center gap-1 mt-2">
-                Contactar a Soporte Técnico
-              </a>
-            </p>
-          </div>
         </div>
 
         <p className="mt-8 text-center text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">
