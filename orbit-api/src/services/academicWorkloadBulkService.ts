@@ -1,4 +1,10 @@
 import { Pool } from "pg";
+import { truncateUtf } from "../lib/stringTruncate";
+
+const VW50 = 50;
+const VW100 = 100;
+const VW150 = 150;
+const VW250 = 250;
 
 export interface SubjectInput {
   subjectCode: string;
@@ -49,12 +55,15 @@ export async function upsertSubject(
   pool: Pool,
   input: SubjectInput
 ): Promise<UpsertResult> {
+  const subjectCode = truncateUtf(input.subjectCode, VW50) ?? "";
+  const subjectName = truncateUtf(input.name, VW250) ?? "";
+
   const found = await pool.query(
     `SELECT subject_code
      FROM academic_workload.subject
      WHERE subject_code = $1
      LIMIT 1`,
-    [input.subjectCode]
+    [subjectCode]
   );
   if (found.rows.length > 0) {
     return { id: null, isNew: false };
@@ -65,7 +74,7 @@ export async function upsertSubject(
       subject_code, name, credits_quantity, is_active
     ) VALUES ($1, $2, $3, true)
     RETURNING subject_code`,
-    [input.subjectCode, input.name, input.creditsQuantity]
+    [subjectCode, subjectName, input.creditsQuantity]
   );
   return {
     id: null,
@@ -77,12 +86,19 @@ export async function upsertClassGroup(
   pool: Pool,
   input: ClassGroupInput
 ): Promise<UpsertResult> {
+  const subjectCode = truncateUtf(input.subjectCode, VW50) ?? "";
+  const groupCode = truncateUtf(input.groupCode, VW50) ?? "";
+  const classroomName = truncateUtf(input.classroomName, VW150);
+  const block = truncateUtf(input.block, VW100);
+  const scheduleTime = truncateUtf(input.scheduleTime, VW100);
+  const modality = truncateUtf(input.modality, VW100);
+
   const found = await pool.query(
     `SELECT id
      FROM academic_workload.class_group
      WHERE subject_code = $1 AND group_code = $2
      LIMIT 1`,
-    [input.subjectCode, input.groupCode]
+    [subjectCode, groupCode]
   );
 
   if (found.rows.length > 0) {
@@ -101,11 +117,11 @@ export async function upsertClassGroup(
       [
         input.startDate,
         input.endDate,
-        input.classroomName,
+        classroomName,
         input.capacity,
-        input.block,
-        input.scheduleTime,
-        input.modality,
+        block,
+        scheduleTime,
+        modality,
         existingId,
       ]
     );
@@ -119,15 +135,15 @@ export async function upsertClassGroup(
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     RETURNING id`,
     [
-      input.subjectCode,
-      input.groupCode,
+      subjectCode,
+      groupCode,
       input.startDate,
       input.endDate,
-      input.classroomName,
+      classroomName,
       input.capacity,
-      input.block,
-      input.scheduleTime,
-      input.modality,
+      block,
+      scheduleTime,
+      modality,
     ]
   );
 
@@ -179,6 +195,13 @@ export async function upsertAcademicLoad(
   input: AcademicLoadInput
 ): Promise<UpsertResult> {
   const safeSubstantiveHoursQuantity = input.substantiveHoursQuantity ?? 0;
+  const enrolledForInsert = input.enrolledQuantity ?? 0;
+  const periodCode = truncateUtf(input.periodCode, VW50) ?? "";
+  const semester = truncateUtf(input.semester, VW50);
+  const subjectCode = truncateUtf(input.subjectCode, VW50) ?? "";
+  const groupCode = truncateUtf(input.groupCode, VW50) ?? "";
+  const programName = truncateUtf(input.programName, VW250);
+
   const found = await pool.query(
     `SELECT id
      FROM academic_workload.academic_load
@@ -187,7 +210,7 @@ export async function upsertAcademicLoad(
        AND group_code = $3
        AND COALESCE(period_code, '') = COALESCE($4, '')
      LIMIT 1`,
-    [input.personId, input.subjectCode, input.groupCode, input.periodCode]
+    [input.personId, subjectCode, groupCode, periodCode]
   );
 
   if (found.rows.length > 0) {
@@ -207,9 +230,9 @@ export async function upsertAcademicLoad(
          class_preparation_id = COALESCE($10, class_preparation_id)
        WHERE id = $11`,
       [
-        input.semester,
+        semester,
         input.programId,
-        input.programName,
+        programName,
         input.enrolledQuantity,
         input.regionId,
         input.cityId,
@@ -236,13 +259,13 @@ export async function upsertAcademicLoad(
     RETURNING id`,
     [
       input.personId,
-      input.periodCode,
-      input.semester,
+      periodCode,
+      semester,
       input.programId,
-      input.programName,
-      input.subjectCode,
-      input.groupCode,
-      input.enrolledQuantity,
+      programName,
+      subjectCode,
+      groupCode,
+      enrolledForInsert,
       input.regionId,
       input.cityId,
       input.campusId,

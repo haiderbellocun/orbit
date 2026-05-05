@@ -4,10 +4,13 @@
  */
 
 import { Pool } from "pg";
-import {
-  normalizeForDedup,
-  normalizeContractTypeKey,
-} from "../lib/dataValidators";
+import { normalizeForDedup } from "../lib/dataValidators";
+import { truncateUtf } from "../lib/stringTruncate";
+
+/** core.contract_type: work_schedule, modality → VARCHAR(50) */
+const CONTRACT_SCHED_MOD_MAX = 50;
+/** core.contract_type.name → VARCHAR(150) */
+const CONTRACT_NAME_MAX = 150;
 
 export interface CatalogResult {
   id: number;
@@ -40,7 +43,11 @@ export async function findOrCreateContractType(
     modality: string;
   }
 ): Promise<CatalogResult> {
-  const { name, startDate, endDate, workSchedule, modality } = data;
+  const name = truncateUtf(data.name, CONTRACT_NAME_MAX) ?? "";
+  const workSchedule =
+    truncateUtf(data.workSchedule, CONTRACT_SCHED_MOD_MAX) ?? "";
+  const modality = truncateUtf(data.modality, CONTRACT_SCHED_MOD_MAX) ?? "";
+  const { startDate, endDate } = data;
   const generatedCode = deterministicCode("CT", [
     name,
     startDate,
@@ -48,9 +55,6 @@ export async function findOrCreateContractType(
     workSchedule,
     modality,
   ]);
-
-  // Generate composite key for deduplication
-  const key = normalizeContractTypeKey(name, startDate, endDate, workSchedule, modality);
 
   try {
     // First, try to find existing by searching similar records

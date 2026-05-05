@@ -84,7 +84,7 @@ export function processExcelRows(
   if (columnErrors.length > 0) {
     errors.push({
       row: 0,
-      reason: `Missing columns: ${columnErrors.join(", ")}`,
+      reason: `Faltan columnas: ${columnErrors.join(", ")}`,
     });
     return { records: [], headerRowIndex: -1, columnMap: null, errors };
   }
@@ -92,7 +92,7 @@ export function processExcelRows(
   if (!columnMap) {
     errors.push({
       row: 0,
-      reason: "Could not determine header row",
+      reason: "No se pudo detectar la fila de encabezados.",
     });
     return { records: [], headerRowIndex: -1, columnMap: null, errors };
   }
@@ -367,7 +367,7 @@ export function parseAcademicSchemasFromExcel(
   }
   if (!projectionSheet) {
     throw new Error(
-      `No se encontro la hoja "ACA Proyeccion". Hojas disponibles: ${workbook.SheetNames.join(", ")}`
+      `No se encontró la hoja «ACA Proyección». Hojas disponibles: ${workbook.SheetNames.join(", ")}`
     );
   }
 
@@ -511,7 +511,7 @@ export function parseAcademicSchemasFromExcel(
       warnings.push({
         row: i + 1,
         reason:
-          "Fila en ACA Proyeccion ignorada por falta de documento, cod_materia, num_grupo o nom_materia",
+          "Fila en ACA Proyección ignorada por falta de documento, cod_materia, num_grupo o nom_materia",
       });
       continue;
     }
@@ -580,14 +580,14 @@ export function validateExcelFile(filePath: string): { valid: boolean; error?: s
   try {
     const fs = require("fs");
     if (!fs.existsSync(filePath)) {
-      return { valid: false, error: `File not found: ${filePath}` };
+      return { valid: false, error: `No se encontró el archivo: ${filePath}` };
     }
 
     const ext = filePath.toLowerCase().split(".").pop();
     if (!["xlsx", "xls"].includes(ext || "")) {
       return {
         valid: false,
-        error: `Invalid file type. Expected .xlsx or .xls, got .${ext}`,
+        error: `Tipo de archivo no válido. Se esperaba .xlsx o .xls; recibido .${ext}`,
       };
     }
 
@@ -595,7 +595,9 @@ export function validateExcelFile(filePath: string): { valid: boolean; error?: s
   } catch (error) {
     return {
       valid: false,
-      error: `File validation error: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Error al validar el archivo: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     };
   }
 }

@@ -42,6 +42,7 @@ import {
   upsertSubstantiveFunction,
 } from "./substantiveHoursBulkService";
 import { emitImportStream } from "./importProgressHub";
+import { translateImportErrorDetail } from "./importUserMessages";
 
 interface CorePersonLink {
   personId: number;
@@ -58,7 +59,7 @@ function normalizeGroupModality(raw: string | null | undefined): string | null {
   const upper = trimmed.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
   if (upper === "P" || upper === "PRESENCIAL" || upper.startsWith("PRES")) return "P";
   if (upper === "V" || upper === "VIRTUAL" || upper.startsWith("VIR")) return "V";
-  return trimmed.length > 120 ? trimmed.slice(0, 120) : trimmed;
+  return trimmed.length > 100 ? trimmed.slice(0, 100) : trimmed;
 }
 
 function resolveClassGroupModality(
@@ -157,7 +158,9 @@ export class ImportOrchestrator {
       // Validate file exists
       const validation = validateExcelFile(this.filePath);
       if (!validation.valid) {
-        return this.errorResult(validation.error || "File validation failed");
+        return this.errorResult(
+          validation.error || "La validación del archivo falló."
+        );
       }
 
       this.progress("parse", "Leyendo hoja Excel y parseando filas…", 0, 1, true);
@@ -302,11 +305,12 @@ export class ImportOrchestrator {
         this.counters.createdPersons++;
       }
     } catch (error) {
-      const reason =
-        error instanceof Error ? error.message : String(error);
+      const detail = translateImportErrorDetail(
+        error instanceof Error ? error.message : String(error)
+      );
       this.errors.push({
         row: record.rowNumber,
-        reason: `Error processing row: ${reason}`,
+        reason: `Error al procesar la fila: ${detail}`,
       });
     }
   }
@@ -339,7 +343,7 @@ export class ImportOrchestrator {
       this.warnings.push({
         row: 0,
         reason:
-          "No se detectaron filas validas en ACA Proyeccion; solo se cargaran datos posibles desde Carga Actual.",
+          "No se detectaron filas válidas en ACA Proyección; solo se cargarán datos posibles desde Carga Actual.",
       });
     }
 
@@ -352,7 +356,7 @@ export class ImportOrchestrator {
       if (!coreLink) {
         this.warnings.push({
           row: currentRecord.rowNumber,
-          reason: `No se encontro person_id en CORE para documento ${currentRecord.document}`,
+          reason: `No se encontró person_id en CORE para documento ${currentRecord.document}`,
         });
         continue;
       }
@@ -420,7 +424,7 @@ export class ImportOrchestrator {
       if (!coreLink) {
         this.warnings.push({
           row: projection.rowNumber,
-          reason: `No se encontro person_id en CORE para documento ${projection.document}`,
+          reason: `No se encontró person_id en CORE para documento ${projection.document}`,
         });
         continue;
       }
@@ -675,8 +679,14 @@ export class ImportOrchestrator {
         updated: {
           persons: this.counters.updatedPersons,
         },
-        errors: this.errors,
-        warnings: this.warnings,
+        errors: this.errors.map((e) => ({
+          row: e.row,
+          reason: translateImportErrorDetail(e.reason),
+        })),
+        warnings: this.warnings.map((w) => ({
+          row: w.row,
+          reason: translateImportErrorDetail(w.reason),
+        })),
         duration_ms: duration,
       },
     };
@@ -686,6 +696,7 @@ export class ImportOrchestrator {
    * Builds error result when execution fails
    */
   private errorResult(message: string): ImportResult {
+    const reason = translateImportErrorDetail(message);
     return {
       success: false,
       importId: this.importId,
@@ -713,7 +724,7 @@ export class ImportOrchestrator {
         errors: [
           {
             row: 0,
-            reason: message,
+            reason,
           },
         ],
         warnings: [],
