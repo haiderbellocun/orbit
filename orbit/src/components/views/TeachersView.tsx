@@ -16,7 +16,12 @@ import {
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
 import { Teacher, View, Coordinator, Vacancy } from '@/src/types';
-import { getTeachers, importTeachersExcel, type ImportTeachersResponse } from '@/src/lib/api';
+import {
+  getTeachers,
+  importTeachersExcel,
+  type ImportTeachersResponse,
+  type ImportStreamProgress,
+} from '@/src/lib/api';
 
 function mapTeacherFromApi(row: Record<string, unknown>): Teacher {
   const first = String(row.first_name ?? '');
@@ -86,10 +91,13 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportTeachersResponse | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportStreamProgress | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const loadTeachersGenRef = useRef(0);
 
   const loadTeachers = useCallback(async () => {
+    const gen = ++loadTeachersGenRef.current;
     setLoading(true);
     try {
       const key = `${searchQuery}|${filter}`;
@@ -110,6 +118,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
         page: pageToUse,
         limit: 50,
       });
+      if (gen !== loadTeachersGenRef.current) return;
       const list = Array.isArray(res.data)
         ? res.data.map((r) =>
             mapTeacherFromApi(r as Record<string, unknown>)
@@ -119,32 +128,19 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
       setTotalCount(res.pagination?.total ?? 0);
       setTotalPages(res.pagination?.totalPages ?? 0);
     } catch {
+      if (gen !== loadTeachersGenRef.current) return;
       setTeachers([]);
       setTotalCount(0);
       setTotalPages(0);
     } finally {
-      setLoading(false);
+      if (gen === loadTeachersGenRef.current) {
+        setLoading(false);
+      }
     }
   }, [currentPage, filter, searchQuery]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        if (!cancelled) await loadTeachers();
-      } catch {
-        if (!cancelled) {
-          setTeachers([]);
-          setTotalCount(0);
-          setTotalPages(0);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void loadTeachers();
   }, [loadTeachers, reloadKey]);
 
   const filteredTeachers = useMemo(() => {
@@ -199,10 +195,13 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
 
     setImportError(null);
     setImportResult(null);
+    setImportProgress(null);
     setIsImporting(true);
 
     try {
-      const result = await importTeachersExcel(file);
+      const result = await importTeachersExcel(file, {
+        onProgress: (e) => setImportProgress(e),
+      });
       setImportResult(result);
       if (result.success) {
         setCurrentPage(1);
@@ -214,6 +213,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
       );
     } finally {
       setIsImporting(false);
+      setImportProgress(null);
       event.target.value = '';
     }
   };
@@ -279,6 +279,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
               />
             </div>
           </div>
+          <div className="flex flex-col items-stretch lg:items-end gap-1 w-full lg:w-auto">
           <motion.button 
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
@@ -288,8 +289,14 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
             className="glass-button-primary px-8 py-4 h-fit text-sm font-bold tracking-tight w-full lg:w-auto flex justify-center items-center"
           >
             <ArrowUpTrayIcon className="h-5 w-5" />
-            <span>{isImporting ? 'Cargando...' : 'Cargar Excel'}</span>
+            <span>{isImporting ? 'Importando…' : 'Cargar Excel'}</span>
           </motion.button>
+          {isImporting && (
+            <p className="text-[10px] text-slate-500 text-center lg:text-right max-w-xs lg:max-w-[14rem] self-center lg:self-end">
+              Puede tardar varios minutos. No cierres la pestaña.
+            </p>
+          )}
+          </div>
         </div>
 
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2">
@@ -312,9 +319,67 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
         </div>
       </div>
 
+      {isImporting && (
+        <div className="glass-panel p-4 border border-violet-200/60 bg-white/40 space-y-2">
+          <div className="flex justify-between items-center gap-2">
+            <p className="text-xs font-semibold text-slate-800 leading-snug">
+              {importProgress?.label ?? 'Preparando importación…'}
+            </p>
+            {importProgress?.percent != null && (
+              <span className="text-[10px] font-mono text-violet-600 shrink-0">
+                {importProgress.percent}%
+              </span>
+            )}
+          </div>
+          {importProgress?.phase != null && importProgress.phase.length > 0 && (
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">
+              {importProgress.phase.replace(/_/g, ' ')}
+            </p>
+          )}
+          <div className="h-2.5 rounded-full bg-slate-200/80 overflow-hidden">
+            {importProgress?.percent != null ? (
+              <div
+                className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-[width] duration-300 ease-out"
+                style={{ width: `${importProgress.percent}%` }}
+              />
+            ) : (
+              <div className="h-full w-full bg-gradient-to-r from-violet-400/40 via-violet-500/80 to-violet-400/40 animate-pulse" />
+            )}
+          </div>
+        </div>
+      )}
+
       {importError && (
         <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-700 text-sm font-medium">
           {importError}
+        </div>
+      )}
+
+      {importResult && !importResult.success && (
+        <div className="glass-panel p-5 space-y-3 border border-amber-200 bg-amber-50/40">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-amber-800">
+              Importación con errores
+            </span>
+            <span className="text-xs text-slate-500">Import ID: {importResult.importId}</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div className="rounded-xl bg-white/60 p-3">
+              <strong>Procesadas:</strong> {importResult.summary.processedRows}
+            </div>
+            <div className="rounded-xl bg-white/60 p-3">
+              <strong>Errores (filas):</strong> {importResult.summary.errors.length}
+            </div>
+            <div className="rounded-xl bg-white/60 p-3">
+              <strong>Duración:</strong> {importResult.summary.duration_ms} ms
+            </div>
+          </div>
+          {importResult.summary.errors[0] && (
+            <p className="text-xs text-amber-900 font-medium">
+              Ejemplo: fila {importResult.summary.errors[0].row}:{' '}
+              {importResult.summary.errors[0].reason}
+            </p>
+          )}
         </div>
       )}
 

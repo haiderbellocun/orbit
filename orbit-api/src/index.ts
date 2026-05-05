@@ -1,4 +1,3 @@
-import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import {
@@ -13,6 +12,7 @@ import litesRouter from "./routes/lites";
 import academicLoadRouter from "./routes/academic_load";
 import importRouter from "./routes/import";
 import dashboardRouter from "./routes/dashboard";
+import authRouter from "./routes/auth";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
@@ -30,14 +30,15 @@ if (corsOrigin) {
 }
 app.use(express.json());
 
-app.use(API_PREFIX, teachersRouter);
-app.use(API_PREFIX, vacanciesRouter);
-app.use(API_PREFIX, coordinatorsRouter);
-app.use(API_PREFIX, reinstatementsRouter);
-app.use(API_PREFIX, litesRouter);
-app.use(API_PREFIX, academicLoadRouter);
-app.use(API_PREFIX, importRouter);
-app.use(API_PREFIX, dashboardRouter);
+app.use("/api", teachersRouter);
+app.use("/api", vacanciesRouter);
+app.use("/api", coordinatorsRouter);
+app.use("/api", reinstatementsRouter);
+app.use("/api", litesRouter);
+app.use("/api", academicLoadRouter);
+app.use("/api", importRouter);
+app.use("/api", dashboardRouter);
+app.use("/api", authRouter);
 
 app.get("/health", async (_req, res) => {
   const payload: { status: string; db?: string } = { status: "ok" };
