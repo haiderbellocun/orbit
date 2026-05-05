@@ -9,8 +9,7 @@ RUN npm ci
 
 COPY . .
 
-ARG VITE_API_URL
-ENV VITE_API_URL=${VITE_API_URL}
+# Vite `VITE_*` at build time: use `.env.production` (see `.gcloudignore`). Empty `ENV` would shadow it.
 
 RUN npm run build
 
