@@ -124,7 +124,15 @@ export type AuthUser = {
 
 export type GoogleAuthResponse = {
   token: string;
-  user: AuthUser;
+  user: {
+    id: number;
+    personId: number | null;
+    email: string;
+    name: string;
+    picture?: string;
+    roleCode?: string | null;
+    roleName?: string | null;
+  };
 };
 
 export async function loginWithGoogleIdToken(
