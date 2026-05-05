@@ -7,6 +7,15 @@ const router = Router();
 
 type GoogleLoginBody = {
   idToken?: unknown;
+  credential?: unknown;
+};
+
+type PersonRow = {
+  person_id: number;
+  full_name: string;
+  email: string | null;
+  role_code: string | null;
+  role_name: string | null;
 };
 
 function getRequiredEnv(name: string): string {
@@ -15,33 +24,62 @@ function getRequiredEnv(name: string): string {
   return v;
 }
 
+function getOptionalEnv(name: string): string {
+  return (process.env[name] ?? "").trim();
+}
+
 router.post("/auth/google", async (req, res) => {
   try {
     const body = (req.body ?? {}) as GoogleLoginBody;
-    const idToken = typeof body.idToken === "string" ? body.idToken.trim() : "";
-    if (!idToken) {
-      res.status(400).json({ error: "idToken is required" });
+    // Frontend puede enviar `idToken` o `credential` dependiendo del wrapper.
+    const idToken =
+      (typeof body.credential === "string" ? body.credential : "") ||
+      (typeof body.idToken === "string" ? body.idToken : "");
+    const idTokenTrimmed = typeof idToken === "string" ? idToken.trim() : "";
+    if (!idTokenTrimmed) {
+      res.status(400).json({ error: "credential (or idToken) is required" });
       return;
     }
 
+    console.info("POST /api/auth/google called", {
+      hasCredential: typeof body.credential === "string" && Boolean(body.credential.trim()),
+      hasIdToken: typeof body.idToken === "string" && Boolean(body.idToken.trim()),
+    });
+
     const googleClientId = getRequiredEnv("GOOGLE_CLIENT_ID");
-    const jwtSecret = getRequiredEnv("JWT_SECRET");
+    const jwtSecret = getOptionalEnv("JWT_SECRET");
     const jwtExpiresIn = (process.env.JWT_EXPIRES_IN ?? "7d").trim() || "7d";
     const signOptions: SignOptions = {
       expiresIn: jwtExpiresIn as SignOptions["expiresIn"],
     };
 
     const client = new OAuth2Client({ clientId: googleClientId });
-    const ticket = await client.verifyIdToken({
-      idToken,
-      audience: googleClientId,
-    });
-    const payload = ticket.getPayload();
+    let payload: unknown;
+    try {
+      const ticket = await client.verifyIdToken({
+        idToken: idTokenTrimmed,
+        audience: googleClientId,
+      });
+      payload = ticket.getPayload();
+    } catch (verifyErr) {
+      console.warn("Google token verification failed:", verifyErr);
+      res.status(401).json({ error: "Invalid Google token" });
+      return;
+    }
 
-    const email = (payload?.email ?? "").trim().toLowerCase();
-    const googleSub = (payload?.sub ?? "").trim();
-    const name = (payload?.name ?? "").trim();
-    const picture = (payload?.picture ?? "").trim();
+    const p = payload as {
+      email?: unknown;
+      sub?: unknown;
+      name?: unknown;
+      picture?: unknown;
+    } | null;
+
+    const email = (typeof p?.email === "string" ? p.email : "")
+      .trim()
+      .toLowerCase();
+    const googleSub = (typeof p?.sub === "string" ? p.sub : "").trim();
+    const name = (typeof p?.name === "string" ? p.name : "").trim();
+    const picture = (typeof p?.picture === "string" ? p.picture : "").trim();
 
     if (!email || !googleSub) {
       res.status(401).json({ error: "Invalid Google token" });
@@ -53,17 +91,24 @@ router.post("/auth/google", async (req, res) => {
       return;
     }
 
-    const tableCheck = await pool.query(
-      `SELECT
-         to_regclass('person') AS person_table,
-         to_regclass('"user"') AS user_table`
-    );
-    const personTable = tableCheck.rows[0]?.person_table as string | null | undefined;
-    const userTable = tableCheck.rows[0]?.user_table as string | null | undefined;
+    // DB lookups son opcionales: si la BD no está disponible, igual devolvemos login válido.
+    let person: PersonRow | null = null;
 
-    const person = (await (async () => {
-      if (!personTable) return null;
-      try {
+    let userId = 0;
+
+    try {
+      const tableCheck = await pool.query(
+        `SELECT
+           to_regclass('person') AS person_table,
+           to_regclass('"user"') AS user_table`
+      );
+      const personTable = tableCheck.rows[0]?.person_table as
+        | string
+        | null
+        | undefined;
+      const userTable = tableCheck.rows[0]?.user_table as string | null | undefined;
+
+      if (personTable) {
         const personResult = await pool.query(
           `SELECT
              p.id AS person_id,
@@ -77,36 +122,14 @@ router.post("/auth/google", async (req, res) => {
            LIMIT 1`,
           [email]
         );
-
-        return (personResult.rows[0] ?? null) as
-          | {
-              person_id: number;
-              full_name: string;
-              email: string | null;
-              role_code: string | null;
-              role_name: string | null;
-            }
-          | null;
-      } catch {
-        return null;
+        person = (personResult.rows[0] ?? null) as PersonRow | null;
       }
-    })()) as
-      | {
-          person_id: number;
-          full_name: string;
-          email: string | null;
-          role_code: string | null;
-          role_name: string | null;
-        }
-      | null;
 
-    const personId = person ? Number(person.person_id) : null;
-    const usernameCandidate = email;
+      const personId = person ? Number(person.person_id) : null;
+      const usernameCandidate = email;
+      const canInsertLocalUser = personId != null && Number.isFinite(personId);
 
-    let userId = 0;
-
-    if (userTable) {
-      try {
+      if (userTable) {
         const existingUser = personId
           ? await pool.query(
               `SELECT id, username
@@ -153,6 +176,10 @@ router.post("/auth/google", async (req, res) => {
               throw e;
             }
           }
+        } else if (!canInsertLocalUser) {
+          console.info(
+            "Skipping local user insert: personId is null (login continues)."
+          );
         } else {
           try {
             const insert = await pool.query(
@@ -187,38 +214,35 @@ router.post("/auth/google", async (req, res) => {
             }
           }
         }
-      } catch (err) {
-        console.warn("Skipping user table upsert:", err);
-        userId = 0;
       }
+    } catch (dbErr) {
+      console.warn("Auth DB lookup skipped (login continues):", dbErr);
+      person = null;
+      userId = 0;
     }
-      const token = jwt.sign(
-        {
-          userId,
-          personId,
-          email,
-          name,
-          picture,
-          sub: googleSub,
-          role: person?.role_code ?? person?.role_name ?? null,
-        },
-        jwtSecret,
-        signOptions
-      );
-      res.json({
-        token,
-        user: {
-          id: userId,
-          personId,
-          email,
-          name: person?.full_name || name,
-          picture,
-          roleCode: person?.role_code ?? null,
-          roleName: person?.role_name ?? null,
-        },
-      });
+    const tokenPayload = {
+      userId,
+      email,
+      name,
+      picture,
+      sub: googleSub,
+      role: person?.role_code ?? person?.role_name ?? null,
+    };
+
+    const token = jwtSecret
+      ? jwt.sign(tokenPayload, jwtSecret, signOptions)
+      : `mock:${email}`;
+
+    res.json({
+      token,
+      user: {
+        email,
+        name: person?.full_name || name,
+        picture,
+      },
+    });
   } catch (e: unknown) {
-    console.error("POST /auth/google failed:", e);
+    console.error("POST /api/auth/google failed:", e);
     const message = e instanceof Error ? e.message : String(e);
     const isProd = (process.env.NODE_ENV ?? "").trim().toLowerCase() === "production";
     res.status(500).json(isProd ? { error: "Internal server error" } : { error: "Internal server error", message });

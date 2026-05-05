@@ -1,0 +1,18 @@
+# gcloud uses this file instead of .gitignore for `gcloud run deploy --source` uploads.
+
+node_modules/
+dist/
+coverage/
+
+.git/
+
+*.log
+.DS_Store
+
+# Local / secret env files — do not upload (.env.production is intentionally not listed)
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
