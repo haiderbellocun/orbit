@@ -113,6 +113,31 @@ async function handleJson<T>(response: Response): Promise<T> {
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
+export type AuthUser = {
+  id: number;
+  personId: number | null;
+  email: string;
+  name: string;
+  roleCode: string | null;
+  roleName: string | null;
+};
+
+export type GoogleAuthResponse = {
+  token: string;
+  user: AuthUser;
+};
+
+export async function loginWithGoogleIdToken(
+  idToken: string
+): Promise<GoogleAuthResponse> {
+  const response = await fetch(`${BASE_URL}/auth/google`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ idToken }),
+  });
+  return handleJson(response);
+}
+
 // Teachers
 export async function getTeachers(params?: {
   search?: string;
