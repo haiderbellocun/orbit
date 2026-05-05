@@ -33,6 +33,12 @@ export type ImportTeachersResponse = {
       cities: number;
       schools: number;
       programs: number;
+      subjects?: number;
+      classGroups?: number;
+      classPreparations?: number;
+      academicLoads?: number;
+      projects?: number;
+      substantiveFunctions?: number;
     };
     updated: {
       persons: number;
@@ -41,9 +47,40 @@ export type ImportTeachersResponse = {
       row: number;
       reason: string;
     }>;
+    warnings?: Array<{
+      row: number;
+      reason: string;
+    }>;
     duration_ms: number;
   };
 };
+
+/** Listados / lecturas habituales */
+const DEFAULT_FETCH_TIMEOUT_MS = 120_000;
+/** Solo subida del archivo al POST /import/docentes?async=1; el progreso sigue por SSE */
+const IMPORT_UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
+
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+function abortErrorMessage(timeoutMs: number): string {
+  const min = Math.round(timeoutMs / 60_000);
+  return `La solicitud superó el tiempo de espera (${min} min). Comprueba que la API responda y la base de datos no esté bloqueada.`;
+}
 
 export type DashboardTrendType = "up" | "down" | "flat";
 
@@ -76,6 +113,39 @@ async function handleJson<T>(response: Response): Promise<T> {
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
+export type AuthUser = {
+  id: number;
+  personId: number | null;
+  email: string;
+  name: string;
+  roleCode: string | null;
+  roleName: string | null;
+};
+
+export type GoogleAuthResponse = {
+  token: string;
+  user: {
+    id: number;
+    personId: number | null;
+    email: string;
+    name: string;
+    picture?: string;
+    roleCode?: string | null;
+    roleName?: string | null;
+  };
+};
+
+export async function loginWithGoogleIdToken(
+  idToken: string
+): Promise<GoogleAuthResponse> {
+  const response = await fetch(`${BASE_URL}/auth/google`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ idToken }),
+  });
+  return handleJson(response);
+}
+
 // Teachers
 export async function getTeachers(params?: {
   search?: string;
@@ -92,8 +162,19 @@ export async function getTeachers(params?: {
   if (params?.campus) url.searchParams.set("campus", params.campus);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
-  const response = await fetch(url.toString(), { headers: jsonHeaders });
-  return handleJson(response);
+  try {
+    const response = await fetchWithTimeout(
+      url.toString(),
+      { headers: jsonHeaders },
+      DEFAULT_FETCH_TIMEOUT_MS
+    );
+    return handleJson(response);
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error(abortErrorMessage(DEFAULT_FETCH_TIMEOUT_MS));
+    }
+    throw e;
+  }
 }
 
 export async function getTeacher(id: number): Promise<unknown> {
@@ -293,17 +374,151 @@ export async function getDashboardSummary(): Promise<DashboardSummaryResponse> {
   return handleJson(response);
 }
 
-// Importacion docentes
+/** Evento de progreso emitido por GET /import/docentes/stream (SSE) */
+export type ImportStreamProgress = {
+  type: "progress";
+  phase: string;
+  label: string;
+  current?: number;
+  total?: number;
+  percent?: number;
+};
+
+/**
+ * Abre la conexión SSE y resuelve con el ImportResult final.
+ * `onProgress` se invoca con cada evento de fase (validación, CORE, carga actual, proyección, etc.)
+ */
+function listenImportDocentesStream(
+  importId: string,
+  onProgress?: (e: ImportStreamProgress) => void
+): Promise<ImportTeachersResponse> {
+  const url = `${IMPORT_BASE_URL}/import/docentes/stream/${encodeURIComponent(importId)}`;
+
+  return new Promise((resolve, reject) => {
+    let finished = false;
+    const es = new EventSource(url);
+
+    const cleanup = () => {
+      es.close();
+    };
+
+    es.onmessage = (ev: MessageEvent<string>) => {
+      try {
+        const raw = JSON.parse(ev.data) as unknown;
+        if (
+          typeof raw !== "object" ||
+          raw === null ||
+          !("type" in raw)
+        ) {
+          return;
+        }
+        const item = raw as
+          | ImportStreamProgress
+          | { type: "complete"; result: ImportTeachersResponse }
+          | { type: "error"; message: string };
+
+        if (item.type === "progress") {
+          onProgress?.(item);
+          return;
+        }
+        if (item.type === "complete") {
+          finished = true;
+          cleanup();
+          resolve(item.result);
+          return;
+        }
+        if (item.type === "error") {
+          finished = true;
+          cleanup();
+          reject(new Error(item.message || "Error en importación"));
+        }
+      } catch (err) {
+        finished = true;
+        cleanup();
+        reject(
+          err instanceof Error ? err : new Error("Respuesta inválida del servidor")
+        );
+      }
+    };
+
+    es.onerror = () => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      reject(
+        new Error(
+          "Se perdió la conexión de progreso con la API. Comprueba que el servidor siga en ejecución."
+        )
+      );
+    };
+  });
+}
+
+// Importacion docentes (async + SSE para ver el proceso en vivo)
 export async function importTeachersExcel(
-  file: File
+  file: File,
+  options?: { onProgress?: (e: ImportStreamProgress) => void }
 ): Promise<ImportTeachersResponse> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${IMPORT_BASE_URL}/import/docentes`, {
-    method: "POST",
-    body: formData,
-  });
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      `${IMPORT_BASE_URL}/import/docentes?async=1`,
+      {
+        method: "POST",
+        body: formData,
+      },
+      IMPORT_UPLOAD_TIMEOUT_MS
+    );
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error(
+        "La subida del archivo tardó demasiado. Prueba un archivo más pequeño o revisa la red."
+      );
+    }
+    throw e;
+  }
 
-  return handleJson(response);
+  if (response.status === 202) {
+    const meta = (await response.json()) as { importId?: string };
+    if (!meta.importId) {
+      throw new Error("Respuesta 202 sin importId");
+    }
+    return listenImportDocentesStream(meta.importId, options?.onProgress);
+  }
+
+  const text = await response.text();
+  let data: unknown;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(
+      text.trim() || `Error HTTP ${response.status} al importar`
+    );
+  }
+
+  const isImportShape =
+    typeof data === "object" &&
+    data !== null &&
+    "importId" in data &&
+    "summary" in data &&
+    typeof (data as { summary?: unknown }).summary === "object" &&
+    (data as { summary?: { errors?: unknown } }).summary !== null;
+
+  if (isImportShape) {
+    return data as ImportTeachersResponse;
+  }
+
+  if (!response.ok) {
+    const errObj = data as { error?: string };
+    throw new Error(
+      errObj.error?.trim() ||
+        text.trim() ||
+        `Error al importar (HTTP ${response.status})`
+    );
+  }
+
+  return data as ImportTeachersResponse;
 }

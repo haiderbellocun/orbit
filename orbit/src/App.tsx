@@ -24,6 +24,7 @@ import { MOCK_TEACHERS, MOCK_VACANCIES, MOCK_COORDINATORS } from './data/mockDat
 
 import { BRAND_CONFIG } from './config/brand';
 import { Logo } from './components/common/Logo';
+import type { GoogleAuthResponse } from "./lib/api";
 
 export default function App() {
   const [view, setView] = useState<View>('login');
@@ -32,8 +33,8 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const handleLogin = (email: string, id: string) => {
-    console.log('Logged in with:', email, id);
+  const handleLogin = (auth: GoogleAuthResponse) => {
+    console.log("Logged in:", auth.user.email);
     setView('home');
   };
 

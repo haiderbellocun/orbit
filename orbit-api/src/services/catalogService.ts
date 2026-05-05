@@ -74,11 +74,11 @@ export async function findOrCreateContractType(
       return { id: searchResult.rows[0].id, isNew: false };
     }
 
-    // Try insert with ON CONFLICT
+    // UNIQUE(code) en core.contract_type; evita duplicados si hay carrera
     const insertQuery = `
       INSERT INTO contract_type (code, name, start_date, end_date, work_schedule, modality, is_active)
       VALUES ($1, $2, $3::DATE, $4::DATE, $5, $6, true)
-      ON CONFLICT DO NOTHING
+      ON CONFLICT (code) DO NOTHING
       RETURNING id
     `;
 
@@ -364,7 +364,6 @@ export async function findOrCreateHierarchyByLevel(
     const insertQuery = `
       INSERT INTO hierarchy (name, description, level)
       VALUES ($1, $2, $3)
-      ON CONFLICT DO NOTHING
       RETURNING id
     `;
     const fallbackName = `Nivel ${level}`;

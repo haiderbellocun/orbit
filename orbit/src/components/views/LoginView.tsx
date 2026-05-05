@@ -1,49 +1,38 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { EnvelopeIcon, LockClosedIcon, ExclamationCircleIcon, CheckCircleIcon, ArrowRightIcon } from '@heroicons/react/24/solid';
-import { BRAND_CONFIG } from '@/src/config/brand';
-import { Logo } from '../common/Logo';
+import React, { useMemo, useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { ExclamationCircleIcon } from "@heroicons/react/24/solid";
+import { GoogleLogin } from "@react-oauth/google";
+import { BRAND_CONFIG } from "@/src/config/brand";
+import { Logo } from "../common/Logo";
+import { loginWithGoogleIdToken, type GoogleAuthResponse } from "@/src/lib/api";
 
 interface LoginViewProps {
-  onLogin: (email: string, id: string) => void;
+  onLogin: (auth: GoogleAuthResponse) => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const isEmailValid = email.toLowerCase().endsWith('@cun.edu.co');
-  const isPasswordValid = password.length >= 5; // Assuming ID is at least 5 digits
+  const googleClientIdPresent = useMemo(() => {
+    const v = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? "";
+    return Boolean(v.trim());
+  }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!email) {
-      setError('Por favor ingresa tu correo institucional.');
-      return;
-    }
-
-    if (!isEmailValid) {
-      setError('El acceso está restringido a correos @cun.edu.co');
-      return;
-    }
-
-    if (!password) {
-      setError('Por favor ingresa tu cédula como contraseña.');
-      return;
-    }
-
+  async function handleGoogleCredential(credential: string): Promise<void> {
     setIsLoading(true);
-    
-    // Simulate network delay for a more "premium" feel
-    setTimeout(() => {
-      onLogin(email, password);
+    setError(null);
+    try {
+      const auth = await loginWithGoogleIdToken(credential);
+      localStorage.setItem("orbit_jwt", auth.token);
+      localStorage.setItem("orbit_user", JSON.stringify(auth.user));
+      onLogin(auth);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo autenticar con el servidor.");
+    } finally {
       setIsLoading(false);
-    }, 800);
-  };
+    }
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
@@ -111,44 +100,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         <div className="glass-panel p-10 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-500"></div>
           
-          <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
-            <div className="space-y-2">
-              <div className="flex justify-between items-center ml-1">
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Correo Institucional</label>
-                {email && (
-                  <span className={`text-[9px] font-bold uppercase tracking-tighter ${isEmailValid ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    {isEmailValid ? 'Dominio Válido' : 'Solo @cun.edu.co'}
-                  </span>
-                )}
+          <div className="space-y-6 relative z-10">
+            {!googleClientIdPresent && (
+              <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-100 rounded-xl text-amber-700 text-xs font-medium">
+                <ExclamationCircleIcon className="h-3.5 w-3.5" />
+                <span>
+                  Falta configurar <code>VITE_GOOGLE_CLIENT_ID</code> en el frontend.
+                </span>
               </div>
-              <div className="relative group">
-                <EnvelopeIcon className={`absolute left-4 top-1/2 -translate-y-1/2 h-4.5 w-4.5 transition-colors duration-300 ${email ? (isEmailValid ? 'text-emerald-500' : 'text-rose-500') : 'text-slate-400'}`} />
-                <input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="usuario@cun.edu.co"
-                  className={`glass-input pl-12 ${email && !isEmailValid ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500/10' : ''}`}
-                />
-                {email && isEmailValid && (
-                  <CheckCircleIcon className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500" />
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Contraseña (Cédula)</label>
-              <div className="relative group">
-                <LockClosedIcon className={`absolute left-4 top-1/2 -translate-y-1/2 h-4.5 w-4.5 transition-colors duration-300 ${password ? 'text-violet-500' : 'text-slate-400'}`} />
-                <input 
-                  type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Número de identificación"
-                  className="glass-input pl-12"
-                />
-              </div>
-            </div>
+            )}
 
             <AnimatePresence>
               {error && (
@@ -164,29 +124,35 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               )}
             </AnimatePresence>
 
-            <button 
-              type="submit"
-              disabled={isLoading}
-              className="glass-button-primary w-full py-4 text-sm font-bold tracking-widest uppercase flex items-center justify-center gap-3 group"
-            >
+            <div className="flex items-center justify-center">
               {isLoading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                <div className="w-5 h-5 border-2 border-violet-500/30 border-t-violet-600 rounded-full animate-spin" />
               ) : (
-                <>
-                  <span>Acceder al Sistema</span>
-                  <ArrowRightIcon className="h-4.5 w-4.5 group-hover:translate-x-1 transition-transform" />
-                </>
+                <div className={googleClientIdPresent ? "" : "pointer-events-none opacity-50"}>
+                  <GoogleLogin
+                    onSuccess={(cred) => {
+                      const token =
+                        typeof cred.credential === "string" ? cred.credential : "";
+                      if (!token) {
+                        setError("Google no devolvió el token de inicio de sesión.");
+                        return;
+                      }
+                      void handleGoogleCredential(token);
+                    }}
+                    onError={() => {
+                      setError("No se pudo iniciar sesión con Google. Intenta de nuevo.");
+                    }}
+                    useOneTap={false}
+                    theme="filled_blue"
+                    text="signin_with"
+                    shape="pill"
+                    size="large"
+                    width="320"
+                    ux_mode="popup"
+                  />
+                </div>
               )}
-            </button>
-          </form>
-          
-          <div className="mt-10 pt-8 border-t border-white/40 text-center relative z-10">
-            <p className="text-xs text-slate-400 font-medium tracking-wide">
-              ¿Problemas para acceder? <br />
-              <a href="#" className="text-violet-600 font-bold hover:underline transition-all inline-flex items-center gap-1 mt-2">
-                Contactar a Soporte Técnico
-              </a>
-            </p>
+            </div>
           </div>
         </div>
 
