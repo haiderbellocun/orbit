@@ -41,6 +41,7 @@ router.post("/auth/google", async (req, res) => {
     const email = (payload?.email ?? "").trim().toLowerCase();
     const googleSub = (payload?.sub ?? "").trim();
     const name = (payload?.name ?? "").trim();
+    const picture = (payload?.picture ?? "").trim();
 
     if (!email || !googleSub) {
       res.status(401).json({ error: "Invalid Google token" });
@@ -191,31 +192,31 @@ router.post("/auth/google", async (req, res) => {
         userId = 0;
       }
     }
-
-    const token = jwt.sign(
-      {
-        userId,
-        personId,
-        email,
-        name,
-        sub: googleSub,
-        role: person?.role_code ?? person?.role_name ?? null,
-      },
-      jwtSecret,
-      signOptions
-    );
-
-    res.json({
-      token,
-      user: {
-        id: userId,
-        personId,
-        email,
-        name: person?.full_name || name,
-        roleCode: person?.role_code ?? null,
-        roleName: person?.role_name ?? null,
-      },
-    });
+      const token = jwt.sign(
+        {
+          userId,
+          personId,
+          email,
+          name,
+          picture,
+          sub: googleSub,
+          role: person?.role_code ?? person?.role_name ?? null,
+        },
+        jwtSecret,
+        signOptions
+      );
+      res.json({
+        token,
+        user: {
+          id: userId,
+          personId,
+          email,
+          name: person?.full_name || name,
+          picture,
+          roleCode: person?.role_code ?? null,
+          roleName: person?.role_name ?? null,
+        },
+      });
   } catch (e: unknown) {
     console.error("POST /auth/google failed:", e);
     const message = e instanceof Error ? e.message : String(e);
