@@ -51,6 +51,8 @@ router.get("/coordinators", async (req, res) => {
 
     if (useCore) {
       const prefix = coreMode === "core" ? "core." : "";
+      const liteReg = await pool.query(`SELECT to_regclass('lites') AS lites_table`);
+      const hasLites = liteReg.rows[0]?.lites_table != null;
       const conditions: string[] = [];
       const values: unknown[] = [];
       let p = 1;
@@ -85,14 +87,24 @@ router.get("/coordinators", async (req, res) => {
 
       const where = `WHERE ${conditions.join(" AND ")}`;
 
+      const litesCountExpr = hasLites
+        ? `(
+             SELECT COUNT(*)::int
+             FROM lites l
+             WHERE l.coordinator_document = p.document
+           )`
+        : `0::int`;
+
       const { rows } = await pool.query(
         `SELECT
            p.id,
+           p.document,
            p.full_name AS name,
            COALESCE(NULLIF(p.edu_email, ''), NULLIF(p.email, '')) AS email,
            COALESCE(a.name, ci.name, '') AS campus,
+           COALESCE(s.name, '') AS school,
            'active'::text AS status,
-           0::int AS teachers_count
+           ${litesCountExpr} AS lites_count
          FROM ${prefix}person p
          LEFT JOIN ${prefix}school s ON s.id = p.school_id
          LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)

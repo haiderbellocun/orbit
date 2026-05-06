@@ -58,7 +58,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ setView }) => {
 
   const buildFallbackStats = (): StatCard[] => [
     {
-      label: 'Docentes Activos',
+      label: 'Personal Activo',
       value: '0',
       trend: '0.0%',
       isUp: true,
@@ -101,7 +101,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ setView }) => {
 
         const nextStats: StatCard[] = [
           {
-            label: 'Docentes Activos',
+            label: 'Personal Activo',
             value: numberFormatter.format(summary.activeTeachers.value),
             trend: toTrendText(
               summary.activeTeachers.trend,

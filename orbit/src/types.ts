@@ -62,10 +62,12 @@ export interface NewsItem {
 
 export interface Coordinator {
   id: string;
+  document: string;
   name: string;
   email: string;
   phone: string;
   campus: string;
+  school: string;
   assignments: number;
   status: 'active' | 'inactive';
 }

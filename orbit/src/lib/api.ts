@@ -314,6 +314,7 @@ export async function getLites(params?: {
   search?: string;
   school?: string;
   status?: string;
+  coordinator_document?: string;
   page?: number;
   limit?: number;
 }): Promise<PaginatedResponse> {
@@ -321,6 +322,9 @@ export async function getLites(params?: {
   if (params?.search) url.searchParams.set("search", params.search);
   if (params?.school) url.searchParams.set("school", params.school);
   if (params?.status) url.searchParams.set("status", params.status);
+  if (params?.coordinator_document) {
+    url.searchParams.set("coordinator_document", params.coordinator_document);
+  }
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await fetch(url.toString(), { headers: jsonHeaders });
