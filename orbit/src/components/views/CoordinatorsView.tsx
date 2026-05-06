@@ -14,18 +14,39 @@ import {
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
 import { Coordinator, View, Teacher, Vacancy } from '@/src/types';
-import { getCoordinators } from '@/src/lib/api';
+import { getCoordinators, getLites } from '@/src/lib/api';
 
 function mapCoordinatorFromApi(row: Record<string, unknown>): Coordinator {
   const st = String(row.status ?? 'active');
   return {
     id: String(row.id ?? ''),
+    document: String(row.document ?? ''),
     name: String(row.name ?? ''),
     email: String(row.email ?? ''),
     phone: '',
     campus: String(row.campus ?? ''),
-    assignments: Number(row.teachers_count ?? 0),
+    school: String(row.school ?? ''),
+    assignments: Number(row.lites_count ?? row.teachers_count ?? 0),
     status: st === 'inactive' ? 'inactive' : 'active',
+  };
+}
+
+type LiteRow = {
+  id: string;
+  name: string;
+  program: string;
+  school: string;
+  status: 'active' | 'inactive';
+};
+
+function mapLiteFromApi(row: Record<string, unknown>): LiteRow {
+  const st = String(row.status ?? 'inactive');
+  return {
+    id: String(row.id ?? ''),
+    name: String(row.name ?? ''),
+    program: String(row.program ?? ''),
+    school: String(row.school ?? ''),
+    status: st === 'active' ? 'active' : 'inactive',
   };
 }
 
@@ -49,6 +70,8 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
   const [coordinators, setCoordinators] = useState<Coordinator[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCoordinator, setSelectedCoordinator] = useState<Coordinator | null>(null);
+  const [selectedLites, setSelectedLites] = useState<LiteRow[]>([]);
+  const [loadingLites, setLoadingLites] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,6 +95,37 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!selectedCoordinator?.document) {
+        setSelectedLites([]);
+        return;
+      }
+      setLoadingLites(true);
+      try {
+        const res = await getLites({
+          coordinator_document: selectedCoordinator.document,
+          limit: 200,
+          page: 1,
+        });
+        if (!cancelled) {
+          const list = Array.isArray(res.data)
+            ? res.data.map((r) => mapLiteFromApi(r as Record<string, unknown>))
+            : [];
+          setSelectedLites(list);
+        }
+      } catch {
+        if (!cancelled) setSelectedLites([]);
+      } finally {
+        if (!cancelled) setLoadingLites(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCoordinator?.document]);
 
   const filteredCoordinators = useMemo(() => {
     return coordinators.filter((c) =>
@@ -149,6 +203,7 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
               
               <h3 className="text-lg font-bold text-slate-900 font-display group-hover:text-violet-600 transition-colors">{c.name}</h3>
               <p className="text-[10px] font-bold text-violet-500 uppercase tracking-[0.2em] mt-1">{c.campus}</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em] mt-1">{c.school}</p>
               
               <div className="mt-6 w-full space-y-3">
                 <div className="flex items-center gap-3 text-xs text-slate-500 bg-white/40 p-2 rounded-lg border border-white/20">
@@ -161,7 +216,7 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
                 </div>
                 <div className="flex items-center gap-3 text-xs text-slate-500 bg-white/40 p-2 rounded-lg border border-white/20">
                   <RectangleGroupIcon className="h-3.5 w-3.5 shrink-0 text-fuchsia-400" />
-                  <span>{c.assignments} Docentes</span>
+                  <span>{c.assignments} LITEs</span>
                 </div>
               </div>
 
@@ -196,21 +251,40 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
       )}
 
       <div className="glass-panel p-6 relative z-10">
-        <h3 className="text-lg font-bold text-slate-900 mb-6 font-display">Carga Operativa por Coordinador</h3>
+        <h3 className="text-lg font-bold text-slate-900 mb-6 font-display">
+          Carga Operativa (LITEs) por Coordinador
+        </h3>
+
         <div className="space-y-6">
-          {coordinators.map((c) => (
-            <div key={c.id} className="flex items-center gap-4">
-              <span className="text-sm font-bold text-slate-700 w-32 shrink-0">{c.name}</span>
+          {[1, 2, 3].map((item) => (
+            <div key={item} className="flex items-center gap-4 opacity-70">
+              <span className="text-sm font-bold text-slate-700 w-32 shrink-0">
+                Próximamente
+              </span>
+
               <div className="flex-1 h-2 bg-slate-100/50 rounded-full overflow-hidden backdrop-blur-sm border border-white/20">
-                <motion.div 
+                <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${(c.assignments / 50) * 100}%` }}
-                  className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full shadow-[0_0_10px_rgba(139,92,246,0.3)]"
-                ></motion.div>
+                  animate={{ width: "45%" }}
+                  transition={{ duration: 1, ease: "easeOut" }}
+                  className="h-full bg-gradient-to-r from-violet-500/40 to-fuchsia-500/40 rounded-full shadow-[0_0_10px_rgba(139,92,246,0.2)]"
+                />
               </div>
-              <span className="text-xs font-bold text-slate-400 w-12 text-right font-mono">{c.assignments}</span>
+
+              <span className="text-xs font-bold text-slate-400 w-12 text-right font-mono">
+                --
+              </span>
             </div>
           ))}
+        </div>
+
+        <div className="mt-8 rounded-2xl border border-violet-100 bg-violet-50/50 backdrop-blur-sm p-5 text-center">
+          <p className="text-sm font-bold text-violet-700 uppercase tracking-widest">
+            Próximamente
+          </p>
+          <p className="mt-2 text-sm text-slate-500">
+            La carga operativa por coordinador estará disponible en una próxima actualización.
+          </p>
         </div>
       </div>
 
@@ -240,7 +314,9 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900 font-display">Asignaciones de {selectedCoordinator.name}</h2>
-                    <p className="text-xs text-slate-500 font-medium tracking-wide uppercase">{selectedCoordinator.campus} • {selectedCoordinator.assignments} Docentes</p>
+                    <p className="text-xs text-slate-500 font-medium tracking-wide uppercase">
+                      {selectedCoordinator.campus} • {selectedCoordinator.school} • {selectedCoordinator.assignments} LITEs
+                    </p>
                   </div>
                 </div>
                 <button 
@@ -252,19 +328,37 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
               </div>
 
               <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 flex items-center justify-between group hover:border-violet-200 transition-colors">
+                {loadingLites ? (
+                  <div className="p-10 text-center text-sm font-medium text-slate-600">
+                    Cargando LITEs...
+                  </div>
+                ) : selectedLites.length === 0 ? (
+                  <div className="p-10 text-center text-sm font-medium text-slate-600">
+                    Este coordinador no tiene LITEs asignados.
+                  </div>
+                ) : (
+                  selectedLites.map((lite) => (
+                    <div key={lite.id} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 flex items-center justify-between group hover:border-violet-200 transition-colors">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-slate-400 group-hover:text-violet-500 transition-colors shadow-sm">
                         <UserCircleIcon className="h-5 w-5" />
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-slate-900">Docente Asignado {i + 1}</h4>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Programa de Ingeniería</p>
+                        <h4 className="text-sm font-bold text-slate-900">{lite.name}</h4>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                          {lite.program || lite.school || '—'}
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 uppercase tracking-widest">Activo</span>
+                      <span className={cn(
+                        "text-[10px] font-bold px-2 py-1 rounded-lg border uppercase tracking-widest",
+                        lite.status === 'active'
+                          ? "text-emerald-600 bg-emerald-50 border-emerald-100"
+                          : "text-slate-500 bg-slate-100 border-slate-200"
+                      )}>
+                        {lite.status === 'active' ? 'Activo' : 'Inactivo'}
+                      </span>
                       <button 
                         onClick={() => {
                           setSelectedCoordinator(null);
@@ -276,7 +370,8 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
                       </button>
                     </div>
                   </div>
-                ))}
+                  ))
+                )}
               </div>
 
               <div className="mt-8 flex justify-end">
