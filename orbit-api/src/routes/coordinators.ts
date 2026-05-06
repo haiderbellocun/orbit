@@ -51,8 +51,6 @@ router.get("/coordinators", async (req, res) => {
 
     if (useCore) {
       const prefix = coreMode === "core" ? "core." : "";
-      const liteReg = await pool.query(`SELECT to_regclass('lites') AS lites_table`);
-      const hasLites = liteReg.rows[0]?.lites_table != null;
       const conditions: string[] = [];
       const values: unknown[] = [];
       let p = 1;
@@ -87,13 +85,15 @@ router.get("/coordinators", async (req, res) => {
 
       const where = `WHERE ${conditions.join(" AND ")}`;
 
-      const litesCountExpr = hasLites
-        ? `(
-             SELECT COUNT(*)::int
-             FROM lites l
-             WHERE l.coordinator_document = p.document
-           )`
-        : `0::int`;
+      /** LITEs = person.role_id = 9; se agrupan por la misma escuela que el coordinador. */
+      const litesCountExpr = `(
+        SELECT COUNT(*)::int
+        FROM ${prefix}person pl
+        WHERE pl.role_id = 9
+          AND pl.school_id IS NOT NULL
+          AND p.school_id IS NOT NULL
+          AND pl.school_id = p.school_id
+      )`;
 
       const { rows } = await pool.query(
         `SELECT

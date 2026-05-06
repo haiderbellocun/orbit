@@ -36,6 +36,8 @@ type LiteRow = {
   name: string;
   program: string;
   school: string;
+  academicLine: string;
+  coordinatorName: string;
   status: 'active' | 'inactive';
 };
 
@@ -46,6 +48,8 @@ function mapLiteFromApi(row: Record<string, unknown>): LiteRow {
     name: String(row.name ?? ''),
     program: String(row.program ?? ''),
     school: String(row.school ?? ''),
+    academicLine: String(row.academic_line ?? ''),
+    coordinatorName: String(row.coordinator_name ?? ''),
     status: st === 'active' ? 'active' : 'inactive',
   };
 }
@@ -134,6 +138,20 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
       c.email.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [searchQuery, coordinators]);
+
+  const workloadByCoordinator = useMemo(() => {
+    return [...filteredCoordinators].sort(
+      (a, b) => b.assignments - a.assignments
+    );
+  }, [filteredCoordinators]);
+
+  const maxLiteAssignments = useMemo(() => {
+    const m = Math.max(
+      1,
+      ...workloadByCoordinator.map((c) => c.assignments)
+    );
+    return m;
+  }, [workloadByCoordinator]);
 
   return (
     <div className="space-y-8 relative">
@@ -251,41 +269,50 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
       )}
 
       <div className="glass-panel p-6 relative z-10">
-        <h3 className="text-lg font-bold text-slate-900 mb-6 font-display">
-          Carga Operativa (LITEs) por Coordinador
+        <h3 className="text-lg font-bold text-slate-900 mb-2 font-display">
+          Carga operativa (LITEs) por coordinador
         </h3>
+        <p className="text-sm text-slate-500 mb-6 max-w-3xl">
+          Los LITE se muestran según la escuela del programa: cada coordinador ve
+          a los LITE adscritos a la misma escuela que su cargo.
+        </p>
 
-        <div className="space-y-6">
-          {[1, 2, 3].map((item) => (
-            <div key={item} className="flex items-center gap-4 opacity-70">
-              <span className="text-sm font-bold text-slate-700 w-32 shrink-0">
-                Próximamente
-              </span>
-
-              <div className="flex-1 h-2 bg-slate-100/50 rounded-full overflow-hidden backdrop-blur-sm border border-white/20">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: "45%" }}
-                  transition={{ duration: 1, ease: "easeOut" }}
-                  className="h-full bg-gradient-to-r from-violet-500/40 to-fuchsia-500/40 rounded-full shadow-[0_0_10px_rgba(139,92,246,0.2)]"
-                />
-              </div>
-
-              <span className="text-xs font-bold text-slate-400 w-12 text-right font-mono">
-                --
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-8 rounded-2xl border border-violet-100 bg-violet-50/50 backdrop-blur-sm p-5 text-center">
-          <p className="text-sm font-bold text-violet-700 uppercase tracking-widest">
-            Próximamente
+        {workloadByCoordinator.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            No hay datos para graficar con los filtros actuales.
           </p>
-          <p className="mt-2 text-sm text-slate-500">
-            La carga operativa por coordinador estará disponible en una próxima actualización.
-          </p>
-        </div>
+        ) : (
+          <div className="space-y-5">
+            {workloadByCoordinator.map((c, idx) => {
+              const pct = (c.assignments / maxLiteAssignments) * 100;
+              return (
+                <div key={c.id} className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCoordinator(c)}
+                    className="text-left text-sm font-bold text-slate-700 w-[min(12rem,28vw)] shrink-0 truncate hover:text-violet-600 transition-colors"
+                    title={c.name}
+                  >
+                    {c.name}
+                  </button>
+
+                  <div className="flex-1 h-2 bg-slate-100/50 rounded-full overflow-hidden backdrop-blur-sm border border-white/20">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 0.6, ease: 'easeOut', delay: idx * 0.03 }}
+                      className="h-full bg-gradient-to-r from-violet-500/50 to-fuchsia-500/50 rounded-full shadow-[0_0_10px_rgba(139,92,246,0.15)]"
+                    />
+                  </div>
+
+                  <span className="text-xs font-bold text-slate-600 w-10 text-right font-mono tabular-nums">
+                    {c.assignments}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Assignments Modal */}
@@ -345,9 +372,14 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
                       </div>
                       <div>
                         <h4 className="text-sm font-bold text-slate-900">{lite.name}</h4>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          {lite.program || lite.school || '—'}
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest line-clamp-2">
+                          {[lite.program, lite.school].filter(Boolean).join(' • ') || '—'}
                         </p>
+                        {lite.academicLine ? (
+                          <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">
+                            {lite.academicLine}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
