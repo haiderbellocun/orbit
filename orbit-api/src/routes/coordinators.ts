@@ -3,12 +3,115 @@ import { pool } from "../db/connection";
 
 const router = Router();
 
+type CoreSchemaMode = "public" | "core";
+
+async function resolveCoreSchemaMode(): Promise<CoreSchemaMode | null> {
+  // Algunos entornos tienen las tablas CORE en schema `core` (core.person),
+  // otros las crean en el schema del search_path (ej: public.person).
+  const result = await pool.query(
+    `SELECT
+       to_regclass('person') AS person_public,
+       to_regclass('core.person') AS person_core`
+  );
+  const row = result.rows[0] as
+    | { person_public?: string | null; person_core?: string | null }
+    | undefined;
+  if (row?.person_public) return "public";
+  if (row?.person_core) return "core";
+  return null;
+}
+
+async function hasCorePersonTable(): Promise<boolean> {
+  return (await resolveCoreSchemaMode()) != null;
+}
+
+async function hasLegacyCoordinatorsTable(): Promise<boolean> {
+  const result = await pool.query(
+    "SELECT to_regclass('coordinators') AS table_name"
+  );
+  return result.rows[0]?.table_name != null;
+}
+
 router.get("/coordinators", async (req, res) => {
   try {
     const status =
       typeof req.query.status === "string" ? req.query.status.trim() : undefined;
     const campus =
       typeof req.query.campus === "string" ? req.query.campus.trim() : undefined;
+
+    const coreMode = await resolveCoreSchemaMode();
+    const useCore = coreMode != null;
+    const useLegacy = await hasLegacyCoordinatorsTable();
+
+    // Si piden algo distinto a "active" en CORE, retornamos vacío (consistencia con teachers).
+    if (useCore && status && status !== "active") {
+      res.json([]);
+      return;
+    }
+
+    if (useCore) {
+      const prefix = coreMode === "core" ? "core." : "";
+      const conditions: string[] = [];
+      const values: unknown[] = [];
+      let p = 1;
+
+      // Campus en CORE suele ser un "nombre" derivado; se filtra por area o ciudad.
+      if (campus) {
+        conditions.push(`(a.name ILIKE $${p} OR ci.name ILIKE $${p})`);
+        values.push(`%${campus}%`);
+        p++;
+      }
+
+      // Reglas de negocio:
+      // - area.name = "ÁREA ACÁDEMICA" (tolerante a acentos / variaciones)
+      // - hierarchy.level = 3
+      // - rol académico (por category / name / code conteniendo "acad")
+      conditions.push(
+        `(
+          a.name ILIKE '%ÁREA ACÁDEMICA%' OR
+          a.name ILIKE '%AREA ACADEMICA%' OR
+          a.name ILIKE '%ACÁDEMICA%' OR
+          a.name ILIKE '%ACADEMICA%'
+        )`
+      );
+      conditions.push(`h.level = 3`);
+      conditions.push(
+        `(
+          LOWER(COALESCE(r.category, r.code, '')) LIKE '%acad%' OR
+          r.name ILIKE 'COORDINADOR%' OR
+          r.code ILIKE 'COORDINADOR%'
+        )`
+      );
+
+      const where = `WHERE ${conditions.join(" AND ")}`;
+
+      const { rows } = await pool.query(
+        `SELECT
+           p.id,
+           p.full_name AS name,
+           COALESCE(NULLIF(p.edu_email, ''), NULLIF(p.email, '')) AS email,
+           COALESCE(a.name, ci.name, '') AS campus,
+           'active'::text AS status,
+           0::int AS teachers_count
+         FROM ${prefix}person p
+         LEFT JOIN ${prefix}school s ON s.id = p.school_id
+         LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
+         LEFT JOIN ${prefix}city ci ON ci.id = p.city_id
+         LEFT JOIN ${prefix}hierarchy h ON h.id = p.hierarchy_id
+         LEFT JOIN ${prefix}role r ON r.id = p.role_id
+         ${where}
+         ORDER BY p.full_name ASC NULLS LAST`,
+        values
+      );
+
+      res.json(rows);
+      return;
+    }
+
+    if (!useLegacy) {
+      res.json([]);
+      return;
+    }
 
     const conditions: string[] = [];
     const values: unknown[] = [];

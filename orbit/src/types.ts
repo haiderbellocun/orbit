@@ -101,10 +101,10 @@ export const NAV_ITEMS = [
   { id: 'home', label: 'Command Center', iconKey: 'dashboard' },
   { id: 'teachers', label: 'Docentes', iconKey: 'teachers' },
   { id: 'academic-load', label: 'Carga Académica', iconKey: 'academic-load' },
+  { id: 'coordinators', label: 'Coordinadores', iconKey: 'coordinators' },
+  { id: 'lites', label: 'LITEs', iconKey: 'lites' },
   { id: 'vacancies', label: 'Vacantes', iconKey: 'vacancies' },
   { id: 'reinstatements', label: 'Reintegros', iconKey: 'reinstatements' },
   { id: 'news', label: 'Novedades', iconKey: 'news' },
-  { id: 'coordinators', label: 'Coordinadores', iconKey: 'coordinators' },
-  { id: 'lites', label: 'LITEs', iconKey: 'lites' },
   { id: 'audit', label: 'Auditoría', iconKey: 'audit' },
 ];
