@@ -1,4 +1,9 @@
-import type { Teacher } from "@/src/types";
+import type {
+  Teacher,
+  Vacancy,
+  VacancyDetail,
+  VacancyOperationStatus,
+} from "@/src/types";
 
 const BASE_URL =
   (import.meta.env.VITE_API_URL as string | undefined) ??
@@ -106,7 +111,16 @@ export type DashboardSummaryResponse = {
 
 async function handleJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    throw new Error(await response.text().catch(() => `HTTP ${response.status}`));
+    let msg = `HTTP ${response.status}`;
+    const text = await response.text().catch(() => "");
+    try {
+      const j = JSON.parse(text) as { error?: string };
+      if (typeof j.error === "string" && j.error.trim() !== "") msg = j.error.trim();
+      else if (text.trim()) msg = text.trim();
+    } catch {
+      if (text.trim()) msg = text.trim();
+    }
+    throw new Error(msg);
   }
   return response.json() as Promise<T>;
 }
@@ -217,34 +231,59 @@ export async function updateTeacher(
   return handleJson(response);
 }
 
-// Vacancies
-export async function getVacancies(params?: {
-  status?: string;
-  program?: string;
-  campus?: string;
-  period?: string;
-  page?: number;
-  limit?: number;
-}): Promise<PaginatedResponse> {
-  const url = new URL(`${BASE_URL}/vacancies`);
-  if (params?.status) url.searchParams.set("status", params.status);
-  if (params?.program) url.searchParams.set("program", params.program);
-  if (params?.campus) url.searchParams.set("campus", params.campus);
-  if (params?.period) url.searchParams.set("period", params.period);
-  if (params?.page != null) url.searchParams.set("page", String(params.page));
-  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
-  const response = await fetch(url.toString(), { headers: jsonHeaders });
-  return handleJson(response);
-}
+// Vacancies (schema `vacancies.vacancy`)
+export type CreateVacancyPayload = {
+  areaId: number;
+  schoolId: number;
+  programId: number | null;
+  positionName: string;
+  curricularLine?: string | null;
+  quantity: number;
+  operationNotes?: string | null;
+  capitalNotes?: string | null;
+  shortlistComplied?: boolean | null;
+  pdaComplied?: boolean | null;
+  contractConditionsComplied?: boolean | null;
+  preInterviewCvComplied?: boolean | null;
+};
 
-export async function getVacancy(id: number): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/vacancies/${id}`, {
+export type PatchVacancyPayload = Partial<{
+  areaId: number;
+  schoolId: number;
+  programId: number | null;
+  positionName: string;
+  curricularLine: string | null;
+  quantity: number;
+  operationNotes: string | null;
+  capitalNotes: string | null;
+  shortlistComplied: boolean | null;
+  pdaComplied: boolean | null;
+  contractConditionsComplied: boolean | null;
+  preInterviewCvComplied: boolean | null;
+  operationStatus: VacancyOperationStatus;
+  closedAt: string | null;
+}>;
+
+export type VacanciesListResponse = { data: Vacancy[] };
+
+export async function getVacancies(): Promise<VacanciesListResponse> {
+  const response = await fetch(`${BASE_URL}/vacancies`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
 }
 
-export async function createVacancy(data: unknown): Promise<unknown> {
+export async function getVacancy(id: string): Promise<VacancyDetail> {
+  const response = await fetch(
+    `${BASE_URL}/vacancies/${encodeURIComponent(id)}`,
+    { headers: jsonHeaders }
+  );
+  return handleJson(response);
+}
+
+export async function createVacancy(
+  data: CreateVacancyPayload
+): Promise<Vacancy> {
   const response = await fetch(`${BASE_URL}/vacancies`, {
     method: "POST",
     headers: jsonHeaders,
@@ -253,12 +292,48 @@ export async function createVacancy(data: unknown): Promise<unknown> {
   return handleJson(response);
 }
 
-export async function updateVacancy(id: number, data: unknown): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/vacancies/${id}`, {
-    method: "PUT",
-    headers: jsonHeaders,
-    body: JSON.stringify(data),
-  });
+export async function patchVacancy(
+  id: string,
+  data: PatchVacancyPayload
+): Promise<Vacancy> {
+  const response = await fetch(
+    `${BASE_URL}/vacancies/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: jsonHeaders,
+      body: JSON.stringify(data),
+    }
+  );
+  return handleJson(response);
+}
+
+export async function createVacancyRequisition(
+  id: string,
+  body: { reqNumber: string; sentToCapitalAt?: string | null }
+): Promise<Vacancy> {
+  const response = await fetch(
+    `${BASE_URL}/vacancies/${encodeURIComponent(id)}/requisition`,
+    {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify(body),
+    }
+  );
+  return handleJson(response);
+}
+
+export async function closeVacancy(
+  id: string,
+  body?: { operationStatus?: "hired" | "closed" | "cancelled" }
+): Promise<Vacancy> {
+  const response = await fetch(
+    `${BASE_URL}/vacancies/${encodeURIComponent(id)}/close`,
+    {
+      method: "PATCH",
+      headers: jsonHeaders,
+      body: JSON.stringify(body ?? {}),
+    }
+  );
   return handleJson(response);
 }
 
@@ -374,11 +449,33 @@ export async function updateLiteProfile(
   return handleJson(response);
 }
 
-export type CatalogSchool = { id: number; name: string };
+export type CatalogArea = { id: number; name: string };
+export type CatalogSchool = { id: number; name: string; area_id: number | null };
 export type CatalogProgram = { id: number; name: string; school_id: number | null };
+export type CatalogRole = { id: number; name: string };
 
-export async function getCatalogSchools(): Promise<CatalogSchool[]> {
-  const response = await fetch(`${BASE_URL}/catalog/schools`, {
+export async function getCatalogAreas(): Promise<CatalogArea[]> {
+  const response = await fetch(`${BASE_URL}/catalog/areas`, {
+    headers: jsonHeaders,
+  });
+  return handleJson(response);
+}
+
+export async function getCatalogSchools(params?: {
+  area_id?: number;
+}): Promise<CatalogSchool[]> {
+  const url = new URL(`${BASE_URL}/catalog/schools`);
+  if (params?.area_id != null) {
+    url.searchParams.set("area_id", String(params.area_id));
+  }
+  const response = await fetch(url.toString(), {
+    headers: jsonHeaders,
+  });
+  return handleJson(response);
+}
+
+export async function getCatalogRoles(): Promise<CatalogRole[]> {
+  const response = await fetch(`${BASE_URL}/catalog/roles`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
