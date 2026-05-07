@@ -5,11 +5,11 @@ import {
   EnvelopeIcon, 
   PhoneIcon, 
   RectangleGroupIcon, 
-  ArrowPathIcon, 
   MagnifyingGlassIcon, 
   FunnelIcon,
   ChevronRightIcon,
-  XMarkIcon
+  XMarkIcon,
+  UserPlusIcon
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -200,8 +200,8 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
           </div>
         </div>
         <button className="glass-button-primary flex items-center gap-2 px-5 py-3 h-fit">
-          <ArrowPathIcon className="h-5 w-5" />
-          <span>Traslado Lite</span>
+          <UserPlusIcon className="h-5 w-5" />
+          <span>Nuevo Coordinador</span>
         </button>
       </div>
 
@@ -230,7 +230,8 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
                       id: c.id,
                       name: c.name,
                       document: c.document,
-                      email: c.email,
+                      role: 'coordinator',
+                      edu_email: c.email,
                       phone: c.phone,
                       campus: c.campus,
                       school: c.school,
@@ -272,7 +273,7 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
                 onClick={() => setSelectedCoordinator(c)}
                 className="w-full mt-8 py-3 glass-button-secondary text-xs flex items-center justify-center gap-2 group/btn"
               >
-                <span>Ver Asignaciones</span>
+                <span>Listado LITEs</span>
                 <ChevronRightIcon className="h-3.5 w-3.5 group-hover/btn:translate-x-1 transition-transform" />
               </button>
             </motion.div>
