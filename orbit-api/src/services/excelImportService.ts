@@ -209,6 +209,12 @@ function normalizeExcelRecord(
     errors.push("Nombre Nivel 3 (o Nombre Área) es requerida");
   }
 
+  // Optional: academic line (Línea Académica). Persisted into
+  // core.person_program_assignments.academic_line. Missing column is OK.
+  const academicLine = validateNonEmpty(
+    (excelRow as { lineaAcademica?: string | null }).lineaAcademica ?? null
+  );
+
   // If there are errors, return them
   if (errors.length > 0) {
     return { record: null, errors };
@@ -229,6 +235,7 @@ function normalizeExcelRecord(
     programName: programName!,
     schoolName: schoolName!,
     cityName: cityName!,
+    academicLine: academicLine ?? null,
   };
 
   return { record, errors: [] };

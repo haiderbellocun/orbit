@@ -11,12 +11,17 @@ import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
 import { Teacher, Vacancy, Coordinator } from '@/src/types';
 import { getLites } from '@/src/lib/api';
+import {
+  PersonProfile,
+  PersonProfileModal,
+} from '@/src/components/common/PersonProfileModal';
 
 export interface LiteRow {
   id: string;
   name: string;
   email: string;
   program: string;
+  programs: string[];
   school: string;
   academicLine: string;
   coordinatorName: string;
@@ -25,11 +30,18 @@ export interface LiteRow {
 
 function mapLiteFromApi(row: Record<string, unknown>): LiteRow {
   const st = String(row.status ?? 'inactive');
+  const programsRaw = row.programs;
+  const programs = Array.isArray(programsRaw)
+    ? programsRaw
+        .map((p) => String(p ?? '').trim())
+        .filter((p) => p.length > 0)
+    : [];
   return {
     id: String(row.id ?? ''),
     name: String(row.name ?? ''),
     email: String(row.email ?? ''),
     program: String(row.program ?? ''),
+    programs,
     school: String(row.school ?? ''),
     academicLine: String(row.academic_line ?? ''),
     coordinatorName: String(row.coordinator_name ?? ''),
@@ -58,6 +70,7 @@ export const LitesView: React.FC<LitesViewProps> = ({
   const [totalPages, setTotalPages] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const listKeyRef = useRef<string | null>(null);
+  const [profilePerson, setProfilePerson] = useState<PersonProfile | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,9 +181,26 @@ export const LitesView: React.FC<LitesViewProps> = ({
                 )}
               >
                 <div className="flex items-start justify-between mb-4">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-slate-400 shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setProfilePerson({
+                        id: lite.id,
+                        name: lite.name,
+                        email: lite.email,
+                        program: lite.program,
+                        school: lite.school,
+                        academicLine: lite.academicLine,
+                        coordinatorName: lite.coordinatorName,
+                        status: lite.status,
+                      })
+                    }
+                    className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-slate-400 shadow-inner focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                    title="Ver información personal"
+                    aria-label="Ver información personal"
+                  >
                     <UserCircleIcon className="h-8 w-8" />
-                  </div>
+                  </button>
                   <span
                     className={cn(
                       'text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-xl border',
@@ -185,9 +215,18 @@ export const LitesView: React.FC<LitesViewProps> = ({
                 <h3 className="text-lg font-bold text-slate-900 font-display mb-1">
                   {lite.name}
                 </h3>
-                <p className="text-xs font-bold text-violet-500 uppercase tracking-wide mb-4">
-                  {lite.program || '—'}
-                </p>
+                {lite.programs.length > 1 ? (
+                  <p
+                    className="text-xs font-bold text-violet-500 uppercase tracking-wide mb-4 line-clamp-2"
+                    title={lite.programs.join(' • ')}
+                  >
+                    {lite.programs.length} programas · {lite.programs[0]}
+                  </p>
+                ) : (
+                  <p className="text-xs font-bold text-violet-500 uppercase tracking-wide mb-4">
+                    {lite.program || lite.programs[0] || '—'}
+                  </p>
+                )}
                 <div className="space-y-2 text-xs text-slate-500 flex-1">
                   <div className="flex items-center gap-2 bg-white/40 p-2 rounded-lg border border-white/20">
                     <MapPinIcon className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
@@ -240,6 +279,12 @@ export const LitesView: React.FC<LitesViewProps> = ({
           )}
         </>
       )}
+
+      <PersonProfileModal
+        open={!!profilePerson}
+        person={profilePerson}
+        onClose={() => setProfilePerson(null)}
+      />
     </div>
   );
 };
