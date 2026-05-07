@@ -205,14 +205,11 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
 
     (async () => {
       try {
-        const [schoolsRes, programsRes] = await Promise.all([
-          getCatalogSchools(),
-          getCatalogPrograms(),
-        ]);
+        const [schoolsRes] = await Promise.all([getCatalogSchools()]);
 
         if (!cancelled) {
           setSchools(schoolsRes);
-          setPrograms(programsRes);
+          setPrograms([]);
         }
       } catch {
         if (!cancelled) {
@@ -226,6 +223,50 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
       cancelled = true;
     };
   }, [open]);
+
+  useEffect(() => {
+    // En edición de LITE: los programas dependen estrictamente de la escuela.
+    if (!open || !editing) return;
+    if ((effectivePerson?.role ?? 'lite') !== 'lite') return;
+    const sid = draft?.school_id ?? effectivePerson?.school_id ?? null;
+    if (sid == null) {
+      setPrograms([]);
+      setProgramPickerOpen(false);
+      return;
+    }
+
+    let cancelled = false;
+    getCatalogPrograms({ school_id: sid })
+      .then((list) => {
+        if (cancelled) return;
+        setPrograms(list);
+
+        // Prune: si la escuela cambió, removemos programas fuera del catálogo.
+        setDraft((prev) => {
+          if (!prev) return prev;
+          const allowedIds = new Set(list.map((p) => p.id));
+          const current = prev.programs_id ?? [];
+          const nextIds = current.filter((id) => allowedIds.has(id));
+          if (nextIds.length === current.length) return prev;
+          const nextNames = nextIds
+            .map((id) => list.find((p) => p.id === id)?.name)
+            .filter(Boolean) as string[];
+          return {
+            ...prev,
+            programs_id: nextIds,
+            programs: nextNames,
+            program: nextNames[0] ?? prev.program,
+          };
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setPrograms([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, editing, draft?.school_id, effectivePerson?.role, effectivePerson?.school_id]);
 
   useEffect(() => {
     if (!open || !person?.id || !person.role) return;
@@ -890,7 +931,17 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                         <div className="space-y-3">
                           <button
                             type="button"
-                            onClick={() => setProgramPickerOpen((v) => !v)}
+                            onClick={() => {
+                              if (!draft?.school_id) {
+                                setSaveFeedback({
+                                  type: 'error',
+                                  message:
+                                    'Selecciona una escuela para ver programas.',
+                                });
+                                return;
+                              }
+                              setProgramPickerOpen((v) => !v);
+                            }}
                             className="glass-input mt-1 flex w-full items-center justify-between gap-3 py-3 text-sm"
                           >
                             <span className="min-w-0 truncate text-left">
