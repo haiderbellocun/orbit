@@ -12,13 +12,21 @@ import { cn } from '@/src/lib/utils';
 export type PersonProfile = {
   id: string;
   name: string;
+  role?: 'lite' | 'coordinator';
   document?: string; // CC
-  email?: string;
+  edu_email?: string; // institucional (no editable)
+  personal_email?: string; // editable
   phone?: string;
+  address?: string;
   campus?: string;
   school?: string;
-  program?: string;
-  academicLine?: string;
+  programs?: string[]; // LITE: selección múltiple
+  program?: string; // legacy / fallback para cards
+  academicLine?: string; // legacy / fallback para cards
+  person_program_assignments?: Array<{
+    program: string;
+    academic_line?: string;
+  }>;
   coordinatorName?: string;
   status?: 'active' | 'inactive' | 'on-leave';
 };
@@ -53,14 +61,20 @@ function fieldLabel(key: keyof PersonProfile): string {
       return 'Cédula';
     case 'name':
       return 'Nombre';
-    case 'email':
-      return 'Correo';
+    case 'edu_email':
+      return 'Correo institucional';
+    case 'personal_email':
+      return 'Correo personal';
     case 'phone':
       return 'Teléfono';
+    case 'address':
+      return 'Dirección';
     case 'campus':
       return 'Sede';
     case 'school':
       return 'Escuela';
+    case 'programs':
+      return 'Programas';
     case 'program':
       return 'Programa';
     case 'academicLine':
@@ -90,6 +104,31 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   const [draft, setDraft] = useState<PersonProfile | null>(null);
   const [editing, setEditing] = useState(false);
 
+  const SCHOOL_OPTIONS = useMemo(
+    () => [
+      'Área Académica Transversales',
+      'Escuela de Ingeniería',
+      'Escuela de Negocios',
+      'Escuela de Salud',
+      'Escuela de Humanidades',
+      'Escuela de Educación',
+      'Otra',
+    ],
+    []
+  );
+  const PROGRAM_OPTIONS = useMemo(
+    () => [
+      'Ingeniería de Sistemas',
+      'Administración de Empresas',
+      'Contaduría Pública',
+      'Psicología',
+      'Enfermería',
+      'Derecho',
+      'Otra',
+    ],
+    []
+  );
+
   const [newsTypeOptions, setNewsTypeOptions] = useState<NewsTypeOption[]>([
     { id: 'license', label: 'LICENCIA' },
     { id: 'sanction', label: 'SANCION' },
@@ -104,10 +143,13 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     if (!person) return [];
     const ordered: (keyof PersonProfile)[] = [
       'document',
-      'email',
+      'edu_email',
+      'personal_email',
       'phone',
+      'address',
       'campus',
       'school',
+      'programs',
       'program',
       'academicLine',
       'coordinatorName',
@@ -121,7 +163,23 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   const beginEdit = () => {
     if (!person) return;
     setEditing(true);
-    setDraft({ ...person });
+    const next: PersonProfile = { ...person };
+    if (next.role === 'lite') {
+      const programsSeed =
+        next.programs && next.programs.length > 0
+          ? next.programs
+          : next.program
+            ? [next.program]
+            : [];
+      next.programs = programsSeed;
+      if (!next.person_program_assignments) {
+        next.person_program_assignments = programsSeed.map((p) => ({
+          program: p,
+          academic_line: next.academicLine || '',
+        }));
+      }
+    }
+    setDraft(next);
   };
 
   const cancelEdit = () => {
@@ -132,6 +190,30 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   const saveEdit = () => {
     // Solo front por ahora: mantenemos el draft local (sin persistencia).
     setEditing(false);
+  };
+
+  const isLite = (person?.role ?? 'lite') === 'lite';
+  const isCoordinator = (person?.role ?? 'coordinator') === 'coordinator';
+
+  const draftAssignments = (draft?.person_program_assignments ?? []).filter(
+    (a) => a.program
+  );
+
+  const ensureAssignmentsMatchPrograms = (programs: string[]) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const existing = prev.person_program_assignments ?? [];
+      const byProgram = new Map(existing.map((a) => [a.program, a]));
+      const nextAssignments = programs.map((p) => {
+        const found = byProgram.get(p);
+        return found ?? { program: p, academic_line: '' };
+      });
+      return {
+        ...prev,
+        programs,
+        person_program_assignments: nextAssignments,
+      };
+    });
   };
 
   const addCustomTypeIfNeeded = (label: string) => {
@@ -360,7 +442,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                       Administración
                     </p>
                     <p className="text-xs text-slate-500">
-                      Puedes editar la información personal excepto la cédula.
+                      Puedes editar la información personal excepto la cédula y el correo institucional.
                     </p>
                   </div>
 
@@ -418,17 +500,23 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                     </p>
                   </div>
 
+                  <div className="p-4 rounded-2xl bg-white/40 border border-white/30">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      Correo institucional (no editable)
+                    </p>
+                    <p className="text-sm font-semibold text-slate-800 mt-1 break-words">
+                      {person.edu_email || '—'}
+                    </p>
+                  </div>
+
                   {(
                     [
-                      { k: 'email', label: 'Correo' },
-                      { k: 'phone', label: 'Teléfono' },
-                      { k: 'campus', label: 'Sede' },
-                      { k: 'school', label: 'Escuela' },
-                      { k: 'program', label: 'Programa' },
-                      { k: 'academicLine', label: 'Área académica' },
-                      { k: 'coordinatorName', label: 'Coordinador' },
+                      { k: 'school', label: 'Escuela', type: 'school' as const },
+                      { k: 'phone', label: 'Teléfono', type: 'text' as const },
+                      { k: 'personal_email', label: 'Correo personal', type: 'text' as const },
+                      { k: 'address', label: 'Dirección', type: 'text' as const },
                     ] as const
-                  ).map(({ k, label }) => (
+                  ).map(({ k, label, type }) => (
                     <div
                       key={k}
                       className="p-4 rounded-2xl bg-white/40 border border-white/30"
@@ -437,16 +525,35 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                         {label}
                       </p>
                       {editing ? (
-                        <input
-                          type="text"
-                          className="glass-input w-full mt-2 py-3 text-sm"
-                          value={String((draft?.[k] ?? '') as any)}
-                          onChange={(e) =>
-                            setDraft((prev) =>
-                              prev ? { ...prev, [k]: e.target.value } : prev
-                            )
-                          }
-                        />
+                        type === 'school' ? (
+                          <select
+                            className="glass-input w-full mt-2 py-3 text-sm"
+                            value={String((draft?.[k] ?? '') as any)}
+                            onChange={(e) =>
+                              setDraft((prev) =>
+                                prev ? { ...prev, [k]: e.target.value } : prev
+                              )
+                            }
+                          >
+                            <option value="">Selecciona…</option>
+                            {SCHOOL_OPTIONS.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            className="glass-input w-full mt-2 py-3 text-sm"
+                            value={String((draft?.[k] ?? '') as any)}
+                            onChange={(e) =>
+                              setDraft((prev) =>
+                                prev ? { ...prev, [k]: e.target.value } : prev
+                              )
+                            }
+                          />
+                        )
                       ) : (
                         <p className="text-sm font-semibold text-slate-800 mt-1 break-words">
                           {String(person[k] ?? '—')}
@@ -455,6 +562,96 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                     </div>
                   ))}
                 </div>
+
+                {isLite ? (
+                  <div className="mt-2 p-5 rounded-2xl bg-white/40 border border-white/30 space-y-4">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        Programas
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Se pueden seleccionar múltiples programas.
+                      </p>
+                    </div>
+
+                    {editing ? (
+                      <select
+                        multiple
+                        className="glass-input w-full mt-1 py-3 text-sm min-h-[8.5rem]"
+                        value={draft?.programs ?? []}
+                        onChange={(e) => {
+                          const selected = Array.from(e.target.selectedOptions).map(
+                            (o) => o.value
+                          );
+                          ensureAssignmentsMatchPrograms(selected);
+                        }}
+                      >
+                        {PROGRAM_OPTIONS.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="text-sm font-semibold text-slate-800">
+                        {(person.programs ?? []).length > 0
+                          ? (person.programs ?? []).join(' • ')
+                          : person.program
+                            ? person.program
+                            : '—'}
+                      </p>
+                    )}
+
+                    <div className="space-y-3">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        Línea académica
+                      </p>
+
+                      {(editing ? draftAssignments : person.person_program_assignments ?? [])
+                        .filter((a) => a.program)
+                        .map((a) => (
+                          <div
+                            key={a.program}
+                            className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center"
+                          >
+                            <div className="md:col-span-5">
+                              <p className="text-xs font-bold text-slate-700 truncate" title={a.program}>
+                                {a.program}
+                              </p>
+                            </div>
+                            <div className="md:col-span-7">
+                              {editing ? (
+                                <input
+                                  type="text"
+                                  className="glass-input w-full py-3 text-sm"
+                                  placeholder="Área académica…"
+                                  value={a.academic_line ?? ''}
+                                  onChange={(e) =>
+                                    setDraft((prev) => {
+                                      if (!prev) return prev;
+                                      const list = prev.person_program_assignments ?? [];
+                                      return {
+                                        ...prev,
+                                        person_program_assignments: list.map((x) =>
+                                          x.program === a.program
+                                            ? { ...x, academic_line: e.target.value }
+                                            : x
+                                        ),
+                                      };
+                                    })
+                                  }
+                                />
+                              ) : (
+                                <p className="text-sm text-slate-700">
+                                  {a.academic_line || '—'}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
 

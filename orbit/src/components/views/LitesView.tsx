@@ -6,6 +6,8 @@ import {
   EnvelopeIcon,
   RectangleGroupIcon,
   MapPinIcon,
+  FunnelIcon,
+  UserPlusIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -128,17 +130,29 @@ export const LitesView: React.FC<LitesViewProps> = ({
         searchResults={searchResults}
       />
 
-      <div className="glass-panel p-4 flex flex-col md:flex-row gap-4 items-center flex-1 relative z-10">
-        <div className="relative flex-1 w-full">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por nombre, correo o programa..."
-            className="glass-input w-full pl-10 pr-4 py-3 text-sm"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery?.(e.target.value)}
-          />
+<div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+        <div className="glass-panel p-4 flex flex-col md:flex-row gap-4 items-center flex-1">
+          <div className="relative flex-1 w-full">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Buscar coordinador..." 
+              className="glass-input w-full pl-10 pr-4 py-3 text-sm"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery?.(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <button className="glass-button-secondary flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-3 text-sm">
+              <FunnelIcon className="h-4.5 w-4.5" />
+              <span>Filtros</span>
+            </button>
+          </div>
         </div>
+        <button className="glass-button-primary flex items-center gap-2 px-5 py-3 h-fit">
+          <UserPlusIcon className="h-5 w-5" />
+          <span>Nuevo Lite</span>
+        </button>
       </div>
 
       {loading ? (
@@ -187,10 +201,27 @@ export const LitesView: React.FC<LitesViewProps> = ({
                       setProfilePerson({
                         id: lite.id,
                         name: lite.name,
-                        email: lite.email,
+                        role: 'lite',
+                        edu_email: lite.email,
                         program: lite.program,
+                        programs:
+                          lite.programs && lite.programs.length > 0
+                            ? lite.programs
+                            : lite.program
+                              ? [lite.program]
+                              : [],
                         school: lite.school,
                         academicLine: lite.academicLine,
+                        person_program_assignments: (
+                          (lite.programs && lite.programs.length > 0
+                            ? lite.programs
+                            : lite.program
+                              ? [lite.program]
+                              : []) as string[]
+                        ).map((p) => ({
+                          program: p,
+                          academic_line: lite.academicLine || '',
+                        })),
                         coordinatorName: lite.coordinatorName,
                         status: lite.status,
                       })
