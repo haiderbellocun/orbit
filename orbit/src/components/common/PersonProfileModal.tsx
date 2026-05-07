@@ -23,17 +23,17 @@ export type PersonProfile = {
   id: string;
   name: string;
   role?: 'lite' | 'coordinator';
-  document?: string; // CC
-  edu_email?: string; // institucional (no editable)
-  personal_email?: string; // editable
+  document?: string;
+  edu_email?: string;
+  personal_email?: string;
   phone?: string;
   address?: string;
   campus?: string;
   school?: string;
   school_id?: number | null;
-  programs?: string[]; // LITE: selección múltiple
-  program?: string; // legacy / fallback para cards
-  academicLine?: string; // legacy / fallback para cards
+  programs?: string[];
+  program?: string;
+  academicLine?: string;
   programs_id?: number[];
   person_program_assignments?: Array<{
     program: string;
@@ -180,6 +180,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     | { type: 'success' | 'error'; message: string }
     | null
   >(null);
+
   const [programPickerOpen, setProgramPickerOpen] = useState(false);
   const [programSearch, setProgramSearch] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -187,8 +188,19 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
 
   const effectivePerson = loadedPerson ?? person;
 
+  const [newsTypeOptions, setNewsTypeOptions] = useState<NewsTypeOption[]>([
+    { id: 'license', label: 'LICENCIA' },
+    { id: 'sanction', label: 'SANCION' },
+    { id: 'custom', label: 'Agregar más…' },
+  ]);
+  const [newsType, setNewsType] = useState<string>('license');
+  const [customNewsType, setCustomNewsType] = useState<string>('');
+  const [newsText, setNewsText] = useState<string>('');
+  const [newsItems, setNewsItems] = useState<PersonNewsItem[]>([]);
+
   useEffect(() => {
     if (!open) return;
+
     let cancelled = false;
 
     (async () => {
@@ -197,6 +209,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
           getCatalogSchools(),
           getCatalogPrograms(),
         ]);
+
         if (!cancelled) {
           setSchools(schoolsRes);
           setPrograms(programsRes);
@@ -216,22 +229,31 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
 
   useEffect(() => {
     if (!open || !person?.id || !person.role) return;
+
     let cancelled = false;
+
     setLoadingProfile(true);
     setLoadError(null);
     setLoadedPerson(null);
+    setEditing(false);
+    setDraft(null);
+    setProgramPickerOpen(false);
+    setProgramSearch('');
 
     (async () => {
       try {
         const idNum = Number.parseInt(String(person.id), 10);
         if (Number.isNaN(idNum)) throw new Error('ID inválido');
+
         const row =
           person.role === 'lite'
             ? await getLite(idNum)
             : await getCoordinator(idNum);
+
         if (!cancelled) {
           const next = toPersonProfileFromApi(person.role, row as any);
           setLoadedPerson(next);
+
           if (next.school_id != null) {
             getCatalogPrograms({ school_id: next.school_id })
               .then((list) => {
@@ -260,22 +282,15 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
 
   useEffect(() => {
     if (!saveFeedback) return;
+
     const tid = window.setTimeout(() => setSaveFeedback(null), 3500);
+
     return () => window.clearTimeout(tid);
   }, [saveFeedback]);
 
-  const [newsTypeOptions, setNewsTypeOptions] = useState<NewsTypeOption[]>([
-    { id: 'license', label: 'LICENCIA' },
-    { id: 'sanction', label: 'SANCION' },
-    { id: 'custom', label: 'Agregar más…' },
-  ]);
-  const [newsType, setNewsType] = useState<string>('license');
-  const [customNewsType, setCustomNewsType] = useState<string>('');
-  const [newsText, setNewsText] = useState<string>('');
-  const [newsItems, setNewsItems] = useState<PersonNewsItem[]>([]);
-
   const visibleFields = useMemo(() => {
     if (!effectivePerson) return [];
+
     const ordered: (keyof PersonProfile)[] = [
       'document',
       'edu_email',
@@ -290,15 +305,30 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
       'coordinatorName',
       'status',
     ];
+
     return ordered
       .map((k) => ({ key: k, value: effectivePerson[k] }))
       .filter((x) => x.value !== undefined && x.value !== '');
   }, [effectivePerson]);
 
+  const filteredPrograms = useMemo(() => {
+    const q = programSearch.trim().toLowerCase();
+
+    if (!q) return programs;
+
+    return programs.filter((p) => p.name.toLowerCase().includes(q));
+  }, [programSearch, programs]);
+
+  const isLite = (effectivePerson?.role ?? 'lite') === 'lite';
+
   const beginEdit = () => {
     if (!effectivePerson) return;
+
     setEditing(true);
+    setSaveFeedback(null);
+
     const next: PersonProfile = { ...effectivePerson };
+
     if (next.role === 'lite') {
       const programsSeed =
         next.programs && next.programs.length > 0
@@ -306,7 +336,9 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
           : next.program
             ? [next.program]
             : [];
+
       next.programs = programsSeed;
+
       if (!next.person_program_assignments) {
         next.person_program_assignments = programsSeed.map((p) => ({
           program: p,
@@ -314,20 +346,26 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
         }));
       }
     }
+
     setDraft(next);
   };
 
   const cancelEdit = () => {
     setEditing(false);
     setDraft(null);
+    setProgramPickerOpen(false);
+    setProgramSearch('');
   };
 
   const saveEdit = async () => {
     if (!draft || !effectivePerson) return;
+
     const idNum = Number.parseInt(String(effectivePerson.id), 10);
     if (Number.isNaN(idNum)) return;
+
     setSaving(true);
     setSaveFeedback(null);
+
     try {
       if ((effectivePerson.role ?? 'lite') === 'lite') {
         const updated = (await updateLiteProfile(idNum, {
@@ -338,6 +376,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
           programs_id: draft.programs_id ?? [],
           academic_line: draft.academicLine ?? null,
         })) as any;
+
         setLoadedPerson((prev) => ({
           ...(prev ?? effectivePerson),
           ...toPersonProfileFromApi('lite', updated),
@@ -349,13 +388,17 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
           personal_email: draft.personal_email ?? null,
           address: draft.address ?? null,
         })) as any;
+
         setLoadedPerson((prev) => ({
           ...(prev ?? effectivePerson),
           ...toPersonProfileFromApi('coordinator', updated),
         }));
       }
+
       setEditing(false);
       setDraft(null);
+      setProgramPickerOpen(false);
+      setProgramSearch('');
       setSaveFeedback({ type: 'success', message: 'Actualización completada.' });
     } catch (e) {
       console.error(e);
@@ -371,72 +414,51 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     }
   };
 
-  const isLite = (effectivePerson?.role ?? 'lite') === 'lite';
-  const isCoordinator =
-    (effectivePerson?.role ?? 'coordinator') === 'coordinator';
-
-  const filteredPrograms = useMemo(() => {
-    const q = programSearch.trim().toLowerCase();
-    if (!q) return programs;
-    return programs.filter((p) => p.name.toLowerCase().includes(q));
-  }, [programSearch, programs]);
-
   const toggleProgramId = (programId: number) => {
     setDraft((prev) => {
       if (!prev) return prev;
+
       const current = prev.programs_id ?? [];
+
       const nextIds = current.includes(programId)
         ? current.filter((x) => x !== programId)
         : [...current, programId];
+
       const nextNames = nextIds
         .map((id) => programs.find((p) => p.id === id)?.name)
         .filter(Boolean) as string[];
+
       return {
         ...prev,
         programs_id: nextIds,
         programs: nextNames,
-        program: nextNames[0] ?? prev.program,
-      };
-    });
-  };
-
-  const draftAssignments = (draft?.person_program_assignments ?? []).filter(
-    (a) => a.program
-  );
-
-  const ensureAssignmentsMatchPrograms = (programs: string[]) => {
-    setDraft((prev) => {
-      if (!prev) return prev;
-      const existing = prev.person_program_assignments ?? [];
-      const byProgram = new Map(existing.map((a) => [a.program, a]));
-      const nextAssignments = programs.map((p) => {
-        const found = byProgram.get(p);
-        return found ?? { program: p, academic_line: '' };
-      });
-      return {
-        ...prev,
-        programs,
-        person_program_assignments: nextAssignments,
+        program: nextNames[0] ?? '',
       };
     });
   };
 
   const addCustomTypeIfNeeded = (label: string) => {
     const normalized = label.trim().toUpperCase();
+
     if (!normalized) return null;
+
     const exists = newsTypeOptions.some((o) => o.label === normalized);
     if (exists) return normalized;
+
     const id = `custom-${normalized.toLowerCase().replace(/\s+/g, '-')}`;
+
     setNewsTypeOptions((prev) => [
       { id, label: normalized },
       ...prev.filter((p) => p.id !== 'custom'),
       { id: 'custom', label: 'Agregar más…' },
     ]);
+
     return normalized;
   };
 
   const handleAddNews = () => {
     const text = newsText.trim();
+
     if (!text) return;
 
     let typeLabel =
@@ -448,6 +470,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     }
 
     const now = new Date();
+
     setNewsItems((prev) => [
       {
         id: `${now.getTime()}-${Math.random().toString(16).slice(2)}`,
@@ -457,523 +480,589 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
       },
       ...prev,
     ]);
+
     setNewsText('');
     setCustomNewsType('');
+
     if (newsType === 'custom') setNewsType('license');
   };
 
   return (
     <AnimatePresence>
       {open && effectivePerson ? (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+        <div className="fixed inset-0 z-[200] overflow-y-auto">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
           />
 
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 16 }}
-            className="w-full max-w-3xl glass-panel p-8 relative z-10 shadow-2xl overflow-hidden"
-          >
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-500" />
+          <div className="relative z-10 flex min-h-full items-start justify-center px-4 py-6 sm:px-6 lg:px-8">
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              className="relative w-full max-w-[56rem] max-h-[calc(100dvh-3rem)] overflow-y-auto overflow-x-hidden rounded-[2rem] glass-panel p-5 shadow-2xl custom-scrollbar sm:p-6 lg:p-8"
+            >
+              <div className="absolute left-0 top-0 h-1.5 w-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-500" />
 
-            <div className="flex items-start justify-between gap-6 mb-6">
-              <div className="flex items-center gap-4 min-w-0">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-violet-500 shadow-inner shrink-0">
-                  <UserCircleIcon className="h-9 w-9" />
+              <div className="mb-6 flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 text-violet-500 shadow-inner sm:h-14 sm:w-14">
+                    <UserCircleIcon className="h-8 w-8 sm:h-9 sm:w-9" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <h2 className="truncate font-display text-xl font-bold text-slate-900 sm:text-2xl">
+                      {effectivePerson.name}
+                    </h2>
+
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                      {statusLabel(effectivePerson.status)}
+                      {effectivePerson.document
+                        ? ` • CC ${effectivePerson.document}`
+                        : ''}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <h2 className="text-2xl font-bold text-slate-900 font-display truncate">
-                    {effectivePerson.name}
-                  </h2>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">
-                    {statusLabel(effectivePerson.status)}
-                    {effectivePerson.document ? ` • CC ${effectivePerson.document}` : ''}
-                  </p>
-                </div>
-              </div>
 
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"
-                aria-label="Cerrar"
-              >
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 mb-6">
-              {(
-                [
-                  { id: 'personal', label: 'Información personal' },
-                  { id: 'news', label: 'Novedades' },
-                  { id: 'admin', label: 'Panel de administración' },
-                ] as const
-              ).map((t) => (
                 <button
-                  key={t.id}
                   type="button"
-                  onClick={() => {
-                    setTab(t.id);
-                    if (t.id !== 'admin') cancelEdit();
-                  }}
-                  className={cn(
-                    'px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest border transition-all',
-                    tab === t.id
-                      ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
-                      : 'bg-white/40 text-slate-600 border-white/30 hover:bg-white/60'
-                  )}
+                  onClick={onClose}
+                  className="shrink-0 rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100"
+                  aria-label="Cerrar"
                 >
-                  {t.label}
+                  <XMarkIcon className="h-5 w-5" />
                 </button>
-              ))}
-            </div>
-
-            {tab === 'personal' ? (
-              <div className="space-y-4">
-                {loadingProfile ? (
-                  <div className="p-10 text-center text-sm font-medium text-slate-600">
-                    Cargando información...
-                  </div>
-                ) : loadError ? (
-                  <div className="p-6 rounded-2xl bg-rose-50 border border-rose-100 text-sm text-rose-700">
-                    {loadError}
-                  </div>
-                ) : null}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {visibleFields.length === 0 ? (
-                    <div className="text-sm text-slate-500">
-                      No hay información para mostrar.
-                    </div>
-                  ) : (
-                    visibleFields.map(({ key, value }) => (
-                      <div
-                        key={String(key)}
-                        className="p-4 rounded-2xl bg-white/40 border border-white/30"
-                      >
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          {fieldLabel(key)}
-                        </p>
-                        <p className="text-sm font-semibold text-slate-800 mt-1 break-words">
-                          {key === 'status' ? statusLabel(value as any) : String(value)}
-                        </p>
-                      </div>
-                    ))
-                  )}
-                </div>
               </div>
-            ) : tab === 'news' ? (
-              <div className="space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                  <div className="md:col-span-4">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Tipo
-                    </label>
-                    <select
-                      className="glass-input w-full mt-1 py-3 text-sm"
-                      value={newsType}
-                      onChange={(e) => setNewsType(e.target.value)}
-                    >
-                      {newsTypeOptions.map((opt) => (
-                        <option key={opt.id} value={opt.id}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                    {newsType === 'custom' ? (
-                      <input
-                        type="text"
-                        className="glass-input w-full mt-2 py-3 text-sm"
-                        placeholder="Escribe el nuevo tipo (ej: PERMISO)"
-                        value={customNewsType}
-                        onChange={(e) => setCustomNewsType(e.target.value)}
-                      />
-                    ) : null}
-                  </div>
 
-                  <div className="md:col-span-6">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Novedad
-                    </label>
-                    <input
-                      type="text"
-                      className="glass-input w-full mt-1 py-3 text-sm"
-                      placeholder="Describe la novedad…"
-                      value={newsText}
-                      onChange={(e) => setNewsText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleAddNews();
-                      }}
-                    />
-                  </div>
-
-                  <div className="md:col-span-2 flex items-end">
-                    <button
-                      type="button"
-                      onClick={handleAddNews}
-                      className="glass-button-primary w-full py-3 text-xs font-bold uppercase tracking-widest"
-                    >
-                      Agregar
-                    </button>
-                  </div>
-                </div>
-
-                <div className="max-h-[320px] overflow-y-auto pr-2 custom-scrollbar space-y-3">
-                  {newsItems.length === 0 ? (
-                    <div className="p-8 rounded-2xl bg-white/40 border border-white/30 text-sm text-slate-500">
-                      Aún no hay novedades registradas (solo front por ahora).
-                    </div>
-                  ) : (
-                    newsItems.map((n) => (
-                      <div
-                        key={n.id}
-                        className="p-4 rounded-2xl bg-white/40 border border-white/30"
-                      >
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-violet-600">
-                            {n.type}
-                          </span>
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                            {formatDateTime(new Date(n.createdAt))}
-                          </span>
-                        </div>
-                        <p className="text-sm text-slate-700 mt-2">{n.text}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-5">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-bold text-slate-900 font-display">
-                      Administración
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      Puedes editar la información personal excepto la cédula y el correo institucional.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        // Solo front: no cambia estado real aún.
-                      }}
-                      title="Inactivar usuario"
-                      className="p-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors"
-                      aria-label="Inactivar usuario"
-                    >
-                      <UserMinusIcon className="h-5 w-5" />
-                    </button>
-
-                    {!editing ? (
-                      <button
-                        type="button"
-                        onClick={beginEdit}
-                        className="glass-button-secondary px-4 py-2 text-xs font-bold uppercase tracking-widest flex items-center gap-2"
-                      >
-                        <PencilSquareIcon className="h-4 w-4" />
-                        Editar
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={saveEdit}
-                          disabled={saving}
-                          className="glass-button-primary px-4 py-2 text-xs font-bold uppercase tracking-widest flex items-center gap-2 disabled:opacity-60 disabled:pointer-events-none"
-                        >
-                          <CheckIcon className="h-4 w-4" />
-                          {saving ? 'Guardando...' : 'Guardar'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelEdit}
-                          className="glass-button-secondary px-4 py-2 text-xs font-bold uppercase tracking-widest"
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {saveFeedback ? (
-                  <div
+              <div className="mb-6 flex flex-wrap items-center gap-2">
+                {(
+                  [
+                    { id: 'personal', label: 'Información personal' },
+                    { id: 'news', label: 'Novedades' },
+                    { id: 'admin', label: 'Panel de administración' },
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setTab(t.id);
+                      if (t.id !== 'admin') cancelEdit();
+                    }}
                     className={cn(
-                      'px-4 py-3 rounded-2xl border text-sm font-semibold',
-                      saveFeedback.type === 'success'
-                        ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
-                        : 'bg-rose-50 border-rose-100 text-rose-700'
+                      'rounded-xl border px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all',
+                      tab === t.id
+                        ? 'border-violet-600 bg-violet-600 text-white shadow-sm'
+                        : 'border-white/30 bg-white/40 text-slate-600 hover:bg-white/60'
                     )}
-                    role="status"
-                    aria-live="polite"
                   >
-                    {saveFeedback.message}
-                  </div>
-                ) : null}
+                    {t.label}
+                  </button>
+                ))}
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-2xl bg-white/40 border border-white/30">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Cédula (no editable)
-                    </p>
-                    <p className="text-sm font-semibold text-slate-800 mt-1 break-words">
-                      {effectivePerson.document || '—'}
-                    </p>
-                  </div>
-
-                  <div className="p-4 rounded-2xl bg-white/40 border border-white/30">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      Correo institucional (no editable)
-                    </p>
-                    <p className="text-sm font-semibold text-slate-800 mt-1 break-words">
-                      {effectivePerson.edu_email || '—'}
-                    </p>
-                  </div>
-
-                  {(
-                    [
-                      { k: 'school', label: 'Escuela', type: 'school' as const },
-                      { k: 'phone', label: 'Teléfono', type: 'text' as const },
-                      { k: 'personal_email', label: 'Correo personal', type: 'text' as const },
-                      { k: 'address', label: 'Dirección', type: 'text' as const },
-                    ] as const
-                  ).map(({ k, label, type }) => (
-                    <div
-                      key={k}
-                      className="p-4 rounded-2xl bg-white/40 border border-white/30"
-                    >
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        {label}
-                      </p>
-                      {editing ? (
-                        type === 'school' ? (
-                          <select
-                            className="glass-input w-full mt-2 py-3 text-sm"
-                            value={String(draft?.school_id ?? '')}
-                            onChange={(e) => {
-                              const sid = e.target.value ? Number.parseInt(e.target.value, 10) : null;
-                              const schoolName = schools.find((s) => s.id === sid)?.name ?? '';
-                              setDraft((prev) =>
-                                prev
-                                  ? { ...prev, school_id: sid, school: schoolName || prev.school }
-                                  : prev
-                              );
-                              if (sid != null && !Number.isNaN(sid)) {
-                                getCatalogPrograms({ school_id: sid })
-                                  .then(setPrograms)
-                                  .catch(() => setPrograms([]));
-                              }
-                            }}
-                          >
-                            <option value="">Selecciona…</option>
-                            {schools.map((s) => (
-                              <option key={s.id} value={String(s.id)}>
-                                {s.name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            className="glass-input w-full mt-2 py-3 text-sm"
-                            value={String((draft?.[k] ?? '') as any)}
-                            onChange={(e) =>
-                              setDraft((prev) =>
-                                prev ? { ...prev, [k]: e.target.value } : prev
-                              )
-                            }
-                          />
-                        )
-                      ) : (
-                        <p className="text-sm font-semibold text-slate-800 mt-1 break-words">
-                          {String(effectivePerson[k] ?? '—')}
-                        </p>
-                      )}
+              {tab === 'personal' ? (
+                <div className="space-y-4">
+                  {loadingProfile ? (
+                    <div className="p-10 text-center text-sm font-medium text-slate-600">
+                      Cargando información...
                     </div>
-                  ))}
-                </div>
-
-                {isLite ? (
-                  <div className="mt-2 p-5 rounded-2xl bg-white/40 border border-white/30 space-y-4">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        Programas
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Se pueden seleccionar múltiples programas.
-                      </p>
+                  ) : loadError ? (
+                    <div className="rounded-2xl border border-rose-100 bg-rose-50 p-6 text-sm text-rose-700">
+                      {loadError}
                     </div>
+                  ) : null}
 
-                    {editing ? (
-                      <div className="space-y-3">
-                        <button
-                          type="button"
-                          onClick={() => setProgramPickerOpen((v) => !v)}
-                          className="glass-input w-full mt-1 py-3 text-sm flex items-center justify-between gap-3"
-                        >
-                          <span className="text-left truncate">
-                            {(draft?.programs ?? []).length > 0
-                              ? (draft?.programs ?? []).join(' • ')
-                              : 'Selecciona programas…'}
-                          </span>
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                            {(draft?.programs_id ?? []).length} sel.
-                          </span>
-                        </button>
-
-                        {(draft?.programs_id ?? []).length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {(draft?.programs_id ?? []).map((id) => {
-                              const name =
-                                programs.find((p) => p.id === id)?.name ?? `#${id}`;
-                              return (
-                                <button
-                                  key={id}
-                                  type="button"
-                                  onClick={() => toggleProgramId(id)}
-                                  className="px-3 py-1.5 rounded-xl border border-white/30 bg-white/50 text-xs font-bold text-slate-700 hover:bg-white/70 transition-colors"
-                                  title="Quitar"
-                                >
-                                  {name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-
-                        {programPickerOpen ? (
-                          <div className="rounded-2xl border border-white/30 bg-white/50 backdrop-blur-sm p-3 space-y-3">
-                            <input
-                              type="text"
-                              className="glass-input w-full py-3 text-sm"
-                              placeholder="Buscar programa…"
-                              value={programSearch}
-                              onChange={(e) => setProgramSearch(e.target.value)}
-                            />
-
-                            <div className="max-h-[260px] overflow-y-auto pr-1 custom-scrollbar space-y-1">
-                              {filteredPrograms.length === 0 ? (
-                                <div className="p-4 text-sm text-slate-500">
-                                  Sin resultados.
-                                </div>
-                              ) : (
-                                filteredPrograms.map((p) => {
-                                  const checked = (draft?.programs_id ?? []).includes(p.id);
-                                  return (
-                                    <button
-                                      key={p.id}
-                                      type="button"
-                                      onClick={() => toggleProgramId(p.id)}
-                                      className={cn(
-                                        'w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl border transition-colors text-left',
-                                        checked
-                                          ? 'bg-violet-50 border-violet-200'
-                                          : 'bg-white/40 border-white/30 hover:bg-white/60'
-                                      )}
-                                    >
-                                      <span className="text-sm font-semibold text-slate-800">
-                                        {p.name}
-                                      </span>
-                                      <span
-                                        className={cn(
-                                          'w-6 h-6 rounded-lg flex items-center justify-center border',
-                                          checked
-                                            ? 'bg-violet-600 border-violet-600 text-white'
-                                            : 'bg-transparent border-slate-200 text-transparent'
-                                        )}
-                                        aria-hidden="true"
-                                      >
-                                        <CheckIcon className="h-4 w-4" />
-                                      </span>
-                                    </button>
-                                  );
-                                })
-                              )}
-                            </div>
-
-                            <div className="flex justify-end">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setProgramPickerOpen(false);
-                                  setProgramSearch('');
-                                }}
-                                className="glass-button-secondary px-4 py-2 text-xs font-bold uppercase tracking-widest"
-                              >
-                                Listo
-                              </button>
-                            </div>
-                          </div>
-                        ) : null}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {visibleFields.length === 0 ? (
+                      <div className="text-sm text-slate-500">
+                        No hay información para mostrar.
                       </div>
                     ) : (
-                      <p className="text-sm font-semibold text-slate-800">
-                        {(effectivePerson.programs ?? []).length > 0
-                          ? (effectivePerson.programs ?? []).join(' • ')
-                          : effectivePerson.program
-                            ? effectivePerson.program
-                            : '—'}
-                      </p>
-                    )}
+                      visibleFields.map(({ key, value }) => (
+                        <div
+                          key={String(key)}
+                          className="rounded-2xl border border-white/30 bg-white/40 p-4"
+                        >
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            {fieldLabel(key)}
+                          </p>
 
-                    <div className="space-y-3">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        Línea académica
-                      </p>
-
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                        <div className="md:col-span-5">
-                          <p className="text-xs font-bold text-slate-700">
-                            (único valor por persona)
+                          <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+                            {key === 'status'
+                              ? statusLabel(value as any)
+                              : Array.isArray(value)
+                                ? value.join(' • ')
+                                : String(value)}
                           </p>
                         </div>
-                        <div className="md:col-span-7">
-                          {editing ? (
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : tab === 'news' ? (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+                    <div className="md:col-span-4">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Tipo
+                      </label>
+
+                      <select
+                        className="glass-input mt-1 w-full py-3 text-sm"
+                        value={newsType}
+                        onChange={(e) => setNewsType(e.target.value)}
+                      >
+                        {newsTypeOptions.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      {newsType === 'custom' ? (
+                        <input
+                          type="text"
+                          className="glass-input mt-2 w-full py-3 text-sm"
+                          placeholder="Escribe el nuevo tipo (ej: PERMISO)"
+                          value={customNewsType}
+                          onChange={(e) => setCustomNewsType(e.target.value)}
+                        />
+                      ) : null}
+                    </div>
+
+                    <div className="md:col-span-6">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Novedad
+                      </label>
+
+                      <input
+                        type="text"
+                        className="glass-input mt-1 w-full py-3 text-sm"
+                        placeholder="Describe la novedad…"
+                        value={newsText}
+                        onChange={(e) => setNewsText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleAddNews();
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex items-end md:col-span-2">
+                      <button
+                        type="button"
+                        onClick={handleAddNews}
+                        className="glass-button-primary w-full py-3 text-xs font-bold uppercase tracking-widest"
+                      >
+                        Agregar
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="max-h-[320px] space-y-3 overflow-y-auto pr-2 custom-scrollbar">
+                    {newsItems.length === 0 ? (
+                      <div className="rounded-2xl border border-white/30 bg-white/40 p-8 text-sm text-slate-500">
+                        Aún no hay novedades registradas (solo front por ahora).
+                      </div>
+                    ) : (
+                      newsItems.map((n) => (
+                        <div
+                          key={n.id}
+                          className="rounded-2xl border border-white/30 bg-white/40 p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-violet-600">
+                              {n.type}
+                            </span>
+
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                              {formatDateTime(new Date(n.createdAt))}
+                            </span>
+                          </div>
+
+                          <p className="mt-2 text-sm text-slate-700">
+                            {n.text}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="font-display text-sm font-bold text-slate-900">
+                        Administración
+                      </p>
+
+                      <p className="text-xs text-slate-500">
+                        Puedes editar la información personal excepto la cédula y
+                        el correo institucional.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Solo front: no cambia estado real aún.
+                        }}
+                        title="Inactivar usuario"
+                        className="rounded-xl border border-rose-200 bg-rose-50 p-2 text-rose-600 transition-colors hover:bg-rose-100"
+                        aria-label="Inactivar usuario"
+                      >
+                        <UserMinusIcon className="h-5 w-5" />
+                      </button>
+
+                      {!editing ? (
+                        <button
+                          type="button"
+                          onClick={beginEdit}
+                          className="glass-button-secondary flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-widest"
+                        >
+                          <PencilSquareIcon className="h-4 w-4" />
+                          Editar
+                        </button>
+                      ) : (
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={saveEdit}
+                            disabled={saving}
+                            className="glass-button-primary flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-widest disabled:pointer-events-none disabled:opacity-60"
+                          >
+                            <CheckIcon className="h-4 w-4" />
+                            {saving ? 'Guardando...' : 'Guardar'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={cancelEdit}
+                            className="glass-button-secondary px-4 py-2 text-xs font-bold uppercase tracking-widest"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {saveFeedback ? (
+                    <div
+                      className={cn(
+                        'rounded-2xl border px-4 py-3 text-sm font-semibold',
+                        saveFeedback.type === 'success'
+                          ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                          : 'border-rose-100 bg-rose-50 text-rose-700'
+                      )}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {saveFeedback.message}
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-white/30 bg-white/40 p-4">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Cédula (no editable)
+                      </p>
+
+                      <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+                        {effectivePerson.document || '—'}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/30 bg-white/40 p-4">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Correo institucional (no editable)
+                      </p>
+
+                      <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+                        {effectivePerson.edu_email || '—'}
+                      </p>
+                    </div>
+
+                    {(
+                      [
+                        { k: 'school', label: 'Escuela', type: 'school' as const },
+                        { k: 'phone', label: 'Teléfono', type: 'text' as const },
+                        {
+                          k: 'personal_email',
+                          label: 'Correo personal',
+                          type: 'text' as const,
+                        },
+                        { k: 'address', label: 'Dirección', type: 'text' as const },
+                      ] as const
+                    ).map(({ k, label, type }) => (
+                      <div
+                        key={k}
+                        className="rounded-2xl border border-white/30 bg-white/40 p-4"
+                      >
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          {label}
+                        </p>
+
+                        {editing ? (
+                          type === 'school' ? (
+                            <select
+                              className="glass-input mt-2 w-full py-3 text-sm"
+                              value={String(draft?.school_id ?? '')}
+                              onChange={(e) => {
+                                const sid = e.target.value
+                                  ? Number.parseInt(e.target.value, 10)
+                                  : null;
+
+                                const schoolName =
+                                  schools.find((s) => s.id === sid)?.name ?? '';
+
+                                setDraft((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        school_id: sid,
+                                        school: schoolName || prev.school,
+                                        programs_id: [],
+                                        programs: [],
+                                        program: '',
+                                      }
+                                    : prev
+                                );
+
+                                if (sid != null && !Number.isNaN(sid)) {
+                                  getCatalogPrograms({ school_id: sid })
+                                    .then(setPrograms)
+                                    .catch(() => setPrograms([]));
+                                } else {
+                                  setPrograms([]);
+                                }
+                              }}
+                            >
+                              <option value="">Selecciona…</option>
+
+                              {schools.map((s) => (
+                                <option key={s.id} value={String(s.id)}>
+                                  {s.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
                             <input
                               type="text"
-                              className="glass-input w-full py-3 text-sm"
-                              placeholder="Área académica…"
-                              value={draft?.academicLine ?? ''}
+                              className="glass-input mt-2 w-full py-3 text-sm"
+                              value={String((draft?.[k] ?? '') as any)}
                               onChange={(e) =>
                                 setDraft((prev) =>
-                                  prev ? { ...prev, academicLine: e.target.value } : prev
+                                  prev ? { ...prev, [k]: e.target.value } : prev
                                 )
                               }
                             />
-                          ) : (
-                            <p className="text-sm text-slate-700">
-                              {effectivePerson.academicLine || '—'}
+                          )
+                        ) : (
+                          <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+                            {String(effectivePerson[k] ?? '—')}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {isLite ? (
+                    <div className="mt-2 space-y-4 rounded-2xl border border-white/30 bg-white/40 p-4 sm:p-5">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Programas
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          Se pueden seleccionar múltiples programas.
+                        </p>
+                      </div>
+
+                      {editing ? (
+                        <div className="space-y-3">
+                          <button
+                            type="button"
+                            onClick={() => setProgramPickerOpen((v) => !v)}
+                            className="glass-input mt-1 flex w-full items-center justify-between gap-3 py-3 text-sm"
+                          >
+                            <span className="min-w-0 truncate text-left">
+                              {(draft?.programs ?? []).length > 0
+                                ? (draft?.programs ?? []).join(' • ')
+                                : 'Selecciona programas…'}
+                            </span>
+
+                            <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                              {(draft?.programs_id ?? []).length} sel.
+                            </span>
+                          </button>
+
+                          {(draft?.programs_id ?? []).length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {(draft?.programs_id ?? []).map((id) => {
+                                const name =
+                                  programs.find((p) => p.id === id)?.name ??
+                                  `#${id}`;
+
+                                return (
+                                  <button
+                                    key={id}
+                                    type="button"
+                                    onClick={() => toggleProgramId(id)}
+                                    className="max-w-full truncate rounded-xl border border-white/30 bg-white/50 px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-white/70"
+                                    title="Quitar"
+                                  >
+                                    {name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+
+                          {programPickerOpen ? (
+                            <div className="space-y-3 rounded-2xl border border-white/30 bg-white/50 p-3 backdrop-blur-sm">
+                              <input
+                                type="text"
+                                className="glass-input w-full py-3 text-sm"
+                                placeholder="Buscar programa…"
+                                value={programSearch}
+                                onChange={(e) =>
+                                  setProgramSearch(e.target.value)
+                                }
+                              />
+
+                              <div className="max-h-[260px] space-y-1 overflow-y-auto pr-1 custom-scrollbar">
+                                {filteredPrograms.length === 0 ? (
+                                  <div className="p-4 text-sm text-slate-500">
+                                    Sin resultados.
+                                  </div>
+                                ) : (
+                                  filteredPrograms.map((p) => {
+                                    const checked = (
+                                      draft?.programs_id ?? []
+                                    ).includes(p.id);
+
+                                    return (
+                                      <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => toggleProgramId(p.id)}
+                                        className={cn(
+                                          'flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition-colors',
+                                          checked
+                                            ? 'border-violet-200 bg-violet-50'
+                                            : 'border-white/30 bg-white/40 hover:bg-white/60'
+                                        )}
+                                      >
+                                        <span className="text-sm font-semibold text-slate-800">
+                                          {p.name}
+                                        </span>
+
+                                        <span
+                                          className={cn(
+                                            'flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border',
+                                            checked
+                                              ? 'border-violet-600 bg-violet-600 text-white'
+                                              : 'border-slate-200 bg-transparent text-transparent'
+                                          )}
+                                          aria-hidden="true"
+                                        >
+                                          <CheckIcon className="h-4 w-4" />
+                                        </span>
+                                      </button>
+                                    );
+                                  })
+                                )}
+                              </div>
+
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setProgramPickerOpen(false);
+                                    setProgramSearch('');
+                                  }}
+                                  className="glass-button-secondary px-4 py-2 text-xs font-bold uppercase tracking-widest"
+                                >
+                                  Listo
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="break-words text-sm font-semibold text-slate-800">
+                          {(effectivePerson.programs ?? []).length > 0
+                            ? (effectivePerson.programs ?? []).join(' • ')
+                            : effectivePerson.program
+                              ? effectivePerson.program
+                              : '—'}
+                        </p>
+                      )}
+
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Línea académica
+                        </p>
+
+                        <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-12">
+                          <div className="md:col-span-5">
+                            <p className="text-xs font-bold text-slate-700">
+                              (único valor por persona)
                             </p>
-                          )}
+                          </div>
+
+                          <div className="md:col-span-7">
+                            {editing ? (
+                              <input
+                                type="text"
+                                className="glass-input w-full py-3 text-sm"
+                                placeholder="Área académica…"
+                                value={draft?.academicLine ?? ''}
+                                onChange={(e) =>
+                                  setDraft((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          academicLine: e.target.value,
+                                        }
+                                      : prev
+                                  )
+                                }
+                              />
+                            ) : (
+                              <p className="break-words text-sm text-slate-700">
+                                {effectivePerson.academicLine || '—'}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ) : null}
-              </div>
-            )}
+                  ) : null}
+                </div>
+              )}
 
-            <div className="mt-8 flex justify-end">
-              <button
-                onClick={onClose}
-                className="glass-button-primary px-8 py-3 text-xs font-bold uppercase tracking-widest"
-              >
-                Cerrar
-              </button>
-            </div>
-          </motion.div>
+              <div className="mt-8 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="glass-button-primary px-8 py-3 text-xs font-bold uppercase tracking-widest"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </motion.div>
+          </div>
         </div>
       ) : null}
     </AnimatePresence>
   );
 };
-
