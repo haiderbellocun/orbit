@@ -30,6 +30,7 @@ import {
 import {
   createOrUpdatePerson,
   getPersonByDocument,
+  upsertPersonProgramAssignment,
 } from "./personBulkService";
 import {
   upsertAcademicLoad,
@@ -86,6 +87,8 @@ export class ImportOrchestrator {
     skippedRows: 0,
     createdPersons: 0,
     updatedPersons: 0,
+    createdProgramAssignments: 0,
+    updatedProgramAssignments: 0,
     createdContractTypes: 0,
     createdRoles: 0,
     createdCities: 0,
@@ -303,6 +306,21 @@ export class ImportOrchestrator {
         this.counters.updatedPersons++;
       } else {
         this.counters.createdPersons++;
+      }
+
+      // Step 7: Upsert person_program_assignments so a single person can
+      // accumulate multiple program IDs across import rows. The current row's
+      // program is appended (deduplicated) and academic_line is preserved
+      // when the incoming value is null.
+      const assignmentResult = await upsertPersonProgramAssignment(this.pool, {
+        personId: personResult.id,
+        programId: programResult.id,
+        academicLine: record.academicLine ?? null,
+      });
+      if (assignmentResult.isNew) {
+        this.counters.createdProgramAssignments++;
+      } else {
+        this.counters.updatedProgramAssignments++;
       }
     } catch (error) {
       const detail = translateImportErrorDetail(
@@ -669,6 +687,7 @@ export class ImportOrchestrator {
           cities: this.counters.createdCities,
           schools: this.counters.createdSchools,
           programs: this.counters.createdPrograms,
+          programAssignments: this.counters.createdProgramAssignments,
           subjects: this.counters.createdSubjects,
           classGroups: this.counters.createdClassGroups,
           classPreparations: this.counters.createdClassPreparations,
@@ -678,6 +697,7 @@ export class ImportOrchestrator {
         },
         updated: {
           persons: this.counters.updatedPersons,
+          programAssignments: this.counters.updatedProgramAssignments,
         },
         errors: this.errors.map((e) => ({
           row: e.row,
@@ -711,6 +731,7 @@ export class ImportOrchestrator {
           cities: 0,
           schools: 0,
           programs: 0,
+          programAssignments: 0,
           subjects: 0,
           classGroups: 0,
           classPreparations: 0,
@@ -720,6 +741,7 @@ export class ImportOrchestrator {
         },
         updated: {
           persons: 0,
+          programAssignments: 0,
         },
         errors: [
           {

@@ -5,7 +5,7 @@ import {
   EnvelopeIcon, 
   PhoneIcon, 
   RectangleGroupIcon, 
-  PlusIcon, 
+  ArrowPathIcon, 
   MagnifyingGlassIcon, 
   FunnelIcon,
   ChevronRightIcon,
@@ -15,6 +15,10 @@ import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
 import { Coordinator, View, Teacher, Vacancy } from '@/src/types';
 import { getCoordinators, getLites } from '@/src/lib/api';
+import {
+  PersonProfile,
+  PersonProfileModal,
+} from '@/src/components/common/PersonProfileModal';
 
 function mapCoordinatorFromApi(row: Record<string, unknown>): Coordinator {
   const st = String(row.status ?? 'active');
@@ -35,6 +39,7 @@ type LiteRow = {
   id: string;
   name: string;
   program: string;
+  programs: string[];
   school: string;
   academicLine: string;
   coordinatorName: string;
@@ -43,10 +48,17 @@ type LiteRow = {
 
 function mapLiteFromApi(row: Record<string, unknown>): LiteRow {
   const st = String(row.status ?? 'inactive');
+  const programsRaw = row.programs;
+  const programs = Array.isArray(programsRaw)
+    ? programsRaw
+        .map((p) => String(p ?? '').trim())
+        .filter((p) => p.length > 0)
+    : [];
   return {
     id: String(row.id ?? ''),
     name: String(row.name ?? ''),
     program: String(row.program ?? ''),
+    programs,
     school: String(row.school ?? ''),
     academicLine: String(row.academic_line ?? ''),
     coordinatorName: String(row.coordinator_name ?? ''),
@@ -76,6 +88,7 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
   const [selectedCoordinator, setSelectedCoordinator] = useState<Coordinator | null>(null);
   const [selectedLites, setSelectedLites] = useState<LiteRow[]>([]);
   const [loadingLites, setLoadingLites] = useState(false);
+  const [profilePerson, setProfilePerson] = useState<PersonProfile | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,8 +200,8 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
           </div>
         </div>
         <button className="glass-button-primary flex items-center gap-2 px-5 py-3 h-fit">
-          <PlusIcon className="h-5 w-5" />
-          <span>Nuevo Coordinador</span>
+          <ArrowPathIcon className="h-5 w-5" />
+          <span>Traslado Lite</span>
         </button>
       </div>
 
@@ -210,9 +223,26 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
               )}
             >
               <div className="relative mb-4">
-                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-slate-300 group-hover:from-violet-50 group-hover:to-fuchsia-50 group-hover:text-violet-500 transition-all shadow-inner">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setProfilePerson({
+                      id: c.id,
+                      name: c.name,
+                      document: c.document,
+                      email: c.email,
+                      phone: c.phone,
+                      campus: c.campus,
+                      school: c.school,
+                      status: c.status,
+                    })
+                  }
+                  className="w-20 h-20 rounded-3xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-slate-300 group-hover:from-violet-50 group-hover:to-fuchsia-50 group-hover:text-violet-500 transition-all shadow-inner focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                  title="Ver información personal"
+                  aria-label="Ver información personal"
+                >
                   <UserCircleIcon className="h-12 w-12" />
-                </div>
+                </button>
                 <div className={cn(
                   "absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-4 border-white shadow-sm",
                   c.status === 'active' ? "bg-emerald-500" : "bg-slate-300"
@@ -372,8 +402,22 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
                       </div>
                       <div>
                         <h4 className="text-sm font-bold text-slate-900">{lite.name}</h4>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest line-clamp-2">
-                          {[lite.program, lite.school].filter(Boolean).join(' • ') || '—'}
+                        <p
+                          className="text-[10px] font-bold text-slate-400 uppercase tracking-widest line-clamp-2"
+                          title={
+                            lite.programs.length > 1
+                              ? lite.programs.join(' • ')
+                              : undefined
+                          }
+                        >
+                          {[
+                            lite.programs.length > 1
+                              ? `${lite.programs.length} programas`
+                              : lite.program || lite.programs[0],
+                            lite.school,
+                          ]
+                            .filter(Boolean)
+                            .join(' • ') || '—'}
                         </p>
                         {lite.academicLine ? (
                           <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">
@@ -418,6 +462,12 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      <PersonProfileModal
+        open={!!profilePerson}
+        person={profilePerson}
+        onClose={() => setProfilePerson(null)}
+      />
     </div>
   );
 };

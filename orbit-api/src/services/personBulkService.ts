@@ -16,6 +16,19 @@ export interface PersonData {
   cityId: number;
   roleId: number;
   hierarchyId?: number;
+  academicLine?: string | null;
+}
+
+export interface PersonProgramAssignmentData {
+  personId: number;
+  programId: number;
+  academicLine?: string | null;
+}
+
+export interface PersonProgramAssignmentResult {
+  id: number;
+  isNew: boolean;
+  programsCount: number;
 }
 
 /**
@@ -144,6 +157,63 @@ export async function getPersonsCreatedSince(
   } catch (error) {
     throw new Error(
       `Error in getPersonsCreatedSince: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+/**
+ * Inserts or updates the program assignments row for a person.
+ * - 1 row per person (UNIQUE person_id).
+ * - programs_id accumulates program IDs across multiple import rows for the
+ *   same person, deduplicated.
+ * - academic_line is preserved when the incoming value is NULL (it never
+ *   overwrites a previously set line with NULL).
+ *
+ * Returns the row id, whether the row was newly inserted, and the resulting
+ * cardinality of programs_id (useful for telemetry).
+ */
+export async function upsertPersonProgramAssignment(
+  pool: Pool,
+  data: PersonProgramAssignmentData
+): Promise<PersonProgramAssignmentResult> {
+  const { personId, programId, academicLine } = data;
+
+  try {
+    const query = `
+      INSERT INTO person_program_assignments (person_id, programs_id, academic_line)
+      VALUES ($1, ARRAY[$2]::INTEGER[], $3)
+      ON CONFLICT (person_id) DO UPDATE SET
+        programs_id = (
+          SELECT ARRAY(
+            SELECT DISTINCT unnest(person_program_assignments.programs_id || EXCLUDED.programs_id)
+          )
+        ),
+        academic_line = COALESCE(EXCLUDED.academic_line, person_program_assignments.academic_line),
+        updated_at = NOW()
+      RETURNING id, (xmax = 0) AS is_new, array_length(programs_id, 1) AS programs_count
+    `;
+
+    const result = await pool.query(query, [
+      personId,
+      programId,
+      academicLine ?? null,
+    ]);
+
+    if (result.rows.length === 0) {
+      throw new Error(
+        "No row returned from person_program_assignments upsert"
+      );
+    }
+
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      isNew: Boolean(row.is_new),
+      programsCount: Number(row.programs_count ?? 0),
+    };
+  } catch (error) {
+    throw new Error(
+      `Error in upsertPersonProgramAssignment: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }

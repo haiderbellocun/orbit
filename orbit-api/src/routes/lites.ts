@@ -115,7 +115,8 @@ router.get("/lites", async (req: Request, res: Response) => {
           COALESCE(NULLIF(p.edu_email, ''), NULLIF(p.email, '')) AS email,
           pr.name AS program,
           s.name AS school,
-          NULL::text AS academic_line,
+          ppa.academic_line AS academic_line,
+          COALESCE(progs.programs, ARRAY[]::text[]) AS programs,
           crd.coordinator_name,
           crd.coordinator_document,
           'active'::text AS status,
@@ -123,6 +124,12 @@ router.get("/lites", async (req: Request, res: Response) => {
         FROM ${prefix}person p
         LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
         LEFT JOIN ${prefix}school s ON s.id = p.school_id
+        LEFT JOIN ${prefix}person_program_assignments ppa ON ppa.person_id = p.id
+        LEFT JOIN LATERAL (
+          SELECT array_agg(pr2.name ORDER BY pr2.name) AS programs
+          FROM ${prefix}program pr2
+          WHERE pr2.id = ANY(ppa.programs_id)
+        ) progs ON TRUE
         LEFT JOIN LATERAL (
           SELECT
             pc.document AS coordinator_document,
@@ -236,13 +243,20 @@ router.get("/lites/:id", async (req: Request, res: Response) => {
            COALESCE(NULLIF(p.edu_email, ''), NULLIF(p.email, '')) AS email,
            pr.name AS program,
            s.name AS school,
-           NULL::text AS academic_line,
+           ppa.academic_line AS academic_line,
+           COALESCE(progs.programs, ARRAY[]::text[]) AS programs,
            crd.coordinator_name,
            crd.coordinator_document,
            'active'::text AS status
          FROM ${prefix}person p
          LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
          LEFT JOIN ${prefix}school s ON s.id = p.school_id
+         LEFT JOIN ${prefix}person_program_assignments ppa ON ppa.person_id = p.id
+         LEFT JOIN LATERAL (
+           SELECT array_agg(pr2.name ORDER BY pr2.name) AS programs
+           FROM ${prefix}program pr2
+           WHERE pr2.id = ANY(ppa.programs_id)
+         ) progs ON TRUE
          LEFT JOIN LATERAL (
            SELECT
              pc.document AS coordinator_document,
