@@ -149,10 +149,10 @@ export const LitesView: React.FC<LitesViewProps> = ({
             </button>
           </div>
         </div>
-        <button className="glass-button-primary flex items-center gap-2 px-5 py-3 h-fit">
+        {/* <button className="glass-button-primary flex items-center gap-2 px-5 py-3 h-fit">
           <UserPlusIcon className="h-5 w-5" />
           <span>Nuevo Lite</span>
-        </button>
+        </button> */}
       </div>
 
       {loading ? (
