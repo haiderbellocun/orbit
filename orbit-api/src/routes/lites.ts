@@ -242,10 +242,15 @@ router.get("/lites/:id", async (req: Request, res: Response) => {
         `SELECT
            p.id,
            p.full_name AS name,
-           COALESCE(NULLIF(p.edu_email, ''), NULLIF(p.email, '')) AS email,
+           p.edu_email AS edu_email,
+           p.email AS personal_email,
+           p.phone AS phone,
+           p.address AS address,
            pr.name AS program,
+           p.school_id AS school_id,
            s.name AS school,
            ppa.academic_line AS academic_line,
+           COALESCE(ppa.programs_id, ARRAY[]::int[]) AS programs_id,
            COALESCE(progs.programs, ARRAY[]::text[]) AS programs,
            crd.coordinator_name,
            crd.coordinator_document,
@@ -299,3 +304,157 @@ router.get("/lites/:id", async (req: Request, res: Response) => {
 });
 
 export default router;
+
+router.patch("/lites/:id", async (req: Request, res: Response) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const schoolId =
+    typeof body.school_id === "number"
+      ? body.school_id
+      : typeof body.school_id === "string"
+        ? Number.parseInt(body.school_id, 10)
+        : null;
+
+  const phone = typeof body.phone === "string" ? body.phone.trim() : null;
+  const personalEmail =
+    typeof body.personal_email === "string" ? body.personal_email.trim() : null;
+  const address = typeof body.address === "string" ? body.address.trim() : null;
+  const academicLine =
+    typeof body.academic_line === "string" ? body.academic_line.trim() : null;
+
+  const programsIdRaw = (body.programs_id ?? null) as unknown;
+  const programsId =
+    Array.isArray(programsIdRaw) && programsIdRaw.length > 0
+      ? programsIdRaw
+          .map((x) =>
+            typeof x === "number"
+              ? x
+              : typeof x === "string"
+                ? Number.parseInt(x, 10)
+                : NaN
+          )
+          .filter((n) => Number.isFinite(n)) as number[]
+      : [];
+
+  if (schoolId != null && Number.isNaN(Number(schoolId))) {
+    res.status(400).json({ error: "Invalid school_id" });
+    return;
+  }
+  if (programsId.some((n) => !Number.isFinite(n))) {
+    res.status(400).json({ error: "Invalid programs_id" });
+    return;
+  }
+
+  const coreMode = await resolveCoreSchemaMode();
+  if (coreMode == null) {
+    res.status(501).json({ error: "CORE schema not available" });
+    return;
+  }
+
+  const prefix = coreMode === "core" ? "core." : "";
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 1) Update base person fields (except edu_email/document).
+    const primaryProgramId = programsId.length > 0 ? programsId[0] : null;
+    const updatePerson = await client.query(
+      `UPDATE ${prefix}person
+       SET
+         school_id = COALESCE($2, school_id),
+         phone = COALESCE($3, phone),
+         email = COALESCE($4, email),
+         address = COALESCE($5, address),
+         program_id = COALESCE($6, program_id),
+         updated_at = NOW()
+       WHERE id = $1 AND role_id = ${LITE_ROLE_ID}
+       RETURNING id`,
+      [id, schoolId, phone, personalEmail, address, primaryProgramId]
+    );
+
+    if (updatePerson.rows.length === 0) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    // 2) Upsert program assignments (1 row per person)
+    await client.query(
+      `INSERT INTO ${prefix}person_program_assignments (person_id, programs_id, academic_line)
+       VALUES ($1, $2::INTEGER[], $3)
+       ON CONFLICT (person_id) DO UPDATE SET
+         programs_id = EXCLUDED.programs_id,
+         academic_line = EXCLUDED.academic_line,
+         updated_at = NOW()`,
+      [id, programsId, academicLine]
+    );
+
+    await client.query("COMMIT");
+
+    // 3) Return refreshed profile shape (same as GET /lites/:id)
+    const coordJoin = coordinatorMatchSql("ca", "ch", "cr");
+    const refreshed = await pool.query(
+      `SELECT
+         p.id,
+         p.full_name AS name,
+         p.edu_email AS edu_email,
+         p.email AS personal_email,
+         p.phone AS phone,
+         p.address AS address,
+         pr.name AS program,
+         p.school_id AS school_id,
+         s.name AS school,
+         ppa.academic_line AS academic_line,
+         COALESCE(ppa.programs_id, ARRAY[]::int[]) AS programs_id,
+         COALESCE(progs.programs, ARRAY[]::text[]) AS programs,
+         crd.coordinator_name,
+         crd.coordinator_document,
+         'active'::text AS status
+       FROM ${prefix}person p
+       LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
+       LEFT JOIN ${prefix}school s ON s.id = p.school_id
+       LEFT JOIN ${prefix}person_program_assignments ppa ON ppa.person_id = p.id
+       LEFT JOIN LATERAL (
+         SELECT array_agg(pr2.name ORDER BY pr2.name) AS programs
+         FROM ${prefix}program pr2
+         WHERE pr2.id = ANY(ppa.programs_id)
+       ) progs ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT
+           pc.document AS coordinator_document,
+           pc.full_name AS coordinator_name
+         FROM ${prefix}person pc
+         LEFT JOIN ${prefix}school sco ON sco.id = pc.school_id
+         LEFT JOIN ${prefix}area ca ON ca.id = COALESCE(pc.area_id, sco.area_id)
+         LEFT JOIN ${prefix}hierarchy ch ON ch.id = pc.hierarchy_id
+         LEFT JOIN ${prefix}role cr ON cr.id = pc.role_id
+         WHERE pc.school_id IS NOT NULL
+           AND p.school_id IS NOT NULL
+           AND pc.school_id = p.school_id
+           AND ${coordJoin}
+         ORDER BY pc.full_name ASC NULLS LAST
+         LIMIT 1
+       ) crd ON TRUE
+       WHERE p.id = $1 AND p.role_id = ${LITE_ROLE_ID}
+       LIMIT 1`,
+      [id]
+    );
+
+    res.json(refreshed.rows[0] ?? null);
+  } catch (err) {
+    console.error("PATCH /lites/:id failed:", err);
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // ignore
+    }
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
+  }
+});

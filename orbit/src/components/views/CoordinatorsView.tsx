@@ -231,11 +231,7 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
                       name: c.name,
                       document: c.document,
                       role: 'coordinator',
-                      edu_email: c.email,
-                      phone: c.phone,
-                      campus: c.campus,
-                      school: c.school,
-                      status: c.status,
+                      // La info completa se carga al abrir el modal (GET /coordinators/:id)
                     })
                   }
                   className="w-20 h-20 rounded-3xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-slate-300 group-hover:from-violet-50 group-hover:to-fuchsia-50 group-hover:text-violet-500 transition-all shadow-inner focus:outline-none focus:ring-2 focus:ring-violet-500/40"
