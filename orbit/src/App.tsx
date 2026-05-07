@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sidebar } from './components/layout/Sidebar';
 import { LoginView } from './components/views/LoginView';
@@ -48,12 +48,23 @@ export default function App() {
     setView('vacancy-detail');
   };
 
+  const handleVacancySaved = useCallback((v: Vacancy) => {
+    setSelectedVacancy((prev) =>
+      prev?.id === v.id ? { ...prev, ...v } : prev
+    );
+  }, []);
+
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return null;
     const query = searchQuery.toLowerCase();
     
     const teachers = MOCK_TEACHERS.filter(t => t.name.toLowerCase().includes(query));
-    const vacancies = MOCK_VACANCIES.filter(v => v.title.toLowerCase().includes(query));
+    const vacancies = MOCK_VACANCIES.filter(v =>
+      v.positionName.toLowerCase().includes(query) ||
+      (v.programName ?? '').toLowerCase().includes(query) ||
+      (v.areaName ?? '').toLowerCase().includes(query) ||
+      v.id.toLowerCase().includes(query)
+    );
     const coordinators = MOCK_COORDINATORS.filter(c => c.name.toLowerCase().includes(query));
     
     return { teachers, vacancies, coordinators };
@@ -74,12 +85,22 @@ export default function App() {
           <HomeView setView={setView} {...commonProps} />
         );
       case 'vacancies':
-        return <VacanciesView onSelectVacancy={handleSelectVacancy} {...commonProps} />;
+        return (
+          <VacanciesView
+            onSelectVacancy={handleSelectVacancy}
+            onVacancySaved={handleVacancySaved}
+            {...commonProps}
+          />
+        );
       case 'vacancy-detail':
         return selectedVacancy ? (
-          <VacancyDetailView vacancy={selectedVacancy} setView={setView} {...commonProps} />
+          <VacancyDetailView summary={selectedVacancy} setView={setView} {...commonProps} />
         ) : (
-          <VacanciesView onSelectVacancy={handleSelectVacancy} {...commonProps} />
+          <VacanciesView
+            onSelectVacancy={handleSelectVacancy}
+            onVacancySaved={handleVacancySaved}
+            {...commonProps}
+          />
         );
       case 'reinstatements':
         return <ReinstatementsView {...commonProps} />;
