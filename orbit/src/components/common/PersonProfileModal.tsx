@@ -176,6 +176,12 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   const [programs, setPrograms] = useState<CatalogProgram[]>([]);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<
+    | { type: 'success' | 'error'; message: string }
+    | null
+  >(null);
+  const [programPickerOpen, setProgramPickerOpen] = useState(false);
+  const [programSearch, setProgramSearch] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedPerson, setLoadedPerson] = useState<PersonProfile | null>(null);
 
@@ -252,6 +258,12 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     };
   }, [open, person?.id, person?.role]);
 
+  useEffect(() => {
+    if (!saveFeedback) return;
+    const tid = window.setTimeout(() => setSaveFeedback(null), 3500);
+    return () => window.clearTimeout(tid);
+  }, [saveFeedback]);
+
   const [newsTypeOptions, setNewsTypeOptions] = useState<NewsTypeOption[]>([
     { id: 'license', label: 'LICENCIA' },
     { id: 'sanction', label: 'SANCION' },
@@ -315,6 +327,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     const idNum = Number.parseInt(String(effectivePerson.id), 10);
     if (Number.isNaN(idNum)) return;
     setSaving(true);
+    setSaveFeedback(null);
     try {
       if ((effectivePerson.role ?? 'lite') === 'lite') {
         const updated = (await updateLiteProfile(idNum, {
@@ -343,8 +356,16 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
       }
       setEditing(false);
       setDraft(null);
+      setSaveFeedback({ type: 'success', message: 'Actualización completada.' });
     } catch (e) {
       console.error(e);
+      setSaveFeedback({
+        type: 'error',
+        message:
+          e instanceof Error
+            ? e.message
+            : 'No se pudo completar la actualización.',
+      });
     } finally {
       setSaving(false);
     }
@@ -353,6 +374,31 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   const isLite = (effectivePerson?.role ?? 'lite') === 'lite';
   const isCoordinator =
     (effectivePerson?.role ?? 'coordinator') === 'coordinator';
+
+  const filteredPrograms = useMemo(() => {
+    const q = programSearch.trim().toLowerCase();
+    if (!q) return programs;
+    return programs.filter((p) => p.name.toLowerCase().includes(q));
+  }, [programSearch, programs]);
+
+  const toggleProgramId = (programId: number) => {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const current = prev.programs_id ?? [];
+      const nextIds = current.includes(programId)
+        ? current.filter((x) => x !== programId)
+        : [...current, programId];
+      const nextNames = nextIds
+        .map((id) => programs.find((p) => p.id === id)?.name)
+        .filter(Boolean) as string[];
+      return {
+        ...prev,
+        programs_id: nextIds,
+        programs: nextNames,
+        program: nextNames[0] ?? prev.program,
+      };
+    });
+  };
 
   const draftAssignments = (draft?.person_program_assignments ?? []).filter(
     (a) => a.program
@@ -659,6 +705,21 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                   </div>
                 </div>
 
+                {saveFeedback ? (
+                  <div
+                    className={cn(
+                      'px-4 py-3 rounded-2xl border text-sm font-semibold',
+                      saveFeedback.type === 'success'
+                        ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                        : 'bg-rose-50 border-rose-100 text-rose-700'
+                    )}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {saveFeedback.message}
+                  </div>
+                ) : null}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="p-4 rounded-2xl bg-white/40 border border-white/30">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
@@ -753,35 +814,107 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                     </div>
 
                     {editing ? (
-                      <select
-                        multiple
-                        className="glass-input w-full mt-1 py-3 text-sm min-h-[8.5rem]"
-                        value={(draft?.programs_id ?? []).map(String)}
-                        onChange={(e) => {
-                          const selectedIds = Array.from(e.target.selectedOptions)
-                            .map((o) => Number.parseInt(o.value, 10))
-                            .filter((n) => Number.isFinite(n));
-                          const selectedNames = selectedIds
-                            .map((id) => programs.find((p) => p.id === id)?.name)
-                            .filter(Boolean) as string[];
-                          setDraft((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  programs_id: selectedIds,
-                                  programs: selectedNames,
-                                  program: selectedNames[0] ?? prev.program,
-                                }
-                              : prev
-                          );
-                        }}
-                      >
-                        {programs.map((p) => (
-                          <option key={p.id} value={String(p.id)}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="space-y-3">
+                        <button
+                          type="button"
+                          onClick={() => setProgramPickerOpen((v) => !v)}
+                          className="glass-input w-full mt-1 py-3 text-sm flex items-center justify-between gap-3"
+                        >
+                          <span className="text-left truncate">
+                            {(draft?.programs ?? []).length > 0
+                              ? (draft?.programs ?? []).join(' • ')
+                              : 'Selecciona programas…'}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            {(draft?.programs_id ?? []).length} sel.
+                          </span>
+                        </button>
+
+                        {(draft?.programs_id ?? []).length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {(draft?.programs_id ?? []).map((id) => {
+                              const name =
+                                programs.find((p) => p.id === id)?.name ?? `#${id}`;
+                              return (
+                                <button
+                                  key={id}
+                                  type="button"
+                                  onClick={() => toggleProgramId(id)}
+                                  className="px-3 py-1.5 rounded-xl border border-white/30 bg-white/50 text-xs font-bold text-slate-700 hover:bg-white/70 transition-colors"
+                                  title="Quitar"
+                                >
+                                  {name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+
+                        {programPickerOpen ? (
+                          <div className="rounded-2xl border border-white/30 bg-white/50 backdrop-blur-sm p-3 space-y-3">
+                            <input
+                              type="text"
+                              className="glass-input w-full py-3 text-sm"
+                              placeholder="Buscar programa…"
+                              value={programSearch}
+                              onChange={(e) => setProgramSearch(e.target.value)}
+                            />
+
+                            <div className="max-h-[260px] overflow-y-auto pr-1 custom-scrollbar space-y-1">
+                              {filteredPrograms.length === 0 ? (
+                                <div className="p-4 text-sm text-slate-500">
+                                  Sin resultados.
+                                </div>
+                              ) : (
+                                filteredPrograms.map((p) => {
+                                  const checked = (draft?.programs_id ?? []).includes(p.id);
+                                  return (
+                                    <button
+                                      key={p.id}
+                                      type="button"
+                                      onClick={() => toggleProgramId(p.id)}
+                                      className={cn(
+                                        'w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl border transition-colors text-left',
+                                        checked
+                                          ? 'bg-violet-50 border-violet-200'
+                                          : 'bg-white/40 border-white/30 hover:bg-white/60'
+                                      )}
+                                    >
+                                      <span className="text-sm font-semibold text-slate-800">
+                                        {p.name}
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          'w-6 h-6 rounded-lg flex items-center justify-center border',
+                                          checked
+                                            ? 'bg-violet-600 border-violet-600 text-white'
+                                            : 'bg-transparent border-slate-200 text-transparent'
+                                        )}
+                                        aria-hidden="true"
+                                      >
+                                        <CheckIcon className="h-4 w-4" />
+                                      </span>
+                                    </button>
+                                  );
+                                })
+                              )}
+                            </div>
+
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setProgramPickerOpen(false);
+                                  setProgramSearch('');
+                                }}
+                                className="glass-button-secondary px-4 py-2 text-xs font-bold uppercase tracking-widest"
+                              >
+                                Listo
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
                     ) : (
                       <p className="text-sm font-semibold text-slate-800">
                         {(effectivePerson.programs ?? []).length > 0
