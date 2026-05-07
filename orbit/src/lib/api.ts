@@ -281,6 +281,23 @@ export async function getCoordinator(id: number): Promise<unknown> {
   return handleJson(response);
 }
 
+export async function updateCoordinatorProfile(
+  id: number,
+  data: {
+    school_id?: number | null;
+    phone?: string | null;
+    personal_email?: string | null;
+    address?: string | null;
+  }
+): Promise<unknown> {
+  const response = await fetch(`${BASE_URL}/coordinators/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(data),
+  });
+  return handleJson(response);
+}
+
 // Reinstatements
 export async function getReinstatements(params?: {
   status?: string;
@@ -327,6 +344,51 @@ export async function getLites(params?: {
   }
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
+  const response = await fetch(url.toString(), { headers: jsonHeaders });
+  return handleJson(response);
+}
+
+export async function getLite(id: number): Promise<unknown> {
+  const response = await fetch(`${BASE_URL}/lites/${id}`, {
+    headers: jsonHeaders,
+  });
+  return handleJson(response);
+}
+
+export async function updateLiteProfile(
+  id: number,
+  data: {
+    school_id?: number | null;
+    phone?: string | null;
+    personal_email?: string | null;
+    address?: string | null;
+    programs_id?: number[];
+    academic_line?: string | null;
+  }
+): Promise<unknown> {
+  const response = await fetch(`${BASE_URL}/lites/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(data),
+  });
+  return handleJson(response);
+}
+
+export type CatalogSchool = { id: number; name: string };
+export type CatalogProgram = { id: number; name: string; school_id: number | null };
+
+export async function getCatalogSchools(): Promise<CatalogSchool[]> {
+  const response = await fetch(`${BASE_URL}/catalog/schools`, {
+    headers: jsonHeaders,
+  });
+  return handleJson(response);
+}
+
+export async function getCatalogPrograms(params?: {
+  school_id?: number;
+}): Promise<CatalogProgram[]> {
+  const url = new URL(`${BASE_URL}/catalog/programs`);
+  if (params?.school_id != null) url.searchParams.set("school_id", String(params.school_id));
   const response = await fetch(url.toString(), { headers: jsonHeaders });
   return handleJson(response);
 }

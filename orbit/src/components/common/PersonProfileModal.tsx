@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CheckIcon,
@@ -8,6 +8,16 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
+import {
+  getCatalogPrograms,
+  getCatalogSchools,
+  getCoordinator,
+  getLite,
+  updateCoordinatorProfile,
+  updateLiteProfile,
+  type CatalogProgram,
+  type CatalogSchool,
+} from '@/src/lib/api';
 
 export type PersonProfile = {
   id: string;
@@ -20,9 +30,11 @@ export type PersonProfile = {
   address?: string;
   campus?: string;
   school?: string;
+  school_id?: number | null;
   programs?: string[]; // LITE: selección múltiple
   program?: string; // legacy / fallback para cards
   academicLine?: string; // legacy / fallback para cards
+  programs_id?: number[];
   person_program_assignments?: Array<{
     program: string;
     academic_line?: string;
@@ -95,6 +107,62 @@ function statusLabel(st?: PersonProfile['status']): string {
   return '—';
 }
 
+function toPersonProfileFromApi(
+  role: 'lite' | 'coordinator',
+  row: any
+): PersonProfile {
+  if (!row) return { id: '', name: '', role };
+
+  if (role === 'lite') {
+    return {
+      id: String(row.id ?? ''),
+      role,
+      name: String(row.name ?? ''),
+      edu_email: row.edu_email ? String(row.edu_email) : '',
+      personal_email: row.personal_email ? String(row.personal_email) : '',
+      phone: row.phone ? String(row.phone) : '',
+      address: row.address ? String(row.address) : '',
+      school: row.school ? String(row.school) : '',
+      school_id:
+        typeof row.school_id === 'number'
+          ? row.school_id
+          : row.school_id
+            ? Number.parseInt(String(row.school_id), 10)
+            : null,
+      program: row.program ? String(row.program) : '',
+      programs: Array.isArray(row.programs) ? row.programs.map(String) : [],
+      programs_id: Array.isArray(row.programs_id)
+        ? row.programs_id
+            .map((x: any) => Number.parseInt(String(x), 10))
+            .filter((n: number) => Number.isFinite(n))
+        : [],
+      academicLine: row.academic_line ? String(row.academic_line) : '',
+      coordinatorName: row.coordinator_name ? String(row.coordinator_name) : '',
+      status: row.status === 'inactive' ? 'inactive' : 'active',
+    };
+  }
+
+  return {
+    id: String(row.id ?? ''),
+    role,
+    name: String(row.name ?? ''),
+    document: row.document ? String(row.document) : '',
+    edu_email: row.edu_email ? String(row.edu_email) : '',
+    personal_email: row.personal_email ? String(row.personal_email) : '',
+    phone: row.phone ? String(row.phone) : '',
+    address: row.address ? String(row.address) : '',
+    campus: row.campus ? String(row.campus) : '',
+    school: row.school ? String(row.school) : '',
+    school_id:
+      typeof row.school_id === 'number'
+        ? row.school_id
+        : row.school_id
+          ? Number.parseInt(String(row.school_id), 10)
+          : null,
+    status: row.status === 'inactive' ? 'inactive' : 'active',
+  };
+}
+
 export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   open,
   person,
@@ -104,30 +172,85 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   const [draft, setDraft] = useState<PersonProfile | null>(null);
   const [editing, setEditing] = useState(false);
 
-  const SCHOOL_OPTIONS = useMemo(
-    () => [
-      'Área Académica Transversales',
-      'Escuela de Ingeniería',
-      'Escuela de Negocios',
-      'Escuela de Salud',
-      'Escuela de Humanidades',
-      'Escuela de Educación',
-      'Otra',
-    ],
-    []
-  );
-  const PROGRAM_OPTIONS = useMemo(
-    () => [
-      'Ingeniería de Sistemas',
-      'Administración de Empresas',
-      'Contaduría Pública',
-      'Psicología',
-      'Enfermería',
-      'Derecho',
-      'Otra',
-    ],
-    []
-  );
+  const [schools, setSchools] = useState<CatalogSchool[]>([]);
+  const [programs, setPrograms] = useState<CatalogProgram[]>([]);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadedPerson, setLoadedPerson] = useState<PersonProfile | null>(null);
+
+  const effectivePerson = loadedPerson ?? person;
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [schoolsRes, programsRes] = await Promise.all([
+          getCatalogSchools(),
+          getCatalogPrograms(),
+        ]);
+        if (!cancelled) {
+          setSchools(schoolsRes);
+          setPrograms(programsRes);
+        }
+      } catch {
+        if (!cancelled) {
+          setSchools([]);
+          setPrograms([]);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !person?.id || !person.role) return;
+    let cancelled = false;
+    setLoadingProfile(true);
+    setLoadError(null);
+    setLoadedPerson(null);
+
+    (async () => {
+      try {
+        const idNum = Number.parseInt(String(person.id), 10);
+        if (Number.isNaN(idNum)) throw new Error('ID inválido');
+        const row =
+          person.role === 'lite'
+            ? await getLite(idNum)
+            : await getCoordinator(idNum);
+        if (!cancelled) {
+          const next = toPersonProfileFromApi(person.role, row as any);
+          setLoadedPerson(next);
+          if (next.school_id != null) {
+            getCatalogPrograms({ school_id: next.school_id })
+              .then((list) => {
+                if (!cancelled) setPrograms(list);
+              })
+              .catch(() => {
+                if (!cancelled) setPrograms([]);
+              });
+          }
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setLoadError(
+            e instanceof Error ? e.message : 'No se pudo cargar el perfil'
+          );
+        }
+      } finally {
+        if (!cancelled) setLoadingProfile(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, person?.id, person?.role]);
 
   const [newsTypeOptions, setNewsTypeOptions] = useState<NewsTypeOption[]>([
     { id: 'license', label: 'LICENCIA' },
@@ -140,7 +263,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   const [newsItems, setNewsItems] = useState<PersonNewsItem[]>([]);
 
   const visibleFields = useMemo(() => {
-    if (!person) return [];
+    if (!effectivePerson) return [];
     const ordered: (keyof PersonProfile)[] = [
       'document',
       'edu_email',
@@ -156,14 +279,14 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
       'status',
     ];
     return ordered
-      .map((k) => ({ key: k, value: person[k] }))
+      .map((k) => ({ key: k, value: effectivePerson[k] }))
       .filter((x) => x.value !== undefined && x.value !== '');
-  }, [person]);
+  }, [effectivePerson]);
 
   const beginEdit = () => {
-    if (!person) return;
+    if (!effectivePerson) return;
     setEditing(true);
-    const next: PersonProfile = { ...person };
+    const next: PersonProfile = { ...effectivePerson };
     if (next.role === 'lite') {
       const programsSeed =
         next.programs && next.programs.length > 0
@@ -187,13 +310,49 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     setDraft(null);
   };
 
-  const saveEdit = () => {
-    // Solo front por ahora: mantenemos el draft local (sin persistencia).
-    setEditing(false);
+  const saveEdit = async () => {
+    if (!draft || !effectivePerson) return;
+    const idNum = Number.parseInt(String(effectivePerson.id), 10);
+    if (Number.isNaN(idNum)) return;
+    setSaving(true);
+    try {
+      if ((effectivePerson.role ?? 'lite') === 'lite') {
+        const updated = (await updateLiteProfile(idNum, {
+          school_id: draft.school_id ?? null,
+          phone: draft.phone ?? null,
+          personal_email: draft.personal_email ?? null,
+          address: draft.address ?? null,
+          programs_id: draft.programs_id ?? [],
+          academic_line: draft.academicLine ?? null,
+        })) as any;
+        setLoadedPerson((prev) => ({
+          ...(prev ?? effectivePerson),
+          ...toPersonProfileFromApi('lite', updated),
+        }));
+      } else {
+        const updated = (await updateCoordinatorProfile(idNum, {
+          school_id: draft.school_id ?? null,
+          phone: draft.phone ?? null,
+          personal_email: draft.personal_email ?? null,
+          address: draft.address ?? null,
+        })) as any;
+        setLoadedPerson((prev) => ({
+          ...(prev ?? effectivePerson),
+          ...toPersonProfileFromApi('coordinator', updated),
+        }));
+      }
+      setEditing(false);
+      setDraft(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const isLite = (person?.role ?? 'lite') === 'lite';
-  const isCoordinator = (person?.role ?? 'coordinator') === 'coordinator';
+  const isLite = (effectivePerson?.role ?? 'lite') === 'lite';
+  const isCoordinator =
+    (effectivePerson?.role ?? 'coordinator') === 'coordinator';
 
   const draftAssignments = (draft?.person_program_assignments ?? []).filter(
     (a) => a.program
@@ -259,7 +418,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
 
   return (
     <AnimatePresence>
-      {open && person ? (
+      {open && effectivePerson ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
           <motion.div
             initial={{ opacity: 0 }}
@@ -284,11 +443,11 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                 </div>
                 <div className="min-w-0">
                   <h2 className="text-2xl font-bold text-slate-900 font-display truncate">
-                    {person.name}
+                    {effectivePerson.name}
                   </h2>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">
-                    {statusLabel(person.status)}
-                    {person.document ? ` • CC ${person.document}` : ''}
+                    {statusLabel(effectivePerson.status)}
+                    {effectivePerson.document ? ` • CC ${effectivePerson.document}` : ''}
                   </p>
                 </div>
               </div>
@@ -331,6 +490,15 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
 
             {tab === 'personal' ? (
               <div className="space-y-4">
+                {loadingProfile ? (
+                  <div className="p-10 text-center text-sm font-medium text-slate-600">
+                    Cargando información...
+                  </div>
+                ) : loadError ? (
+                  <div className="p-6 rounded-2xl bg-rose-50 border border-rose-100 text-sm text-rose-700">
+                    {loadError}
+                  </div>
+                ) : null}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {visibleFields.length === 0 ? (
                     <div className="text-sm text-slate-500">
@@ -473,10 +641,11 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                         <button
                           type="button"
                           onClick={saveEdit}
-                          className="glass-button-primary px-4 py-2 text-xs font-bold uppercase tracking-widest flex items-center gap-2"
+                          disabled={saving}
+                          className="glass-button-primary px-4 py-2 text-xs font-bold uppercase tracking-widest flex items-center gap-2 disabled:opacity-60 disabled:pointer-events-none"
                         >
                           <CheckIcon className="h-4 w-4" />
-                          Guardar
+                          {saving ? 'Guardando...' : 'Guardar'}
                         </button>
                         <button
                           type="button"
@@ -496,7 +665,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                       Cédula (no editable)
                     </p>
                     <p className="text-sm font-semibold text-slate-800 mt-1 break-words">
-                      {person.document || '—'}
+                      {effectivePerson.document || '—'}
                     </p>
                   </div>
 
@@ -505,7 +674,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                       Correo institucional (no editable)
                     </p>
                     <p className="text-sm font-semibold text-slate-800 mt-1 break-words">
-                      {person.edu_email || '—'}
+                      {effectivePerson.edu_email || '—'}
                     </p>
                   </div>
 
@@ -528,17 +697,26 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                         type === 'school' ? (
                           <select
                             className="glass-input w-full mt-2 py-3 text-sm"
-                            value={String((draft?.[k] ?? '') as any)}
-                            onChange={(e) =>
+                            value={String(draft?.school_id ?? '')}
+                            onChange={(e) => {
+                              const sid = e.target.value ? Number.parseInt(e.target.value, 10) : null;
+                              const schoolName = schools.find((s) => s.id === sid)?.name ?? '';
                               setDraft((prev) =>
-                                prev ? { ...prev, [k]: e.target.value } : prev
-                              )
-                            }
+                                prev
+                                  ? { ...prev, school_id: sid, school: schoolName || prev.school }
+                                  : prev
+                              );
+                              if (sid != null && !Number.isNaN(sid)) {
+                                getCatalogPrograms({ school_id: sid })
+                                  .then(setPrograms)
+                                  .catch(() => setPrograms([]));
+                              }
+                            }}
                           >
                             <option value="">Selecciona…</option>
-                            {SCHOOL_OPTIONS.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
+                            {schools.map((s) => (
+                              <option key={s.id} value={String(s.id)}>
+                                {s.name}
                               </option>
                             ))}
                           </select>
@@ -556,7 +734,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                         )
                       ) : (
                         <p className="text-sm font-semibold text-slate-800 mt-1 break-words">
-                          {String(person[k] ?? '—')}
+                          {String(effectivePerson[k] ?? '—')}
                         </p>
                       )}
                     </div>
@@ -578,26 +756,38 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                       <select
                         multiple
                         className="glass-input w-full mt-1 py-3 text-sm min-h-[8.5rem]"
-                        value={draft?.programs ?? []}
+                        value={(draft?.programs_id ?? []).map(String)}
                         onChange={(e) => {
-                          const selected = Array.from(e.target.selectedOptions).map(
-                            (o) => o.value
+                          const selectedIds = Array.from(e.target.selectedOptions)
+                            .map((o) => Number.parseInt(o.value, 10))
+                            .filter((n) => Number.isFinite(n));
+                          const selectedNames = selectedIds
+                            .map((id) => programs.find((p) => p.id === id)?.name)
+                            .filter(Boolean) as string[];
+                          setDraft((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  programs_id: selectedIds,
+                                  programs: selectedNames,
+                                  program: selectedNames[0] ?? prev.program,
+                                }
+                              : prev
                           );
-                          ensureAssignmentsMatchPrograms(selected);
                         }}
                       >
-                        {PROGRAM_OPTIONS.map((p) => (
-                          <option key={p} value={p}>
-                            {p}
+                        {programs.map((p) => (
+                          <option key={p.id} value={String(p.id)}>
+                            {p.name}
                           </option>
                         ))}
                       </select>
                     ) : (
                       <p className="text-sm font-semibold text-slate-800">
-                        {(person.programs ?? []).length > 0
-                          ? (person.programs ?? []).join(' • ')
-                          : person.program
-                            ? person.program
+                        {(effectivePerson.programs ?? []).length > 0
+                          ? (effectivePerson.programs ?? []).join(' • ')
+                          : effectivePerson.program
+                            ? effectivePerson.program
                             : '—'}
                       </p>
                     )}
@@ -607,48 +797,32 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                         Línea académica
                       </p>
 
-                      {(editing ? draftAssignments : person.person_program_assignments ?? [])
-                        .filter((a) => a.program)
-                        .map((a) => (
-                          <div
-                            key={a.program}
-                            className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center"
-                          >
-                            <div className="md:col-span-5">
-                              <p className="text-xs font-bold text-slate-700 truncate" title={a.program}>
-                                {a.program}
-                              </p>
-                            </div>
-                            <div className="md:col-span-7">
-                              {editing ? (
-                                <input
-                                  type="text"
-                                  className="glass-input w-full py-3 text-sm"
-                                  placeholder="Área académica…"
-                                  value={a.academic_line ?? ''}
-                                  onChange={(e) =>
-                                    setDraft((prev) => {
-                                      if (!prev) return prev;
-                                      const list = prev.person_program_assignments ?? [];
-                                      return {
-                                        ...prev,
-                                        person_program_assignments: list.map((x) =>
-                                          x.program === a.program
-                                            ? { ...x, academic_line: e.target.value }
-                                            : x
-                                        ),
-                                      };
-                                    })
-                                  }
-                                />
-                              ) : (
-                                <p className="text-sm text-slate-700">
-                                  {a.academic_line || '—'}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                        <div className="md:col-span-5">
+                          <p className="text-xs font-bold text-slate-700">
+                            (único valor por persona)
+                          </p>
+                        </div>
+                        <div className="md:col-span-7">
+                          {editing ? (
+                            <input
+                              type="text"
+                              className="glass-input w-full py-3 text-sm"
+                              placeholder="Área académica…"
+                              value={draft?.academicLine ?? ''}
+                              onChange={(e) =>
+                                setDraft((prev) =>
+                                  prev ? { ...prev, academicLine: e.target.value } : prev
+                                )
+                              }
+                            />
+                          ) : (
+                            <p className="text-sm text-slate-700">
+                              {effectivePerson.academicLine || '—'}
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ) : null}

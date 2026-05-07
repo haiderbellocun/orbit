@@ -168,19 +168,49 @@ router.get("/coordinators/:id", async (req, res) => {
       return;
     }
 
+    const coreMode = await resolveCoreSchemaMode();
+    if (coreMode != null) {
+      const prefix = coreMode === "core" ? "core." : "";
+      const { rows } = await pool.query(
+        `SELECT
+           p.id,
+           p.document,
+           p.full_name AS name,
+           p.edu_email AS edu_email,
+           p.email AS personal_email,
+           p.phone AS phone,
+           p.address AS address,
+           p.school_id AS school_id,
+           COALESCE(s.name, '') AS school,
+           COALESCE(a.name, ci.name, '') AS campus,
+           'active'::text AS status
+         FROM ${prefix}person p
+         LEFT JOIN ${prefix}school s ON s.id = p.school_id
+         LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
+         LEFT JOIN ${prefix}city ci ON ci.id = p.city_id
+         WHERE p.id = $1
+         LIMIT 1`,
+        [id]
+      );
+      if (rows.length === 0) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      res.json(rows[0]);
+      return;
+    }
+
     const { rows } = await pool.query(
       `SELECT c.*,
-        (SELECT COUNT(*)::int FROM teachers t WHERE t.coordinator_id = c.id) AS teachers_count
+         (SELECT COUNT(*)::int FROM teachers t WHERE t.coordinator_id = c.id) AS teachers_count
        FROM coordinators c
        WHERE c.id = $1`,
       [id]
     );
-
     if (rows.length === 0) {
       res.status(404).json({ error: "Not found" });
       return;
     }
-
     res.json(rows[0]);
   } catch {
     res.status(500).json({ error: "Internal server error" });
@@ -188,3 +218,81 @@ router.get("/coordinators/:id", async (req, res) => {
 });
 
 export default router;
+
+router.patch("/coordinators/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const schoolId =
+    typeof body.school_id === "number"
+      ? body.school_id
+      : typeof body.school_id === "string"
+        ? Number.parseInt(body.school_id, 10)
+        : null;
+  const phone = typeof body.phone === "string" ? body.phone.trim() : null;
+  const personalEmail =
+    typeof body.personal_email === "string" ? body.personal_email.trim() : null;
+  const address = typeof body.address === "string" ? body.address.trim() : null;
+
+  if (schoolId != null && Number.isNaN(Number(schoolId))) {
+    res.status(400).json({ error: "Invalid school_id" });
+    return;
+  }
+
+  const coreMode = await resolveCoreSchemaMode();
+  if (coreMode == null) {
+    res.status(501).json({ error: "CORE schema not available" });
+    return;
+  }
+  const prefix = coreMode === "core" ? "core." : "";
+
+  try {
+    const updated = await pool.query(
+      `UPDATE ${prefix}person
+       SET
+         school_id = COALESCE($2, school_id),
+         phone = COALESCE($3, phone),
+         email = COALESCE($4, email),
+         address = COALESCE($5, address),
+         updated_at = NOW()
+       WHERE id = $1
+       RETURNING id`,
+      [id, schoolId, phone, personalEmail, address]
+    );
+    if (updated.rows.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const refreshed = await pool.query(
+      `SELECT
+         p.id,
+         p.document,
+         p.full_name AS name,
+         p.edu_email AS edu_email,
+         p.email AS personal_email,
+         p.phone AS phone,
+         p.address AS address,
+         p.school_id AS school_id,
+         COALESCE(s.name, '') AS school,
+         COALESCE(a.name, ci.name, '') AS campus,
+         'active'::text AS status
+       FROM ${prefix}person p
+       LEFT JOIN ${prefix}school s ON s.id = p.school_id
+       LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
+       LEFT JOIN ${prefix}city ci ON ci.id = p.city_id
+       WHERE p.id = $1
+       LIMIT 1`,
+      [id]
+    );
+
+    res.json(refreshed.rows[0] ?? null);
+  } catch (e) {
+    console.error("PATCH /coordinators/:id failed:", e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});

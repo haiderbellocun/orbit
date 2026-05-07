@@ -202,28 +202,7 @@ export const LitesView: React.FC<LitesViewProps> = ({
                         id: lite.id,
                         name: lite.name,
                         role: 'lite',
-                        edu_email: lite.email,
-                        program: lite.program,
-                        programs:
-                          lite.programs && lite.programs.length > 0
-                            ? lite.programs
-                            : lite.program
-                              ? [lite.program]
-                              : [],
-                        school: lite.school,
-                        academicLine: lite.academicLine,
-                        person_program_assignments: (
-                          (lite.programs && lite.programs.length > 0
-                            ? lite.programs
-                            : lite.program
-                              ? [lite.program]
-                              : []) as string[]
-                        ).map((p) => ({
-                          program: p,
-                          academic_line: lite.academicLine || '',
-                        })),
-                        coordinatorName: lite.coordinatorName,
-                        status: lite.status,
+                        // La info completa se carga al abrir el modal (GET /lites/:id)
                       })
                     }
                     className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-slate-400 shadow-inner focus:outline-none focus:ring-2 focus:ring-violet-500/40"
