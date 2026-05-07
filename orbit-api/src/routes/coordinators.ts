@@ -8,14 +8,16 @@ type CoreSchemaMode = "public" | "core";
 async function resolveCoreSchemaMode(): Promise<CoreSchemaMode | null> {
   // Algunos entornos tienen las tablas CORE en schema `core` (core.person),
   // otros las crean en el schema del search_path (ej: public.person).
+  const preferred = (process.env.DB_SCHEMA ?? "").trim().toLowerCase();
   const result = await pool.query(
     `SELECT
-       to_regclass('person') AS person_public,
+       to_regclass('public.person') AS person_public,
        to_regclass('core.person') AS person_core`
   );
   const row = result.rows[0] as
     | { person_public?: string | null; person_core?: string | null }
     | undefined;
+  if (preferred === "core" && row?.person_core) return "core";
   if (row?.person_public) return "public";
   if (row?.person_core) return "core";
   return null;
