@@ -39,6 +39,10 @@ const STATUS_LABEL: Record<VacancyOperationStatus, string> = {
   cancelled: 'Cancelada',
 };
 
+function isVacancyActionLocked(status: VacancyOperationStatus): boolean {
+  return status === 'closed' || status === 'cancelled' || status === 'requisition_sent';
+}
+
 function formatDt(iso: string | null | undefined): string {
   if (iso == null || iso === '') return '—';
   const d = new Date(iso);
@@ -515,12 +519,16 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                         <button
                           type="button"
                           title="Editar"
-                          onClick={() => openEdit(v)}
-                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200"
+                          disabled={isVacancyActionLocked(v.operationStatus)}
+                          onClick={() => {
+                            if (isVacancyActionLocked(v.operationStatus)) return;
+                            openEdit(v);
+                          }}
+                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:text-slate-600 disabled:hover:border-slate-200"
                         >
                           <PencilSquareIcon className="h-4 w-4" />
                         </button>
-                        <button
+                        {/* <button
                           type="button"
                           title="Convertir en requisición"
                           disabled={Boolean(v.reqNumber)}
@@ -533,16 +541,18 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                           className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 disabled:opacity-35"
                         >
                           <DocumentTextIcon className="h-4 w-4" />
-                        </button>
+                        </button> */}
                         <button
                           type="button"
                           title="Cerrar vacante"
+                          disabled={isVacancyActionLocked(v.operationStatus)}
                           onClick={() => {
+                            if (isVacancyActionLocked(v.operationStatus)) return;
                             setFormError(null);
                             setCloseRow(v);
                             setCloseStatus('closed');
                           }}
-                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-rose-600 hover:border-rose-200"
+                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-rose-600 hover:border-rose-200 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:text-slate-600 disabled:hover:border-slate-200"
                         >
                           <XCircleIcon className="h-4 w-4" />
                         </button>

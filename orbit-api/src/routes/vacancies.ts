@@ -19,6 +19,25 @@ const OPERATION_STATUSES = new Set([
 
 const CLOSE_STATUSES = new Set(["hired", "closed", "cancelled"]);
 
+const TERMINAL_VACANCY_BLOCKED_MESSAGE =
+  "Esta vacante está cerrada, cancelada o contratada y no puede modificarse.";
+
+/** Vacancies in a terminal state must not be edited further (PATCH body, requisition, or close). */
+async function vacancyEditableGate(
+  id: string
+): Promise<"missing" | "terminal" | null> {
+  const r = await pool.query(
+    `SELECT operation_status FROM vacancies.vacancy WHERE id = $1`,
+    [id]
+  );
+  if (r.rows.length === 0) return "missing";
+  const op = String(
+    (r.rows[0] as { operation_status?: unknown }).operation_status ?? ""
+  );
+  if (CLOSE_STATUSES.has(op)) return "terminal";
+  return null;
+}
+
 function isUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     s
@@ -445,8 +464,18 @@ router.patch("/vacancies/:id/close", async (req, res) => {
     if (!CLOSE_STATUSES.has(statusIn)) {
       res.status(400).json({
         error:
-          "operationStatus must be one of: hired, closed, cancelled",
+          "Estado final no válido: operationStatus debe ser hired, closed o cancelled (contratado, cerrada o cancelada).",
       });
+      return;
+    }
+
+    const gate = await vacancyEditableGate(id);
+    if (gate === "missing") {
+      res.status(404).json({ error: "Vacancy not found" });
+      return;
+    }
+    if (gate === "terminal") {
+      res.status(409).json({ error: TERMINAL_VACANCY_BLOCKED_MESSAGE });
       return;
     }
 
@@ -512,18 +541,26 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
     if (existing.rowCount && existing.rowCount > 0) {
       await client.query("ROLLBACK");
       res.status(409).json({
-        error: "This vacancy already has a requisition",
+        error: "Esta vacante ya tiene una requisición registrada.",
       });
       return;
     }
 
     const vac = await client.query(
-      `SELECT id FROM vacancies.vacancy WHERE id = $1 FOR UPDATE`,
+      `SELECT id, operation_status FROM vacancies.vacancy WHERE id = $1 FOR UPDATE`,
       [id]
     );
     if (vac.rowCount === 0) {
       await client.query("ROLLBACK");
       res.status(404).json({ error: "Vacancy not found" });
+      return;
+    }
+    const vacOp = String(
+      (vac.rows[0] as { operation_status?: unknown }).operation_status ?? ""
+    );
+    if (CLOSE_STATUSES.has(vacOp)) {
+      await client.query("ROLLBACK");
+      res.status(409).json({ error: TERMINAL_VACANCY_BLOCKED_MESSAGE });
       return;
     }
 
@@ -539,7 +576,7 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
       if (err.code === "23505") {
         res.status(409).json({
           error:
-            "reqNumber is already in use. Each requisition number must be unique.",
+            "El número REQ ya está en uso; cada requisición debe tener un número único.",
         });
         return;
       }
@@ -727,6 +764,16 @@ router.patch("/vacancies/:id", async (req, res) => {
     const id = req.params.id;
     if (!isUuid(id)) {
       res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const gate = await vacancyEditableGate(id);
+    if (gate === "missing") {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    if (gate === "terminal") {
+      res.status(409).json({ error: TERMINAL_VACANCY_BLOCKED_MESSAGE });
       return;
     }
 
