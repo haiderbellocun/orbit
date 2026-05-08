@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "../db/connection";
+import { sqlPersonIsActive } from "../sql/personActive";
 
 const router = Router();
 
@@ -46,7 +47,8 @@ async function getActiveTeachersCount(): Promise<number> {
     `SELECT COUNT(*)::int AS total
      FROM person p
      LEFT JOIN role r ON r.id = p.role_id
-     WHERE r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')`
+     WHERE ${sqlPersonIsActive("p")}
+       AND r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')`
   );
   return Number(result.rows[0]?.total ?? 0);
 }

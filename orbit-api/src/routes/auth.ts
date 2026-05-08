@@ -73,7 +73,8 @@ router.post("/auth/google", async (req, res) => {
              r.name AS role_name
            FROM person p
            LEFT JOIN role r ON r.id = p.role_id
-           WHERE LOWER(p.email) = $1 OR LOWER(p.edu_email) = $1
+           WHERE (LOWER(p.email) = $1 OR LOWER(p.edu_email) = $1)
+             AND COALESCE(p.is_active, true) = true
            LIMIT 1`,
           [email]
         );

@@ -231,6 +231,19 @@ export async function updateTeacher(
   return handleJson(response);
 }
 
+/** CORE / legado: actualiza solo is_active (person o teachers.status). */
+export async function patchTeacherActive(
+  id: number,
+  is_active: boolean
+): Promise<unknown> {
+  const response = await fetch(`${BASE_URL}/teachers/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ is_active }),
+  });
+  return handleJson(response);
+}
+
 // Vacancies (schema `vacancies.vacancy`)
 export type CreateVacancyPayload = {
   areaId: number;
@@ -363,6 +376,7 @@ export async function updateCoordinatorProfile(
     phone?: string | null;
     personal_email?: string | null;
     address?: string | null;
+    is_active?: boolean;
   }
 ): Promise<unknown> {
   const response = await fetch(`${BASE_URL}/coordinators/${id}`, {
@@ -439,6 +453,7 @@ export async function updateLiteProfile(
     address?: string | null;
     programs_id?: number[];
     academic_line?: string | null;
+    is_active?: boolean;
   }
 ): Promise<unknown> {
   const response = await fetch(`${BASE_URL}/lites/${id}`, {

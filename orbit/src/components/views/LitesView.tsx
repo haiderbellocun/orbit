@@ -73,6 +73,7 @@ export const LitesView: React.FC<LitesViewProps> = ({
   const [totalCount, setTotalCount] = useState(0);
   const listKeyRef = useRef<string | null>(null);
   const [profilePerson, setProfilePerson] = useState<PersonProfile | null>(null);
+  const [listRefreshKey, setListRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +116,7 @@ export const LitesView: React.FC<LitesViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [currentPage, searchQuery]);
+  }, [currentPage, searchQuery, listRefreshKey]);
 
   return (
     <div className="space-y-8 relative">
@@ -294,6 +295,7 @@ export const LitesView: React.FC<LitesViewProps> = ({
         open={!!profilePerson}
         person={profilePerson}
         onClose={() => setProfilePerson(null)}
+        onProfileUpdated={() => setListRefreshKey((k) => k + 1)}
       />
     </div>
   );

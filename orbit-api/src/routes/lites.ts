@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/connection";
+import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
 
 const router = Router();
 
@@ -57,7 +58,10 @@ router.get("/lites", async (req: Request, res: Response) => {
     const coreMode = await resolveCoreSchemaMode();
     if (coreMode != null) {
       const prefix = coreMode === "core" ? "core." : "";
-      const conditions: string[] = [`p.role_id = ${LITE_ROLE_ID}`];
+      const conditions: string[] = [
+        `p.role_id = ${LITE_ROLE_ID}`,
+        sqlPersonIsActive("p"),
+      ];
       const values: unknown[] = [];
       let i = 1;
 
@@ -98,6 +102,7 @@ router.get("/lites", async (req: Request, res: Response) => {
           LEFT JOIN ${prefix}hierarchy hc ON hc.id = pc.hierarchy_id
           LEFT JOIN ${prefix}role rc ON rc.id = pc.role_id
           WHERE pc.document = $${i}
+            AND ${sqlPersonIsActive("pc")}
             AND pc.school_id IS NOT NULL
             AND p.school_id IS NOT NULL
             AND pc.school_id = p.school_id
@@ -121,7 +126,7 @@ router.get("/lites", async (req: Request, res: Response) => {
           COALESCE(progs.programs, ARRAY[]::text[]) AS programs,
           crd.coordinator_name,
           crd.coordinator_document,
-          'active'::text AS status,
+          ${sqlPersonStatusText("p")} AS status,
           COUNT(*) OVER() AS total_count
         FROM ${prefix}person p
         LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
@@ -141,7 +146,8 @@ router.get("/lites", async (req: Request, res: Response) => {
           LEFT JOIN ${prefix}area ca ON ca.id = COALESCE(pc.area_id, sco.area_id)
           LEFT JOIN ${prefix}hierarchy ch ON ch.id = pc.hierarchy_id
           LEFT JOIN ${prefix}role cr ON cr.id = pc.role_id
-          WHERE pc.school_id IS NOT NULL
+          WHERE ${sqlPersonIsActive("pc")}
+            AND pc.school_id IS NOT NULL
             AND p.school_id IS NOT NULL
             AND pc.school_id = p.school_id
             AND ${coordJoin}
@@ -241,6 +247,7 @@ router.get("/lites/:id", async (req: Request, res: Response) => {
       const result = await pool.query(
         `SELECT
            p.id,
+           p.document,
            p.full_name AS name,
            p.edu_email AS edu_email,
            p.email AS personal_email,
@@ -254,7 +261,7 @@ router.get("/lites/:id", async (req: Request, res: Response) => {
            COALESCE(progs.programs, ARRAY[]::text[]) AS programs,
            crd.coordinator_name,
            crd.coordinator_document,
-           'active'::text AS status
+           ${sqlPersonStatusText("p")} AS status
          FROM ${prefix}person p
          LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
          LEFT JOIN ${prefix}school s ON s.id = p.school_id
@@ -273,14 +280,16 @@ router.get("/lites/:id", async (req: Request, res: Response) => {
            LEFT JOIN ${prefix}area ca ON ca.id = COALESCE(pc.area_id, sco.area_id)
            LEFT JOIN ${prefix}hierarchy ch ON ch.id = pc.hierarchy_id
            LEFT JOIN ${prefix}role cr ON cr.id = pc.role_id
-           WHERE pc.school_id IS NOT NULL
+           WHERE ${sqlPersonIsActive("pc")}
+             AND pc.school_id IS NOT NULL
              AND p.school_id IS NOT NULL
              AND pc.school_id = p.school_id
              AND ${coordJoin}
            ORDER BY pc.full_name ASC NULLS LAST
            LIMIT 1
          ) crd ON TRUE
-         WHERE p.id = $1 AND p.role_id = ${LITE_ROLE_ID}`,
+         WHERE p.id = $1 AND p.role_id = ${LITE_ROLE_ID}
+           AND ${sqlPersonIsActive("p")}`,
         [id]
       );
       if (result.rows.length === 0) {
@@ -327,6 +336,9 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
   const academicLine =
     typeof body.academic_line === "string" ? body.academic_line.trim() : null;
 
+  const isActivePatch =
+    typeof body.is_active === "boolean" ? body.is_active : undefined;
+
   const programsIdRaw = (body.programs_id ?? null) as unknown;
   const programsId =
     Array.isArray(programsIdRaw) && programsIdRaw.length > 0
@@ -350,6 +362,10 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
     return;
   }
 
+  const shouldTouchAssignments =
+    Object.prototype.hasOwnProperty.call(body, "programs_id") ||
+    Object.prototype.hasOwnProperty.call(body, "academic_line");
+
   const coreMode = await resolveCoreSchemaMode();
   if (coreMode == null) {
     res.status(501).json({ error: "CORE schema not available" });
@@ -363,18 +379,35 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
 
     // 1) Update base person fields (except edu_email/document).
     const primaryProgramId = programsId.length > 0 ? programsId[0] : null;
+    const setParts: string[] = [
+      "school_id = COALESCE($2, school_id)",
+      "phone = COALESCE($3, phone)",
+      "email = COALESCE($4, email)",
+      "address = COALESCE($5, address)",
+      "program_id = COALESCE($6, program_id)",
+    ];
+    const updateParams: unknown[] = [
+      id,
+      schoolId,
+      phone,
+      personalEmail,
+      address,
+      primaryProgramId,
+    ];
+    let pIdx = 7;
+    if (isActivePatch !== undefined) {
+      setParts.push(`is_active = $${pIdx}`);
+      updateParams.push(isActivePatch);
+      pIdx++;
+    }
+    setParts.push("updated_at = NOW()");
+
     const updatePerson = await client.query(
       `UPDATE ${prefix}person
-       SET
-         school_id = COALESCE($2, school_id),
-         phone = COALESCE($3, phone),
-         email = COALESCE($4, email),
-         address = COALESCE($5, address),
-         program_id = COALESCE($6, program_id),
-         updated_at = NOW()
+       SET ${setParts.join(", ")}
        WHERE id = $1 AND role_id = ${LITE_ROLE_ID}
        RETURNING id`,
-      [id, schoolId, phone, personalEmail, address, primaryProgramId]
+      updateParams
     );
 
     if (updatePerson.rows.length === 0) {
@@ -383,16 +416,18 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
       return;
     }
 
-    // 2) Upsert program assignments (1 row per person)
-    await client.query(
-      `INSERT INTO ${prefix}person_program_assignments (person_id, programs_id, academic_line)
-       VALUES ($1, $2::INTEGER[], $3)
-       ON CONFLICT (person_id) DO UPDATE SET
-         programs_id = EXCLUDED.programs_id,
-         academic_line = EXCLUDED.academic_line,
-         updated_at = NOW()`,
-      [id, programsId, academicLine]
-    );
+    // 2) Upsert program assignments (solo si el cliente envía programs_id o academic_line)
+    if (shouldTouchAssignments) {
+      await client.query(
+        `INSERT INTO ${prefix}person_program_assignments (person_id, programs_id, academic_line)
+         VALUES ($1, $2::INTEGER[], $3)
+         ON CONFLICT (person_id) DO UPDATE SET
+           programs_id = EXCLUDED.programs_id,
+           academic_line = EXCLUDED.academic_line,
+           updated_at = NOW()`,
+        [id, programsId, academicLine]
+      );
+    }
 
     await client.query("COMMIT");
 
@@ -401,6 +436,7 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
     const refreshed = await pool.query(
       `SELECT
          p.id,
+         p.document,
          p.full_name AS name,
          p.edu_email AS edu_email,
          p.email AS personal_email,
@@ -414,7 +450,7 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
          COALESCE(progs.programs, ARRAY[]::text[]) AS programs,
          crd.coordinator_name,
          crd.coordinator_document,
-         'active'::text AS status
+         ${sqlPersonStatusText("p")} AS status
        FROM ${prefix}person p
        LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
        LEFT JOIN ${prefix}school s ON s.id = p.school_id
@@ -433,7 +469,8 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
          LEFT JOIN ${prefix}area ca ON ca.id = COALESCE(pc.area_id, sco.area_id)
          LEFT JOIN ${prefix}hierarchy ch ON ch.id = pc.hierarchy_id
          LEFT JOIN ${prefix}role cr ON cr.id = pc.role_id
-         WHERE pc.school_id IS NOT NULL
+         WHERE ${sqlPersonIsActive("pc")}
+           AND pc.school_id IS NOT NULL
            AND p.school_id IS NOT NULL
            AND pc.school_id = p.school_id
            AND ${coordJoin}

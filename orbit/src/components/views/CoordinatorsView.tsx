@@ -89,6 +89,7 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
   const [selectedLites, setSelectedLites] = useState<LiteRow[]>([]);
   const [loadingLites, setLoadingLites] = useState(false);
   const [profilePerson, setProfilePerson] = useState<PersonProfile | null>(null);
+  const [coordinatorsRefreshKey, setCoordinatorsRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +112,7 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [coordinatorsRefreshKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -464,6 +465,7 @@ export const CoordinatorsView: React.FC<CoordinatorsViewProps> = ({
         open={!!profilePerson}
         person={profilePerson}
         onClose={() => setProfilePerson(null)}
+        onProfileUpdated={() => setCoordinatorsRefreshKey((k) => k + 1)}
       />
     </div>
   );

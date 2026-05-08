@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "../db/connection";
+import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
 
 const router = Router();
 
@@ -138,7 +139,7 @@ router.get("/teachers", async (req, res) => {
            ct.name AS contract_type,
            ct.start_date,
            ct.end_date,
-           'active'::text AS status,
+           ${sqlPersonStatusText("p")} AS status,
            r.name AS position,
            NULL::text AS payroll_class,
            NULL::integer AS coordinator_id,
@@ -152,6 +153,7 @@ router.get("/teachers", async (req, res) => {
          LEFT JOIN contract_type ct ON ct.id = p.contract_type_id
          LEFT JOIN role r ON r.id = p.role_id
          ${personWhere ? `${personWhere} AND` : "WHERE"}
+         ${sqlPersonIsActive("p")} AND
          r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')
          ORDER BY p.full_name ASC NULLS LAST
          LIMIT $${pLimitIdx} OFFSET $${pOffsetIdx}`,
@@ -227,7 +229,7 @@ router.get("/teachers/:id", async (req, res) => {
            ct.name AS contract_type,
            ct.start_date,
            ct.end_date,
-           'active'::text AS status,
+           ${sqlPersonStatusText("p")} AS status,
            r.name AS position,
            NULL::text AS payroll_class,
            NULL::integer AS coordinator_id,
@@ -239,7 +241,8 @@ router.get("/teachers/:id", async (req, res) => {
          LEFT JOIN city ci ON ci.id = p.city_id
          LEFT JOIN contract_type ct ON ct.id = p.contract_type_id
          LEFT JOIN role r ON r.id = p.role_id
-         WHERE p.id = $1`,
+         WHERE p.id = $1
+           AND ${sqlPersonIsActive("p")}`,
         [id]
       );
 
@@ -440,6 +443,101 @@ router.put("/teachers/:id", async (req, res) => {
       res.status(409).json({ error: "Duplicate document" });
       return;
     }
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/teachers/:id", async (req, res) => {
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.is_active !== "boolean") {
+      res.status(400).json({ error: "is_active (boolean) is required" });
+      return;
+    }
+
+    const useLegacy = await hasLegacyTeachersTable();
+
+    if (useLegacy) {
+      const status = body.is_active ? "active" : "inactive";
+      const result = await pool.query(
+        `UPDATE teachers SET status = $1 WHERE id = $2 RETURNING *`,
+        [status, id]
+      );
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      res.json(result.rows[0]);
+      return;
+    }
+
+    const updated = await pool.query(
+      `UPDATE person p
+       SET is_active = $1, updated_at = NOW()
+       FROM role r
+       WHERE p.id = $2 AND r.id = p.role_id
+         AND r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')
+       RETURNING p.id`,
+      [body.is_active, id]
+    );
+    if (updated.rowCount === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT
+         p.id,
+         p.document,
+         p.full_name,
+         p.email,
+         pr.name AS program,
+         s.name AS school,
+         COALESCE(a.name, ci.name, '') AS campus,
+         a.name AS area,
+         ct.modality,
+         ct.name AS contract_type,
+         ct.start_date,
+         ct.end_date,
+         ${sqlPersonStatusText("p")} AS status,
+         r.name AS position,
+         NULL::text AS payroll_class,
+         NULL::integer AS coordinator_id,
+         NULL::text AS coordinator_name
+       FROM person p
+       LEFT JOIN program pr ON pr.id = p.program_id
+       LEFT JOIN school s ON s.id = p.school_id
+       LEFT JOIN area a ON a.id = p.area_id
+       LEFT JOIN city ci ON ci.id = p.city_id
+       LEFT JOIN contract_type ct ON ct.id = p.contract_type_id
+       LEFT JOIN role r ON r.id = p.role_id
+       WHERE p.id = $1
+         AND r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const row = result.rows[0];
+    const fullName = String(row.full_name ?? "");
+    const names = splitFullName(fullName);
+    res.json({
+      ...row,
+      first_name: names.firstName,
+      last_name: names.lastName,
+      name: fullName,
+    });
+  } catch (e: unknown) {
+    console.error("PATCH /teachers/:id failed:", e);
     res.status(500).json({ error: "Internal server error" });
   }
 });

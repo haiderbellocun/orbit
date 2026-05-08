@@ -5,6 +5,7 @@ import {
   PencilSquareIcon,
   UserCircleIcon,
   UserMinusIcon,
+  UserPlusIcon,
   XMarkIcon,
 } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
@@ -56,6 +57,8 @@ export interface PersonProfileModalProps {
   open: boolean;
   person: PersonProfile | null;
   onClose: () => void;
+  /** Tras inhabilitar/habilitar o guardar cambios que afecten listados */
+  onProfileUpdated?: () => void;
 }
 
 type TabId = 'personal' | 'news' | 'admin';
@@ -118,6 +121,7 @@ function toPersonProfileFromApi(
       id: String(row.id ?? ''),
       role,
       name: String(row.name ?? ''),
+      document: row.document ? String(row.document) : undefined,
       edu_email: row.edu_email ? String(row.edu_email) : '',
       personal_email: row.personal_email ? String(row.personal_email) : '',
       phone: row.phone ? String(row.phone) : '',
@@ -167,6 +171,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   open,
   person,
   onClose,
+  onProfileUpdated,
 }) => {
   const [tab, setTab] = useState<TabId>('personal');
   const [draft, setDraft] = useState<PersonProfile | null>(null);
@@ -185,6 +190,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   const [programSearch, setProgramSearch] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedPerson, setLoadedPerson] = useState<PersonProfile | null>(null);
+  const [togglingActive, setTogglingActive] = useState(false);
 
   const effectivePerson = loadedPerson ?? person;
 
@@ -441,6 +447,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
       setProgramPickerOpen(false);
       setProgramSearch('');
       setSaveFeedback({ type: 'success', message: 'Actualización completada.' });
+      onProfileUpdated?.();
     } catch (e) {
       console.error(e);
       setSaveFeedback({
@@ -452,6 +459,55 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleToggleActive = async (makeActive: boolean) => {
+    if (!effectivePerson) return;
+
+    const idNum = Number.parseInt(String(effectivePerson.id), 10);
+    if (Number.isNaN(idNum)) return;
+
+    setTogglingActive(true);
+    setSaveFeedback(null);
+
+    try {
+      if ((effectivePerson.role ?? 'lite') === 'lite') {
+        const updated = (await updateLiteProfile(idNum, {
+          is_active: makeActive,
+        })) as any;
+
+        setLoadedPerson((prev) => ({
+          ...(prev ?? effectivePerson),
+          ...toPersonProfileFromApi('lite', updated),
+        }));
+      } else {
+        const updated = (await updateCoordinatorProfile(idNum, {
+          is_active: makeActive,
+        })) as any;
+
+        setLoadedPerson((prev) => ({
+          ...(prev ?? effectivePerson),
+          ...toPersonProfileFromApi('coordinator', updated),
+        }));
+      }
+
+      setSaveFeedback({
+        type: 'success',
+        message: makeActive ? 'Usuario habilitado.' : 'Usuario inhabilitado.',
+      });
+      onProfileUpdated?.();
+    } catch (e) {
+      console.error(e);
+      setSaveFeedback({
+        type: 'error',
+        message:
+          e instanceof Error
+            ? e.message
+            : 'No se pudo cambiar el estado del usuario.',
+      });
+    } finally {
+      setTogglingActive(false);
     }
   };
 
@@ -750,17 +806,29 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // Solo front: no cambia estado real aún.
-                        }}
-                        title="Inactivar usuario"
-                        className="rounded-xl border border-rose-200 bg-rose-50 p-2 text-rose-600 transition-colors hover:bg-rose-100"
-                        aria-label="Inactivar usuario"
-                      >
-                        <UserMinusIcon className="h-5 w-5" />
-                      </button>
+                      {effectivePerson.status === 'inactive' ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleActive(true)}
+                          disabled={togglingActive || saving}
+                          title="Habilitar usuario"
+                          className="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-emerald-700 transition-colors hover:bg-emerald-100 disabled:pointer-events-none disabled:opacity-50"
+                          aria-label="Habilitar usuario"
+                        >
+                          <UserPlusIcon className="h-5 w-5" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleActive(false)}
+                          disabled={togglingActive || saving}
+                          title="Inhabilitar usuario"
+                          className="rounded-xl border border-rose-200 bg-rose-50 p-2 text-rose-600 transition-colors hover:bg-rose-100 disabled:pointer-events-none disabled:opacity-50"
+                          aria-label="Inhabilitar usuario"
+                        >
+                          <UserMinusIcon className="h-5 w-5" />
+                        </button>
+                      )}
 
                       {!editing ? (
                         <button
