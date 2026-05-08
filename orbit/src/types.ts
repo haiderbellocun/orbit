@@ -150,7 +150,7 @@ export const NAV_ITEMS = [
   { id: 'coordinators', label: 'Coordinadores', iconKey: 'coordinators' },
   { id: 'lites', label: 'LITEs', iconKey: 'lites' },
   { id: 'vacancies', label: 'Vacantes', iconKey: 'vacancies' },
-  { id: 'reinstatements', label: 'Reintegros', iconKey: 'reinstatements' },
-  { id: 'news', label: 'Novedades', iconKey: 'news' },
-  { id: 'audit', label: 'Auditoría', iconKey: 'audit' },
+  // { id: 'reinstatements', label: 'Reintegros', iconKey: 'reinstatements' },
+  // { id: 'news', label: 'Novedades', iconKey: 'news' },
+  // { id: 'audit', label: 'Auditoría', iconKey: 'audit' },
 ];
