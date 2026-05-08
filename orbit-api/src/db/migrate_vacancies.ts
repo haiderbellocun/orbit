@@ -105,8 +105,94 @@ CREATE TRIGGER trg_vacancy_touch_updated
   FOR EACH ROW
   EXECUTE PROCEDURE vacancies.touch_vacancy_updated_at();
 
+-- Legacy DBs may keep NOT NULL columns previous_status / new_status next to *_operation_*.
+-- Choose trigger body by which columns exist so inserts never leave legacy cols NULL.
+DO $migrate_log_op_status$
+DECLARE
+  has_previous_status boolean;
+  has_new_status boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns c
+    WHERE c.table_schema = 'vacancies'
+      AND c.table_name = 'vacancy_status_history'
+      AND c.column_name = 'previous_status'
+  )
+  INTO has_previous_status;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns c
+    WHERE c.table_schema = 'vacancies'
+      AND c.table_name = 'vacancy_status_history'
+      AND c.column_name = 'new_status'
+  )
+  INTO has_new_status;
+
+  IF has_previous_status AND has_new_status THEN
+    EXECUTE $legacy_both_fn$
 CREATE OR REPLACE FUNCTION vacancies.log_vacancy_operation_status()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $body$
+BEGIN
+  IF TG_OP = 'UPDATE' AND (OLD.operation_status IS DISTINCT FROM NEW.operation_status) THEN
+    INSERT INTO vacancies.vacancy_status_history (
+      vacancy_id,
+      previous_operation_status,
+      new_operation_status,
+      previous_status,
+      new_status
+    ) VALUES (
+      NEW.id,
+      OLD.operation_status,
+      NEW.operation_status,
+      OLD.operation_status,
+      NEW.operation_status
+    );
+  END IF;
+  RETURN NEW;
+END;
+$body$ LANGUAGE plpgsql;
+$legacy_both_fn$;
+    EXECUTE $legacy_both_bf$
+UPDATE vacancies.vacancy_status_history h
+SET
+  previous_status = COALESCE(h.previous_status, h.previous_operation_status),
+  new_status = COALESCE(h.new_status, h.new_operation_status)
+WHERE (h.new_operation_status IS NOT NULL AND h.new_status IS NULL)
+   OR (h.previous_operation_status IS NOT NULL AND h.previous_status IS NULL);
+$legacy_both_bf$;
+  ELSIF has_new_status THEN
+    EXECUTE $legacy_new_fn$
+CREATE OR REPLACE FUNCTION vacancies.log_vacancy_operation_status()
+RETURNS TRIGGER AS $body$
+BEGIN
+  IF TG_OP = 'UPDATE' AND (OLD.operation_status IS DISTINCT FROM NEW.operation_status) THEN
+    INSERT INTO vacancies.vacancy_status_history (
+      vacancy_id,
+      previous_operation_status,
+      new_operation_status,
+      new_status
+    ) VALUES (
+      NEW.id,
+      OLD.operation_status,
+      NEW.operation_status,
+      NEW.operation_status
+    );
+  END IF;
+  RETURN NEW;
+END;
+$body$ LANGUAGE plpgsql;
+$legacy_new_fn$;
+    EXECUTE $legacy_new_bf$
+UPDATE vacancies.vacancy_status_history h
+SET new_status = COALESCE(h.new_status, h.new_operation_status)
+WHERE h.new_operation_status IS NOT NULL AND h.new_status IS NULL;
+$legacy_new_bf$;
+  ELSE
+    EXECUTE $std_fn$
+CREATE OR REPLACE FUNCTION vacancies.log_vacancy_operation_status()
+RETURNS TRIGGER AS $body$
 BEGIN
   IF TG_OP = 'UPDATE' AND (OLD.operation_status IS DISTINCT FROM NEW.operation_status) THEN
     INSERT INTO vacancies.vacancy_status_history (
@@ -115,7 +201,11 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$body$ LANGUAGE plpgsql;
+$std_fn$;
+  END IF;
+END
+$migrate_log_op_status$;
 
 DROP TRIGGER IF EXISTS trg_vacancy_status_history ON vacancies.vacancy;
 CREATE TRIGGER trg_vacancy_status_history
