@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "../db/connection";
+import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
 
 const router = Router();
 
@@ -84,6 +85,7 @@ router.get("/coordinators", async (req, res) => {
           r.code ILIKE 'COORDINADOR%'
         )`
       );
+      conditions.push(sqlPersonIsActive("p"));
 
       const where = `WHERE ${conditions.join(" AND ")}`;
 
@@ -92,6 +94,7 @@ router.get("/coordinators", async (req, res) => {
         SELECT COUNT(*)::int
         FROM ${prefix}person pl
         WHERE pl.role_id = 9
+          AND ${sqlPersonIsActive("pl")}
           AND pl.school_id IS NOT NULL
           AND p.school_id IS NOT NULL
           AND pl.school_id = p.school_id
@@ -105,7 +108,7 @@ router.get("/coordinators", async (req, res) => {
            COALESCE(NULLIF(p.edu_email, ''), NULLIF(p.email, '')) AS email,
            COALESCE(a.name, ci.name, '') AS campus,
            COALESCE(s.name, '') AS school,
-           'active'::text AS status,
+           ${sqlPersonStatusText("p")} AS status,
            ${litesCountExpr} AS lites_count
          FROM ${prefix}person p
          LEFT JOIN ${prefix}school s ON s.id = p.school_id
@@ -183,12 +186,13 @@ router.get("/coordinators/:id", async (req, res) => {
            p.school_id AS school_id,
            COALESCE(s.name, '') AS school,
            COALESCE(a.name, ci.name, '') AS campus,
-           'active'::text AS status
+           ${sqlPersonStatusText("p")} AS status
          FROM ${prefix}person p
          LEFT JOIN ${prefix}school s ON s.id = p.school_id
          LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
          LEFT JOIN ${prefix}city ci ON ci.id = p.city_id
          WHERE p.id = $1
+           AND ${sqlPersonIsActive("p")}
          LIMIT 1`,
         [id]
       );
@@ -237,6 +241,8 @@ router.patch("/coordinators/:id", async (req, res) => {
   const personalEmail =
     typeof body.personal_email === "string" ? body.personal_email.trim() : null;
   const address = typeof body.address === "string" ? body.address.trim() : null;
+  const isActivePatch =
+    typeof body.is_active === "boolean" ? body.is_active : undefined;
 
   if (schoolId != null && Number.isNaN(Number(schoolId))) {
     res.status(400).json({ error: "Invalid school_id" });
@@ -251,17 +257,27 @@ router.patch("/coordinators/:id", async (req, res) => {
   const prefix = coreMode === "core" ? "core." : "";
 
   try {
+    const setParts: string[] = [
+      "school_id = COALESCE($2, school_id)",
+      "phone = COALESCE($3, phone)",
+      "email = COALESCE($4, email)",
+      "address = COALESCE($5, address)",
+    ];
+    const params: unknown[] = [id, schoolId, phone, personalEmail, address];
+    let pIdx = 6;
+    if (isActivePatch !== undefined) {
+      setParts.push(`is_active = $${pIdx}`);
+      params.push(isActivePatch);
+      pIdx++;
+    }
+    setParts.push("updated_at = NOW()");
+
     const updated = await pool.query(
       `UPDATE ${prefix}person
-       SET
-         school_id = COALESCE($2, school_id),
-         phone = COALESCE($3, phone),
-         email = COALESCE($4, email),
-         address = COALESCE($5, address),
-         updated_at = NOW()
+       SET ${setParts.join(", ")}
        WHERE id = $1
        RETURNING id`,
-      [id, schoolId, phone, personalEmail, address]
+      params
     );
     if (updated.rows.length === 0) {
       res.status(404).json({ error: "Not found" });
@@ -280,7 +296,7 @@ router.patch("/coordinators/:id", async (req, res) => {
          p.school_id AS school_id,
          COALESCE(s.name, '') AS school,
          COALESCE(a.name, ci.name, '') AS campus,
-         'active'::text AS status
+         ${sqlPersonStatusText("p")} AS status
        FROM ${prefix}person p
        LEFT JOIN ${prefix}school s ON s.id = p.school_id
        LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)

@@ -118,6 +118,7 @@ export async function migrateCore(): Promise<void> {
       address VARCHAR(255),
       full_name VARCHAR(300) NOT NULL,
       marital_status VARCHAR(50),
+      is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     );
@@ -157,6 +158,10 @@ export async function migrateCore(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_user_person_id ON "user"(person_id);
     CREATE INDEX IF NOT EXISTS idx_ppa_programs_id_gin ON person_program_assignments USING GIN (programs_id);
     CREATE INDEX IF NOT EXISTS idx_ppa_academic_line ON person_program_assignments(academic_line);
+
+    -- person.is_active: inactivos no aparecen en listados (LITE / coordinador / docente)
+    ALTER TABLE person ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+    UPDATE person SET is_active = true WHERE is_active IS NULL;
   `;
 
   try {

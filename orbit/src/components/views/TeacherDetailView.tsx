@@ -14,7 +14,9 @@ import {
   EllipsisHorizontalIcon,
   ClockIcon,
   XMarkIcon,
-  CheckIcon
+  CheckIcon,
+  UserMinusIcon,
+  UserPlusIcon,
 } from '@heroicons/react/24/solid';
 import { Teacher, View, Coordinator, Vacancy } from '@/src/types';
 import { Header } from '@/src/components/layout/Header';
@@ -22,6 +24,7 @@ import {
   getTeacher,
   getTeacherByDocument,
   getTeacherAcademicLoad,
+  patchTeacherActive,
 } from '@/src/lib/api';
 
 type ApiTeacherRow = Record<string, unknown>;
@@ -162,6 +165,7 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
   const [fullTeacher, setFullTeacher] = useState<ApiTeacherRow | null>(null);
   const [academicLoad, setAcademicLoad] = useState<AcademicLoadRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [teacherToggleBusy, setTeacherToggleBusy] = useState(false);
 
   useEffect(() => {
     setTeacher(initialTeacher);
@@ -221,6 +225,44 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
   }, [initialTeacher.document]);
 
   const display = apiRowToTeacherDisplay(fullTeacher, initialTeacher);
+
+  const teacherNumericId = Number(fullTeacher?.id ?? teacher.id);
+  const canToggleTeacherActive =
+    Number.isFinite(teacherNumericId) && teacherNumericId > 0;
+
+  const handleToggleTeacherActive = async (makeActive: boolean) => {
+    if (!canToggleTeacherActive) return;
+    setTeacherToggleBusy(true);
+    try {
+      await patchTeacherActive(teacherNumericId, makeActive);
+      if (makeActive) {
+        try {
+          const detail = await getTeacher(teacherNumericId);
+          setFullTeacher(
+            detail && typeof detail === 'object' && !Array.isArray(detail)
+              ? (detail as ApiTeacherRow)
+              : null
+          );
+        } catch {
+          setFullTeacher((prev) =>
+            prev ? { ...prev, status: 'active' } : prev
+          );
+        }
+      } else {
+        setFullTeacher((prev) =>
+          prev ? { ...prev, status: 'inactive' } : prev
+        );
+      }
+      setTeacher((prev) => ({
+        ...prev,
+        status: makeActive ? 'active' : 'inactive',
+      }));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setTeacherToggleBusy(false);
+    }
+  };
 
   const handleSave = () => {
     setTeacher(editForm);
@@ -322,7 +364,36 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
                 )}
               </div>
             </div>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-4">
+              {canToggleTeacherActive ? (
+                display.statusActive ? (
+                  <button
+                    type="button"
+                    disabled={teacherToggleBusy}
+                    onClick={() => void handleToggleTeacherActive(false)}
+                    className="glass-button-secondary flex items-center gap-2 border-rose-200 bg-rose-50 px-6 py-4 text-rose-700 hover:bg-rose-100 disabled:pointer-events-none disabled:opacity-50"
+                    title="Inhabilitar docente"
+                  >
+                    <UserMinusIcon className="h-5 w-5" />
+                    <span className="text-xs font-bold uppercase tracking-widest">
+                      Inhabilitar
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={teacherToggleBusy}
+                    onClick={() => void handleToggleTeacherActive(true)}
+                    className="glass-button-secondary flex items-center gap-2 border-emerald-200 bg-emerald-50 px-6 py-4 text-emerald-800 hover:bg-emerald-100 disabled:pointer-events-none disabled:opacity-50"
+                    title="Habilitar docente"
+                  >
+                    <UserPlusIcon className="h-5 w-5" />
+                    <span className="text-xs font-bold uppercase tracking-widest">
+                      Habilitar
+                    </span>
+                  </button>
+                )
+              ) : null}
               <button 
                 onClick={() => setIsEditing(true)}
                 className="glass-button-primary px-8 py-4 shadow-xl shadow-violet-500/20 hover:scale-105 active:scale-95"
