@@ -65,6 +65,86 @@ const DEFAULT_FETCH_TIMEOUT_MS = 120_000;
 /** Solo subida del archivo al POST /import/docentes?async=1; el progreso sigue por SSE */
 const IMPORT_UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
 
+export type OrbitAccess = "lite" | "full";
+
+export const ORBIT_JWT_STORAGE_KEY = "orbit_jwt";
+export const ORBIT_USER_STORAGE_KEY = "orbit_user";
+
+function getStoredJwt(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  const t = localStorage.getItem(ORBIT_JWT_STORAGE_KEY)?.trim();
+  return t && t.length > 0 ? t : null;
+}
+
+export function clearOrbitSession(): void {
+  if (typeof localStorage === "undefined") return;
+  localStorage.removeItem(ORBIT_JWT_STORAGE_KEY);
+  localStorage.removeItem(ORBIT_USER_STORAGE_KEY);
+}
+
+function withAuth(init: RequestInit = {}): RequestInit {
+  const headers = new Headers(init.headers ?? undefined);
+  const token = getStoredJwt();
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return { ...init, headers };
+}
+
+function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return fetch(input, withAuth(init));
+}
+
+function parseJwtPayload(token: string): {
+  exp: number;
+  orbitAccess?: string;
+} | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+    const payload = JSON.parse(atob(b64 + pad)) as {
+      exp?: number;
+      orbitAccess?: string;
+    };
+    if (typeof payload.exp !== "number") return null;
+    return { exp: payload.exp, orbitAccess: payload.orbitAccess };
+  } catch {
+    return null;
+  }
+}
+
+/** Sesión local válida (JWT con orbitAccess y no expirado en ~30s). */
+export function isStoredJwtValid(): boolean {
+  const token = getStoredJwt();
+  if (!token) return false;
+  const p = parseJwtPayload(token);
+  if (p == null) return false;
+  if (p.orbitAccess !== "lite" && p.orbitAccess !== "full") return false;
+  return p.exp * 1000 > Date.now() + 30_000;
+}
+
+export function getStoredOrbitAccess(): OrbitAccess | null {
+  if (typeof localStorage !== "undefined") {
+    try {
+      const raw = localStorage.getItem(ORBIT_USER_STORAGE_KEY);
+      if (raw) {
+        const u = JSON.parse(raw) as { orbitAccess?: string };
+        if (u.orbitAccess === "lite" || u.orbitAccess === "full") {
+          return u.orbitAccess;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const token = getStoredJwt();
+  const p = token ? parseJwtPayload(token) : null;
+  if (p?.orbitAccess === "lite" || p?.orbitAccess === "full") return p.orbitAccess;
+  return null;
+}
+
 async function fetchWithTimeout(
   input: string,
   init: RequestInit,
@@ -74,7 +154,7 @@ async function fetchWithTimeout(
   const tid = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(input, {
-      ...init,
+      ...withAuth(init),
       signal: controller.signal,
     });
   } finally {
@@ -110,6 +190,9 @@ export type DashboardSummaryResponse = {
 };
 
 async function handleJson<T>(response: Response): Promise<T> {
+  if (response.status === 401) {
+    clearOrbitSession();
+  }
   if (!response.ok) {
     let msg = `HTTP ${response.status}`;
     const text = await response.text().catch(() => "");
@@ -146,6 +229,7 @@ export type GoogleAuthResponse = {
     picture?: string;
     roleCode?: string | null;
     roleName?: string | null;
+    orbitAccess?: OrbitAccess;
   };
 };
 
@@ -156,6 +240,18 @@ export async function loginWithGoogleIdToken(
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify({ idToken }),
+  });
+  return handleJson(response);
+}
+
+/** Solo para desarrollo local: mismo JWT que Google, sin idToken. */
+export async function loginWithLocalEmail(
+  email: string
+): Promise<GoogleAuthResponse> {
+  const response = await fetch(`${BASE_URL}/auth/local-email`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ email: email.trim() }),
   });
   return handleJson(response);
 }
@@ -192,7 +288,7 @@ export async function getTeachers(params?: {
 }
 
 export async function getTeacher(id: number): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/teachers/${id}`, {
+  const response = await authFetch(`${BASE_URL}/teachers/${id}`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
@@ -204,14 +300,17 @@ export async function getTeacherByDocument(
   const url = new URL(`${BASE_URL}/teachers`);
   url.searchParams.set("search", document);
   url.searchParams.set("limit", "1");
-  const res = await fetch(url.toString(), { headers: jsonHeaders });
+  const res = await authFetch(url.toString(), { headers: jsonHeaders });
+  if (res.status === 401) {
+    clearOrbitSession();
+  }
   if (!res.ok) throw new Error("Error");
   const data = (await res.json()) as { data?: unknown[] };
   return data.data?.[0] ?? null;
 }
 
 export async function createTeacher(data: Partial<Teacher>): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/teachers`, {
+  const response = await authFetch(`${BASE_URL}/teachers`, {
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify(data),
@@ -223,7 +322,7 @@ export async function updateTeacher(
   id: number,
   data: Partial<Teacher>
 ): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/teachers/${id}`, {
+  const response = await authFetch(`${BASE_URL}/teachers/${id}`, {
     method: "PUT",
     headers: jsonHeaders,
     body: JSON.stringify(data),
@@ -236,7 +335,7 @@ export async function patchTeacherActive(
   id: number,
   is_active: boolean
 ): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/teachers/${id}`, {
+  const response = await authFetch(`${BASE_URL}/teachers/${id}`, {
     method: "PATCH",
     headers: jsonHeaders,
     body: JSON.stringify({ is_active }),
@@ -258,7 +357,7 @@ export async function updateTeacherProfile(
     is_active?: boolean;
   }
 ): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/teachers/${id}`, {
+  const response = await authFetch(`${BASE_URL}/teachers/${id}`, {
     method: "PATCH",
     headers: jsonHeaders,
     body: JSON.stringify(data),
@@ -302,14 +401,14 @@ export type PatchVacancyPayload = Partial<{
 export type VacanciesListResponse = { data: Vacancy[] };
 
 export async function getVacancies(): Promise<VacanciesListResponse> {
-  const response = await fetch(`${BASE_URL}/vacancies`, {
+  const response = await authFetch(`${BASE_URL}/vacancies`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
 }
 
 export async function getVacancy(id: string): Promise<VacancyDetail> {
-  const response = await fetch(
+  const response = await authFetch(
     `${BASE_URL}/vacancies/${encodeURIComponent(id)}`,
     { headers: jsonHeaders }
   );
@@ -319,7 +418,7 @@ export async function getVacancy(id: string): Promise<VacancyDetail> {
 export async function createVacancy(
   data: CreateVacancyPayload
 ): Promise<Vacancy> {
-  const response = await fetch(`${BASE_URL}/vacancies`, {
+  const response = await authFetch(`${BASE_URL}/vacancies`, {
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify(data),
@@ -331,7 +430,7 @@ export async function patchVacancy(
   id: string,
   data: PatchVacancyPayload
 ): Promise<Vacancy> {
-  const response = await fetch(
+  const response = await authFetch(
     `${BASE_URL}/vacancies/${encodeURIComponent(id)}`,
     {
       method: "PATCH",
@@ -346,7 +445,7 @@ export async function createVacancyRequisition(
   id: string,
   body: { reqNumber: string; sentToCapitalAt?: string | null }
 ): Promise<Vacancy> {
-  const response = await fetch(
+  const response = await authFetch(
     `${BASE_URL}/vacancies/${encodeURIComponent(id)}/requisition`,
     {
       method: "POST",
@@ -361,7 +460,7 @@ export async function closeVacancy(
   id: string,
   body?: { operationStatus?: "hired" | "closed" | "cancelled" }
 ): Promise<Vacancy> {
-  const response = await fetch(
+  const response = await authFetch(
     `${BASE_URL}/vacancies/${encodeURIComponent(id)}/close`,
     {
       method: "PATCH",
@@ -380,12 +479,12 @@ export async function getCoordinators(params?: {
   const url = new URL(`${BASE_URL}/coordinators`);
   if (params?.status) url.searchParams.set("status", params.status);
   if (params?.campus) url.searchParams.set("campus", params.campus);
-  const response = await fetch(url.toString(), { headers: jsonHeaders });
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
   return handleJson(response);
 }
 
 export async function getCoordinator(id: number): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/coordinators/${id}`, {
+  const response = await authFetch(`${BASE_URL}/coordinators/${id}`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
@@ -401,7 +500,7 @@ export async function updateCoordinatorProfile(
     is_active?: boolean;
   }
 ): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/coordinators/${id}`, {
+  const response = await authFetch(`${BASE_URL}/coordinators/${id}`, {
     method: "PATCH",
     headers: jsonHeaders,
     body: JSON.stringify(data),
@@ -421,7 +520,7 @@ export async function getReinstatements(params?: {
   if (params?.decision) url.searchParams.set("decision", params.decision);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
-  const response = await fetch(url.toString(), { headers: jsonHeaders });
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
   return handleJson(response);
 }
 
@@ -429,7 +528,7 @@ export async function updateReinstatement(
   id: number,
   data: unknown
 ): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/reinstatements/${id}`, {
+  const response = await authFetch(`${BASE_URL}/reinstatements/${id}`, {
     method: "PUT",
     headers: jsonHeaders,
     body: JSON.stringify(data),
@@ -455,12 +554,12 @@ export async function getLites(params?: {
   }
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
-  const response = await fetch(url.toString(), { headers: jsonHeaders });
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
   return handleJson(response);
 }
 
 export async function getLite(id: number): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/lites/${id}`, {
+  const response = await authFetch(`${BASE_URL}/lites/${id}`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
@@ -478,7 +577,7 @@ export async function updateLiteProfile(
     is_active?: boolean;
   }
 ): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/lites/${id}`, {
+  const response = await authFetch(`${BASE_URL}/lites/${id}`, {
     method: "PATCH",
     headers: jsonHeaders,
     body: JSON.stringify(data),
@@ -492,7 +591,7 @@ export type CatalogProgram = { id: number; name: string; school_id: number | nul
 export type CatalogRole = { id: number; name: string };
 
 export async function getCatalogAreas(): Promise<CatalogArea[]> {
-  const response = await fetch(`${BASE_URL}/catalog/areas`, {
+  const response = await authFetch(`${BASE_URL}/catalog/areas`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
@@ -505,14 +604,14 @@ export async function getCatalogSchools(params?: {
   if (params?.area_id != null) {
     url.searchParams.set("area_id", String(params.area_id));
   }
-  const response = await fetch(url.toString(), {
+  const response = await authFetch(url.toString(), {
     headers: jsonHeaders,
   });
   return handleJson(response);
 }
 
 export async function getCatalogRoles(): Promise<CatalogRole[]> {
-  const response = await fetch(`${BASE_URL}/catalog/roles`, {
+  const response = await authFetch(`${BASE_URL}/catalog/roles`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
@@ -523,13 +622,13 @@ export async function getCatalogPrograms(params?: {
 }): Promise<CatalogProgram[]> {
   const url = new URL(`${BASE_URL}/catalog/programs`);
   if (params?.school_id != null) url.searchParams.set("school_id", String(params.school_id));
-  const response = await fetch(url.toString(), { headers: jsonHeaders });
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
   return handleJson(response);
 }
 
 /** Líneas académicas ya usadas en `person_program_assignments` (sugerencias). */
 export async function getCatalogAcademicLines(): Promise<string[]> {
-  const response = await fetch(`${BASE_URL}/catalog/academic-lines`, {
+  const response = await authFetch(`${BASE_URL}/catalog/academic-lines`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
@@ -555,12 +654,12 @@ export async function getAcademicLoad(params?: {
   if (params?.type) url.searchParams.set("type", params.type);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
-  const response = await fetch(url.toString(), { headers: jsonHeaders });
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
   return handleJson(response);
 }
 
 export async function getAcademicLoadSummary(): Promise<unknown> {
-  const response = await fetch(`${BASE_URL}/academic-load/summary`, {
+  const response = await authFetch(`${BASE_URL}/academic-load/summary`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
@@ -568,7 +667,7 @@ export async function getAcademicLoadSummary(): Promise<unknown> {
 
 export async function getTeacherAcademicLoad(document: string): Promise<unknown> {
   const enc = encodeURIComponent(document);
-  const response = await fetch(`${BASE_URL}/academic-load/teacher/${enc}`, {
+  const response = await authFetch(`${BASE_URL}/academic-load/teacher/${enc}`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
@@ -576,7 +675,7 @@ export async function getTeacherAcademicLoad(document: string): Promise<unknown>
 
 // Dashboard
 export async function getDashboardSummary(): Promise<DashboardSummaryResponse> {
-  const response = await fetch(`${BASE_URL}/dashboard/summary`, {
+  const response = await authFetch(`${BASE_URL}/dashboard/summary`, {
     headers: jsonHeaders,
   });
   return handleJson(response);
@@ -600,7 +699,12 @@ function listenImportDocentesStream(
   importId: string,
   onProgress?: (e: ImportStreamProgress) => void
 ): Promise<ImportTeachersResponse> {
-  const url = `${IMPORT_BASE_URL}/import/docentes/stream/${encodeURIComponent(importId)}`;
+  const base = `${IMPORT_BASE_URL}/import/docentes/stream/${encodeURIComponent(importId)}`;
+  const token = getStoredJwt();
+  const url =
+    token != null && token.length > 0
+      ? `${base}?access_token=${encodeURIComponent(token)}`
+      : base;
 
   return new Promise((resolve, reject) => {
     let finished = false;
@@ -687,6 +791,11 @@ export async function importTeachersExcel(
       );
     }
     throw e;
+  }
+
+  if (response.status === 401) {
+    clearOrbitSession();
+    throw new Error("Sesión expirada. Vuelve a iniciar sesión.");
   }
 
   if (response.status === 202) {
