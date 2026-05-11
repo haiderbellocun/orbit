@@ -128,6 +128,49 @@ router.get("/catalog/programs", async (req, res) => {
   }
 });
 
+router.get("/catalog/academic-lines", async (_req, res) => {
+  try {
+    /**
+     * No usar solo qualifiedCoreTable(resolveCoreSchemaMode()): si el modo
+     * cae en `public` pero los datos viven en `core` (o al revés), la lista
+     * queda vacía. Unimos ambos esquemas donde exista la tabla.
+     */
+    const reg = await pool.query(
+      `SELECT to_regclass('core.person_program_assignments') AS c,
+              to_regclass('public.person_program_assignments') AS p`
+    );
+    const r = reg.rows[0] as { c: string | null; p: string | null };
+    const subs: string[] = [];
+    if (r.c) {
+      subs.push(
+        `SELECT DISTINCT btrim(academic_line::text) AS line
+         FROM core.person_program_assignments
+         WHERE academic_line IS NOT NULL AND btrim(academic_line::text) <> ''`
+      );
+    }
+    if (r.p) {
+      subs.push(
+        `SELECT DISTINCT btrim(academic_line::text) AS line
+         FROM public.person_program_assignments
+         WHERE academic_line IS NOT NULL AND btrim(academic_line::text) <> ''`
+      );
+    }
+    if (subs.length === 0) {
+      res.json([]);
+      return;
+    }
+    const { rows } = await pool.query(
+      `SELECT DISTINCT line FROM (${subs.join(" UNION ALL ")}) AS u
+       ORDER BY line ASC
+       LIMIT 500`
+    );
+    res.json(rows.map((x) => String((x as { line: unknown }).line)));
+  } catch (e) {
+    console.error("GET /catalog/academic-lines failed:", e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/catalog/roles", async (_req, res) => {
   try {
     const coreMode = await resolveCoreSchemaMode();

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/connection";
+import { insertAutoVacancyOnDeactivate } from "../lib/createVacancyOnDeactivate";
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
 
 const router = Router();
@@ -377,6 +378,25 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
   try {
     await client.query("BEGIN");
 
+    const preDeactivate = await client.query(
+      `SELECT
+         COALESCE(p.is_active, true) AS was_active,
+         p.full_name,
+         p.school_id,
+         p.program_id,
+         COALESCE(ppa.programs_id, ARRAY[]::int[]) AS programs_id,
+         NULLIF(TRIM(COALESCE(ppa.academic_line, '')), '') AS academic_line
+       FROM ${prefix}person p
+       LEFT JOIN ${prefix}person_program_assignments ppa ON ppa.person_id = p.id
+       WHERE p.id = $1 AND p.role_id = ${LITE_ROLE_ID}`,
+      [id]
+    );
+    if (preDeactivate.rows.length === 0) {
+      await client.query("ROLLBACK");
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
     // 1) Update base person fields (except edu_email/document).
     const primaryProgramId = programsId.length > 0 ? programsId[0] : null;
     const setParts: string[] = [
@@ -430,6 +450,38 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
     }
 
     await client.query("COMMIT");
+
+    const pre = preDeactivate.rows[0] as {
+      was_active: boolean;
+      full_name: string | null;
+      program_id: number | null;
+      programs_id: number[];
+      academic_line: string | null;
+    };
+    if (isActivePatch === false && pre.was_active) {
+      const programsArr = Array.isArray(pre.programs_id) ? pre.programs_id : [];
+      const effProg =
+        pre.program_id != null && Number.isFinite(Number(pre.program_id))
+          ? Number(pre.program_id)
+          : programsArr.length > 0 && Number.isFinite(Number(programsArr[0]))
+            ? Number(programsArr[0])
+            : null;
+      try {
+        await insertAutoVacancyOnDeactivate({
+          personId: id,
+          positionName: "LITE",
+          effectiveProgramId: effProg,
+          curricularLine:
+            pre.academic_line != null && String(pre.academic_line).trim() !== ""
+              ? String(pre.academic_line).trim()
+              : null,
+          personFullName:
+            pre.full_name != null ? String(pre.full_name) : null,
+        });
+      } catch (vacErr) {
+        console.error("Auto vacancy (LITE) failed:", vacErr);
+      }
+    }
 
     // 3) Return refreshed profile shape (same as GET /lites/:id)
     const coordJoin = coordinatorMatchSql("ca", "ch", "cr");
