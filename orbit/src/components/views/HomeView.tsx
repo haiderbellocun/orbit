@@ -213,7 +213,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ setView }) => {
             {[
               { label: 'Cargue Masivo de Docentes', icon: UserPlusIcon, action: () => setView('teachers') },
               { label: 'Nueva Vacante', icon: PlusIcon, action: () => setView('vacancies') },
-              { label: 'Reportar Novedad', icon: ExclamationCircleIcon, action: () => setView('news') },
+              // { label: 'Reportar Novedad', icon: ExclamationCircleIcon, action: () => setView('news') },
             ].map((btn, i) => (
               <motion.button 
                 key={i}
