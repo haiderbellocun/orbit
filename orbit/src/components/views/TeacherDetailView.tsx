@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import { 
   RectangleGroupIcon, 
   UserCircleIcon, 
@@ -11,12 +10,7 @@ import {
   ExclamationCircleIcon, 
   BriefcaseIcon, 
   ChevronRightIcon,
-  EllipsisHorizontalIcon,
   ClockIcon,
-  XMarkIcon,
-  CheckIcon,
-  UserMinusIcon,
-  UserPlusIcon,
 } from '@heroicons/react/24/solid';
 import { Teacher, View, Coordinator, Vacancy } from '@/src/types';
 import { Header } from '@/src/components/layout/Header';
@@ -24,8 +18,11 @@ import {
   getTeacher,
   getTeacherByDocument,
   getTeacherAcademicLoad,
-  patchTeacherActive,
 } from '@/src/lib/api';
+import {
+  PersonProfileModal,
+  type PersonProfile,
+} from '@/src/components/common/PersonProfileModal';
 
 type ApiTeacherRow = Record<string, unknown>;
 type AcademicLoadRow = Record<string, unknown>;
@@ -160,16 +157,13 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
   searchResults
 }) => {
   const [teacher, setTeacher] = useState(initialTeacher);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState(initialTeacher);
+  const [profilePerson, setProfilePerson] = useState<PersonProfile | null>(null);
   const [fullTeacher, setFullTeacher] = useState<ApiTeacherRow | null>(null);
   const [academicLoad, setAcademicLoad] = useState<AcademicLoadRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [teacherToggleBusy, setTeacherToggleBusy] = useState(false);
 
   useEffect(() => {
     setTeacher(initialTeacher);
-    setEditForm(initialTeacher);
   }, [initialTeacher.id, initialTeacher.document]);
 
   useEffect(() => {
@@ -225,49 +219,6 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
   }, [initialTeacher.document]);
 
   const display = apiRowToTeacherDisplay(fullTeacher, initialTeacher);
-
-  const teacherNumericId = Number(fullTeacher?.id ?? teacher.id);
-  const canToggleTeacherActive =
-    Number.isFinite(teacherNumericId) && teacherNumericId > 0;
-
-  const handleToggleTeacherActive = async (makeActive: boolean) => {
-    if (!canToggleTeacherActive) return;
-    setTeacherToggleBusy(true);
-    try {
-      await patchTeacherActive(teacherNumericId, makeActive);
-      if (makeActive) {
-        try {
-          const detail = await getTeacher(teacherNumericId);
-          setFullTeacher(
-            detail && typeof detail === 'object' && !Array.isArray(detail)
-              ? (detail as ApiTeacherRow)
-              : null
-          );
-        } catch {
-          setFullTeacher((prev) =>
-            prev ? { ...prev, status: 'active' } : prev
-          );
-        }
-      } else {
-        setFullTeacher((prev) =>
-          prev ? { ...prev, status: 'inactive' } : prev
-        );
-      }
-      setTeacher((prev) => ({
-        ...prev,
-        status: makeActive ? 'active' : 'inactive',
-      }));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setTeacherToggleBusy(false);
-    }
-  };
-
-  const handleSave = () => {
-    setTeacher(editForm);
-    setIsEditing(false);
-  };
 
   return (
     <div className="space-y-10">
@@ -365,42 +316,21 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
               </div>
             </div>
             <div className="flex flex-wrap gap-4">
-              {canToggleTeacherActive ? (
-                display.statusActive ? (
-                  <button
-                    type="button"
-                    disabled={teacherToggleBusy}
-                    onClick={() => void handleToggleTeacherActive(false)}
-                    className="glass-button-secondary flex items-center gap-2 border-rose-200 bg-rose-50 px-6 py-4 text-rose-700 hover:bg-rose-100 disabled:pointer-events-none disabled:opacity-50"
-                    title="Inhabilitar docente"
-                  >
-                    <UserMinusIcon className="h-5 w-5" />
-                    <span className="text-xs font-bold uppercase tracking-widest">
-                      Inhabilitar
-                    </span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={teacherToggleBusy}
-                    onClick={() => void handleToggleTeacherActive(true)}
-                    className="glass-button-secondary flex items-center gap-2 border-emerald-200 bg-emerald-50 px-6 py-4 text-emerald-800 hover:bg-emerald-100 disabled:pointer-events-none disabled:opacity-50"
-                    title="Habilitar docente"
-                  >
-                    <UserPlusIcon className="h-5 w-5" />
-                    <span className="text-xs font-bold uppercase tracking-widest">
-                      Habilitar
-                    </span>
-                  </button>
-                )
-              ) : null}
-              <button 
-                onClick={() => setIsEditing(true)}
+              <button
+                type="button"
+                onClick={() => {
+                  const idStr = String(fullTeacher?.id ?? teacher.id ?? '');
+                  setProfilePerson({
+                    id: idStr,
+                    name: display.fullName,
+                    document: display.document,
+                    role: 'teacher',
+                  });
+                }}
                 className="glass-button-primary px-8 py-4 shadow-xl shadow-violet-500/20 hover:scale-105 active:scale-95"
               >
-                Editar Perfil
+                Perfil Docente
               </button>
-              <button className="glass-button-secondary p-4 hover:bg-slate-50 transition-all"><EllipsisHorizontalIcon className="h-6 w-6" /></button>
             </div>
           </div>
         </div>
@@ -555,96 +485,43 @@ export const TeacherDetailView: React.FC<TeacherDetailViewProps> = ({
       </div>
       )}
 
-      {/* Edit Profile Modal */}
-      <AnimatePresence>
-        {isEditing && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsEditing(false)}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-xl glass-panel p-8 relative z-10 shadow-2xl overflow-hidden"
-            >
-              <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-500"></div>
-              
-              <div className="flex justify-between items-center mb-8">
-                <h2 className="text-2xl font-bold text-slate-900 font-display">Editar Perfil</h2>
-                <button 
-                  onClick={() => setIsEditing(false)}
-                  className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
-
-              <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Nombre Completo</label>
-                    <input 
-                      type="text" 
-                      className="glass-input w-full"
-                      value={editForm.name}
-                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Correo Electrónico</label>
-                    <input 
-                      type="email" 
-                      className="glass-input w-full"
-                      value={editForm.email}
-                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Teléfono</label>
-                    <input 
-                      type="text" 
-                      className="glass-input w-full"
-                      value={editForm.phone}
-                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Programa</label>
-                    <input 
-                      type="text" 
-                      className="glass-input w-full"
-                      value={editForm.program}
-                      onChange={(e) => setEditForm({ ...editForm, program: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-4 pt-6">
-                  <button 
-                    type="button"
-                    onClick={() => setIsEditing(false)}
-                    className="glass-button-secondary px-8 py-3 text-xs font-bold uppercase tracking-widest"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit"
-                    className="glass-button-primary px-8 py-3 text-xs font-bold uppercase tracking-widest flex items-center gap-2"
-                  >
-                    <CheckIcon className="h-4 w-4" />
-                    <span>Guardar Cambios</span>
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <PersonProfileModal
+        open={!!profilePerson}
+        person={profilePerson}
+        onClose={() => setProfilePerson(null)}
+        onProfileUpdated={async () => {
+          const idNum = Number(fullTeacher?.id ?? teacher.id);
+          if (!Number.isFinite(idNum) || idNum <= 0) return;
+          try {
+            const detail = await getTeacher(idNum);
+            if (
+              detail &&
+              typeof detail === 'object' &&
+              !Array.isArray(detail)
+            ) {
+              const row = detail as ApiTeacherRow;
+              setFullTeacher(row);
+              const fullName = str(row.name ?? row.full_name);
+              const st = str(row.status).toLowerCase();
+              setTeacher((prev) => ({
+                ...prev,
+                name: fullName || prev.name,
+                email: str(row.email ?? prev.email),
+                program: str(row.program ?? prev.program),
+                campus: str(row.campus ?? prev.campus),
+                status:
+                  st === 'active'
+                    ? 'active'
+                    : st === 'on-leave'
+                      ? 'on-leave'
+                      : 'inactive',
+              }));
+            }
+          } catch {
+            // ignore
+          }
+        }}
+      />
     </div>
   );
 };

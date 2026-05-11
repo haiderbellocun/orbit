@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CheckIcon,
@@ -10,12 +10,15 @@ import {
 } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
 import {
+  getCatalogAcademicLines,
   getCatalogPrograms,
   getCatalogSchools,
   getCoordinator,
   getLite,
+  getTeacher,
   updateCoordinatorProfile,
   updateLiteProfile,
+  updateTeacherProfile,
   type CatalogProgram,
   type CatalogSchool,
 } from '@/src/lib/api';
@@ -23,7 +26,7 @@ import {
 export type PersonProfile = {
   id: string;
   name: string;
-  role?: 'lite' | 'coordinator';
+  role?: 'lite' | 'coordinator' | 'teacher';
   document?: string;
   edu_email?: string;
   personal_email?: string;
@@ -111,7 +114,7 @@ function statusLabel(st?: PersonProfile['status']): string {
 }
 
 function toPersonProfileFromApi(
-  role: 'lite' | 'coordinator',
+  role: 'lite' | 'coordinator' | 'teacher',
   row: any
 ): PersonProfile {
   if (!row) return { id: '', name: '', role };
@@ -146,6 +149,14 @@ function toPersonProfileFromApi(
     };
   }
 
+  const programsIdRaw = Array.isArray(row.programs_id) ? row.programs_id : [];
+  const programs_id = programsIdRaw
+    .map((x: unknown) => Number.parseInt(String(x), 10))
+    .filter((n: number) => Number.isFinite(n));
+  const programs = Array.isArray(row.programs)
+    ? row.programs.map(String)
+    : [];
+
   return {
     id: String(row.id ?? ''),
     role,
@@ -163,6 +174,10 @@ function toPersonProfileFromApi(
         : row.school_id
           ? Number.parseInt(String(row.school_id), 10)
           : null,
+    program: row.program ? String(row.program) : '',
+    programs_id,
+    programs,
+    academicLine: row.academic_line ? String(row.academic_line) : '',
     status: row.status === 'inactive' ? 'inactive' : 'active',
   };
 }
@@ -191,6 +206,14 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedPerson, setLoadedPerson] = useState<PersonProfile | null>(null);
   const [togglingActive, setTogglingActive] = useState(false);
+  const [academicLineCatalog, setAcademicLineCatalog] = useState<string[]>([]);
+  const [academicLineExtras, setAcademicLineExtras] = useState<string[]>([]);
+  /** Sin `:` (useId) para que `list`/`datalist` enlacen bien en todos los navegadores. */
+  const teacherAcademicDatalistId = useMemo(
+    () => `orbit-teacher-ac-lines-${person?.id ?? 'x'}`,
+    [person?.id]
+  );
+  const teacherAcademicLineInputRef = useRef<HTMLInputElement | null>(null);
 
   const effectivePerson = loadedPerson ?? person;
 
@@ -231,9 +254,28 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   }, [open]);
 
   useEffect(() => {
-    // En edición de LITE: los programas dependen estrictamente de la escuela.
+    if (!open) {
+      setAcademicLineExtras([]);
+      return;
+    }
+    let cancelled = false;
+    getCatalogAcademicLines()
+      .then((lines) => {
+        if (!cancelled) setAcademicLineCatalog(lines);
+      })
+      .catch(() => {
+        if (!cancelled) setAcademicLineCatalog([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    // LITE / docente: catálogo de programas por escuela.
     if (!open || !editing) return;
-    if ((effectivePerson?.role ?? 'lite') !== 'lite') return;
+    if (effectivePerson?.role !== 'lite' && effectivePerson?.role !== 'teacher')
+      return;
     const sid = draft?.school_id ?? effectivePerson?.school_id ?? null;
     if (sid == null) {
       setPrograms([]);
@@ -252,7 +294,10 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
           if (!prev) return prev;
           const allowedIds = new Set(list.map((p) => p.id));
           const current = prev.programs_id ?? [];
-          const nextIds = current.filter((id) => allowedIds.has(id));
+          let nextIds = current.filter((id) => allowedIds.has(id));
+          if (effectivePerson?.role === 'teacher' && nextIds.length > 1) {
+            nextIds = [nextIds[0]];
+          }
           if (nextIds.length === current.length) return prev;
           const nextNames = nextIds
             .map((id) => list.find((p) => p.id === id)?.name)
@@ -286,6 +331,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     setDraft(null);
     setProgramPickerOpen(false);
     setProgramSearch('');
+    setAcademicLineExtras([]);
 
     (async () => {
       try {
@@ -295,13 +341,15 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
         const row =
           person.role === 'lite'
             ? await getLite(idNum)
-            : await getCoordinator(idNum);
+            : person.role === 'teacher'
+              ? await getTeacher(idNum)
+              : await getCoordinator(idNum);
 
         if (!cancelled) {
           const next = toPersonProfileFromApi(person.role, row as any);
           setLoadedPerson(next);
 
-          if (next.school_id != null) {
+          if (next.school_id != null && person.role === 'lite') {
             getCatalogPrograms({ school_id: next.school_id })
               .then((list) => {
                 if (!cancelled) setPrograms(list);
@@ -355,7 +403,11 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
 
     return ordered
       .map((k) => ({ key: k, value: effectivePerson[k] }))
-      .filter((x) => x.value !== undefined && x.value !== '');
+      .filter((x) => {
+        if (x.value === undefined || x.value === '') return false;
+        if (Array.isArray(x.value) && x.value.length === 0) return false;
+        return true;
+      });
   }, [effectivePerson]);
 
   const filteredPrograms = useMemo(() => {
@@ -366,7 +418,47 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     return programs.filter((p) => p.name.toLowerCase().includes(q));
   }, [programSearch, programs]);
 
-  const isLite = (effectivePerson?.role ?? 'lite') === 'lite';
+  const isLite = effectivePerson?.role === 'lite';
+  const isTeacher = effectivePerson?.role === 'teacher';
+
+  const mergedAcademicLineSuggestions = useMemo(() => {
+    const s = new Set<string>();
+    for (const x of academicLineCatalog) {
+      const t = String(x).trim();
+      if (t) s.add(t);
+    }
+    for (const x of academicLineExtras) {
+      const t = String(x).trim();
+      if (t) s.add(t);
+    }
+    return [...s].sort((a, b) => a.localeCompare(b, 'es'));
+  }, [academicLineCatalog, academicLineExtras]);
+
+  /** Lee el DOM del input (evita cierre desincronizado con el estado de React). */
+  const commitTeacherAcademicLineExtra = () => {
+    const fromInput = teacherAcademicLineInputRef.current?.value?.trim() ?? '';
+    const fromDraft = (draft?.academicLine ?? '').trim();
+    const token = fromInput || fromDraft;
+    if (!token) {
+      setSaveFeedback({
+        type: 'error',
+        message: 'Escribe una línea académica.',
+      });
+      return;
+    }
+    setAcademicLineExtras((prev) =>
+      prev.some((x) => x.toLowerCase() === token.toLowerCase())
+        ? prev
+        : [...prev, token]
+    );
+    setDraft((prev) =>
+      prev ? { ...prev, academicLine: token } : prev
+    );
+    setSaveFeedback({
+      type: 'success',
+      message: 'Línea añadida a sugerencias. Pulsa Guardar para persistir.',
+    });
+  };
 
   const beginEdit = () => {
     if (!effectivePerson) return;
@@ -394,6 +486,14 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
       }
     }
 
+    if (next.role === 'teacher') {
+      const pid = (next.programs_id ?? []).filter((n) => Number.isFinite(n));
+      next.programs_id = pid.length > 0 ? [pid[0]] : [];
+      const pname =
+        (next.programs && next.programs[0]) || next.program || '';
+      next.programs = pname ? [pname] : [];
+    }
+
     setDraft(next);
   };
 
@@ -414,7 +514,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     setSaveFeedback(null);
 
     try {
-      if ((effectivePerson.role ?? 'lite') === 'lite') {
+      if (effectivePerson.role === 'lite') {
         const updated = (await updateLiteProfile(idNum, {
           school_id: draft.school_id ?? null,
           phone: draft.phone ?? null,
@@ -427,6 +527,25 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
         setLoadedPerson((prev) => ({
           ...(prev ?? effectivePerson),
           ...toPersonProfileFromApi('lite', updated),
+        }));
+      } else if (effectivePerson.role === 'teacher') {
+        const programsIdTeacher = (draft.programs_id ?? []).filter((n) =>
+          Number.isFinite(n)
+        );
+        const primary = programsIdTeacher[0];
+        const updated = (await updateTeacherProfile(idNum, {
+          school_id: draft.school_id ?? null,
+          phone: draft.phone ?? null,
+          personal_email: draft.personal_email ?? null,
+          address: draft.address ?? null,
+          program_id: primary ?? null,
+          programs_id: programsIdTeacher,
+          academic_line: (draft.academicLine ?? '').trim() || null,
+        })) as any;
+
+        setLoadedPerson((prev) => ({
+          ...(prev ?? effectivePerson),
+          ...toPersonProfileFromApi('teacher', updated),
         }));
       } else {
         const updated = (await updateCoordinatorProfile(idNum, {
@@ -472,7 +591,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     setSaveFeedback(null);
 
     try {
-      if ((effectivePerson.role ?? 'lite') === 'lite') {
+      if (effectivePerson.role === 'lite') {
         const updated = (await updateLiteProfile(idNum, {
           is_active: makeActive,
         })) as any;
@@ -480,6 +599,15 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
         setLoadedPerson((prev) => ({
           ...(prev ?? effectivePerson),
           ...toPersonProfileFromApi('lite', updated),
+        }));
+      } else if (effectivePerson.role === 'teacher') {
+        const updated = (await updateTeacherProfile(idNum, {
+          is_active: makeActive,
+        })) as any;
+
+        setLoadedPerson((prev) => ({
+          ...(prev ?? effectivePerson),
+          ...toPersonProfileFromApi('teacher', updated),
         }));
       } else {
         const updated = (await updateCoordinatorProfile(idNum, {
@@ -765,7 +893,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                   <div className="max-h-[320px] space-y-3 overflow-y-auto pr-2 custom-scrollbar">
                     {newsItems.length === 0 ? (
                       <div className="rounded-2xl border border-white/30 bg-white/40 p-8 text-sm text-slate-500">
-                        Aún no hay novedades registradas (solo front por ahora).
+                        En desarrollo...
                       </div>
                     ) : (
                       newsItems.map((n) => (
@@ -812,10 +940,13 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                           onClick={() => void handleToggleActive(true)}
                           disabled={togglingActive || saving}
                           title="Habilitar usuario"
-                          className="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-emerald-700 transition-colors hover:bg-emerald-100 disabled:pointer-events-none disabled:opacity-50"
+                          className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-emerald-700 transition-colors hover:bg-emerald-100 disabled:pointer-events-none disabled:opacity-50"
                           aria-label="Habilitar usuario"
                         >
-                          <UserPlusIcon className="h-5 w-5" />
+                          <UserPlusIcon className="h-5 w-5 shrink-0" />
+                          <span className="text-xs font-bold uppercase tracking-widest">
+                            Habilitar
+                          </span>
                         </button>
                       ) : (
                         <button
@@ -823,10 +954,13 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                           onClick={() => void handleToggleActive(false)}
                           disabled={togglingActive || saving}
                           title="Inhabilitar usuario"
-                          className="rounded-xl border border-rose-200 bg-rose-50 p-2 text-rose-600 transition-colors hover:bg-rose-100 disabled:pointer-events-none disabled:opacity-50"
+                          className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-rose-600 transition-colors hover:bg-rose-100 disabled:pointer-events-none disabled:opacity-50"
                           aria-label="Inhabilitar usuario"
                         >
-                          <UserMinusIcon className="h-5 w-5" />
+                          <UserMinusIcon className="h-5 w-5 shrink-0" />
+                          <span className="text-xs font-bold uppercase tracking-widest">
+                            Inhabilitar
+                          </span>
                         </button>
                       )}
 
@@ -982,6 +1116,124 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                       </div>
                     ))}
                   </div>
+
+                  {isTeacher ? (
+                    <div className="mt-2 space-y-4 rounded-2xl border border-white/30 bg-white/40 p-4 sm:p-5">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Programa
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Un programa por docente; la línea académica se guarda en
+                          la misma asignación programa–persona que usa el sistema.
+                        </p>
+                      </div>
+
+                      {editing ? (
+                        <select
+                          className="glass-input mt-2 w-full py-3 text-sm"
+                          value={String(draft?.programs_id?.[0] ?? '')}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            const vid = raw
+                              ? Number.parseInt(raw, 10)
+                              : Number.NaN;
+                            const pr = programs.find(
+                              (p) => p.id === vid
+                            );
+                            setDraft((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    programs_id: Number.isFinite(vid)
+                                      ? [vid]
+                                      : [],
+                                    programs: pr ? [pr.name] : [],
+                                    program: pr?.name ?? '',
+                                  }
+                                : prev
+                            );
+                          }}
+                        >
+                          <option value="">
+                            {draft?.school_id
+                              ? 'Selecciona programa…'
+                              : 'Primero elige escuela arriba'}
+                          </option>
+                          {programs.map((p) => (
+                            <option key={p.id} value={String(p.id)}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="mt-2 break-words text-sm font-semibold text-slate-800">
+                          {effectivePerson.program ||
+                            (effectivePerson.programs ?? []).join(' • ') ||
+                            '—'}
+                        </p>
+                      )}
+
+                      <div className="space-y-2 pt-2">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Línea académica
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Sugerencias desde registros existentes; puedes escribir
+                          una nueva y usar <span className="font-bold">Agregar</span>.
+                        </p>
+
+                        {editing ? (
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                            <div className="min-w-0 flex-1">
+                              <input
+                                ref={teacherAcademicLineInputRef}
+                                type="text"
+                                className="glass-input w-full py-3 text-sm"
+                                maxLength={150}
+                                autoComplete="off"
+                                list={teacherAcademicDatalistId}
+                                placeholder="Escribe o elige una línea…"
+                                value={draft?.academicLine ?? ''}
+                                onChange={(e) =>
+                                  setDraft((prev) =>
+                                    prev
+                                      ? {
+                                          ...prev,
+                                          academicLine: e.target.value,
+                                        }
+                                      : prev
+                                  )
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    commitTeacherAcademicLineExtra();
+                                  }
+                                }}
+                              />
+                              <datalist id={teacherAcademicDatalistId}>
+                                {mergedAcademicLineSuggestions.map((line) => (
+                                  <option key={line} value={line} />
+                                ))}
+                              </datalist>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => commitTeacherAcademicLineExtra()}
+                              className="glass-button-secondary shrink-0 px-4 py-3 text-xs font-bold uppercase tracking-widest"
+                            >
+                              Agregar
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-sm font-semibold text-slate-800">
+                            {effectivePerson.academicLine?.trim() || '—'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
 
                   {isLite ? (
                     <div className="mt-2 space-y-4 rounded-2xl border border-white/30 bg-white/40 p-4 sm:p-5">

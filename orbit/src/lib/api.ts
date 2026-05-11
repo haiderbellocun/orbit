@@ -244,6 +244,28 @@ export async function patchTeacherActive(
   return handleJson(response);
 }
 
+/** CORE (person): coordinador + program_id; docente también `programs_id` + `academic_line` → `person_program_assignments`. */
+export async function updateTeacherProfile(
+  id: number,
+  data: {
+    school_id?: number | null;
+    phone?: string | null;
+    personal_email?: string | null;
+    address?: string | null;
+    program_id?: number | null;
+    programs_id?: number[];
+    academic_line?: string | null;
+    is_active?: boolean;
+  }
+): Promise<unknown> {
+  const response = await fetch(`${BASE_URL}/teachers/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(data),
+  });
+  return handleJson(response);
+}
+
 // Vacancies (schema `vacancies.vacancy`)
 export type CreateVacancyPayload = {
   areaId: number;
@@ -502,6 +524,14 @@ export async function getCatalogPrograms(params?: {
   const url = new URL(`${BASE_URL}/catalog/programs`);
   if (params?.school_id != null) url.searchParams.set("school_id", String(params.school_id));
   const response = await fetch(url.toString(), { headers: jsonHeaders });
+  return handleJson(response);
+}
+
+/** Líneas académicas ya usadas en `person_program_assignments` (sugerencias). */
+export async function getCatalogAcademicLines(): Promise<string[]> {
+  const response = await fetch(`${BASE_URL}/catalog/academic-lines`, {
+    headers: jsonHeaders,
+  });
   return handleJson(response);
 }
 

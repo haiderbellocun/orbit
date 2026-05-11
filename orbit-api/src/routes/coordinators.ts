@@ -1,5 +1,9 @@
 import { Router } from "express";
 import { pool } from "../db/connection";
+import {
+  insertAutoVacancyOnDeactivate,
+  personMatchesAcademicCoordinator,
+} from "../lib/createVacancyOnDeactivate";
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
 
 const router = Router();
@@ -257,6 +261,20 @@ router.patch("/coordinators/:id", async (req, res) => {
   const prefix = coreMode === "core" ? "core." : "";
 
   try {
+    const preDeactivate = await pool.query(
+      `SELECT
+         COALESCE(p.is_active, true) AS was_active,
+         p.full_name,
+         p.program_id
+       FROM ${prefix}person p
+       WHERE p.id = $1`,
+      [id]
+    );
+    if (preDeactivate.rows.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
     const setParts: string[] = [
       "school_id = COALESCE($2, school_id)",
       "phone = COALESCE($3, phone)",
@@ -307,6 +325,33 @@ router.patch("/coordinators/:id", async (req, res) => {
     );
 
     res.json(refreshed.rows[0] ?? null);
+
+    const pre = preDeactivate.rows[0] as {
+      was_active: boolean;
+      full_name: string | null;
+      program_id: number | null;
+    };
+    if (isActivePatch === false && pre.was_active) {
+      try {
+        const isCoord = await personMatchesAcademicCoordinator(id);
+        if (isCoord) {
+          const effProg =
+            pre.program_id != null && Number.isFinite(Number(pre.program_id))
+              ? Number(pre.program_id)
+              : null;
+          await insertAutoVacancyOnDeactivate({
+            personId: id,
+            positionName: "COORDINADOR ACADÉMICO",
+            effectiveProgramId: effProg,
+            curricularLine: null,
+            personFullName:
+              pre.full_name != null ? String(pre.full_name) : null,
+          });
+        }
+      } catch (vacErr) {
+        console.error("Auto vacancy (coordinador) failed:", vacErr);
+      }
+    }
   } catch (e) {
     console.error("PATCH /coordinators/:id failed:", e);
     res.status(500).json({ error: "Internal server error" });
