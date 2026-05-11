@@ -6,7 +6,7 @@ import {
   AcademicCapIcon as AcademicCapOutlineIcon,
 } from '@heroicons/react/24/outline';
 import { cn } from '@/src/lib/utils';
-import { View, NAV_ITEMS } from '@/src/types';
+import { View, NAV_ITEMS, type NavItem } from '@/src/types';
 import { BRAND_CONFIG, APP_ICONS } from '@/src/config/brand';
 import { Logo } from '../common/Logo';
 
@@ -15,9 +15,19 @@ interface SidebarProps {
   setView: (v: View) => void;
   isOpen?: boolean;
   onClose?: () => void;
+  /** Por defecto `NAV_ITEMS` completo. */
+  navItems?: NavItem[];
+  onLogout?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  currentView,
+  setView,
+  isOpen,
+  onClose,
+  navItems = NAV_ITEMS,
+  onLogout,
+}) => {
   return (
     <aside className={cn(
       "fixed inset-y-0 left-0 md:left-4 md:top-4 md:bottom-4 w-[280px] md:w-64 glass-panel flex flex-col z-[100] transition-all duration-500 rounded-none md:rounded-3xl border-y-0 border-l-0 md:border",
@@ -47,7 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen, 
       </div>
 
       <nav className="flex-1 px-6 py-8 space-y-3 overflow-y-auto no-scrollbar">
-        {NAV_ITEMS.map((item, i) => {
+        {navItems.map((item, i) => {
           const isActive = currentView === item.id || (currentView.startsWith(item.id.split('-')[0]) && item.id !== 'home');
           const OutlineIcon =
             item.id === 'lites'
@@ -110,7 +120,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, isOpen, 
 
       <div className="p-6 border-t border-white/30">
         <button 
-          onClick={() => setView('login')}
+          onClick={() => {
+            onLogout?.();
+            setView('login');
+          }}
           className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-slate-500 hover:bg-rose-50/50 hover:text-rose-600 transition-all duration-300 group"
         >
           <ArrowRightOnRectangleIcon className="h-[22px] w-[22px] group-hover:text-rose-600 group-hover:rotate-12 transition-transform" />

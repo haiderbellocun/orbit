@@ -8,7 +8,6 @@ import {
   ChevronRightIcon, 
   ChartBarIcon, 
   ClockIcon, 
-  ExclamationCircleIcon,
   UserPlusIcon
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
@@ -21,9 +20,11 @@ import {
 
 interface HomeViewProps {
   setView: (v: View) => void;
+  /** Usuario LITE: sin acciones de vacantes ni carga masiva. */
+  isLiteUser?: boolean;
 }
 
-export const HomeView: React.FC<HomeViewProps> = ({ setView }) => {
+export const HomeView: React.FC<HomeViewProps> = ({ setView, isLiteUser }) => {
   type StatCard = {
     label: string;
     value: string;
@@ -58,7 +59,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ setView }) => {
 
   const buildFallbackStats = (): StatCard[] => [
     {
-      label: 'Docentes Activos',
+      label: 'Personal Activo',
       value: '0',
       trend: '0.0%',
       isUp: true,
@@ -101,7 +102,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ setView }) => {
 
         const nextStats: StatCard[] = [
           {
-            label: 'Docentes Activos',
+            label: 'Personal Activo',
             value: numberFormatter.format(summary.activeTeachers.value),
             trend: toTrendText(
               summary.activeTeachers.trend,
@@ -210,30 +211,45 @@ export const HomeView: React.FC<HomeViewProps> = ({ setView }) => {
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700"></div>
           <h3 className="text-xl font-bold mb-6 relative z-10 font-display text-white drop-shadow-sm">Acciones Rápidas</h3>
           <div className="space-y-4 relative z-10">
-            {[
-              { label: 'Cargue Masivo de Docentes', icon: UserPlusIcon, action: () => setView('teachers') },
-              { label: 'Nueva Vacante', icon: PlusIcon, action: () => setView('vacancies') },
-              { label: 'Reportar Novedad', icon: ExclamationCircleIcon, action: () => setView('news') },
-            ].map((btn, i) => (
-              <motion.button 
-                key={i}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                whileHover={{ scale: 1.02, x: 5 }}
-                whileTap={{ scale: 0.98 }}
-                transition={{ delay: 0.3 + (i * 0.1) }}
-                onClick={btn.action}
-                className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/10 transition-all group backdrop-blur-md"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-white/20 rounded-xl shadow-inner">
-                    <btn.icon className="h-5 w-5 text-white" />
+            {isLiteUser ? (
+              <p className="text-sm font-medium text-white/90 leading-relaxed">
+                Consulta a tus docentes desde el menú lateral «Docentes». Las demás funciones no están disponibles para tu perfil.
+              </p>
+            ) : (
+              [
+                {
+                  label: 'Cargue Masivo de Docentes',
+                  icon: UserPlusIcon,
+                  action: () => setView('teachers'),
+                },
+                {
+                  label: 'Nueva Vacante',
+                  icon: PlusIcon,
+                  action: () => setView('vacancies'),
+                },
+              ].map((btn, i) => (
+                <motion.button
+                  key={btn.label}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  whileHover={{ scale: 1.02, x: 5 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ delay: 0.3 + i * 0.1 }}
+                  onClick={btn.action}
+                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/10 transition-all group backdrop-blur-md"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="p-2 bg-white/20 rounded-xl shadow-inner">
+                      <btn.icon className="h-5 w-5 text-white" />
+                    </div>
+                    <span className="text-sm font-bold tracking-wide text-white drop-shadow-sm">
+                      {btn.label}
+                    </span>
                   </div>
-                  <span className="text-sm font-bold tracking-wide text-white drop-shadow-sm">{btn.label}</span>
-                </div>
-                <ChevronRightIcon className="h-[18px] w-[18px] text-white/50 group-hover:text-white group-hover:translate-x-1 transition-all" />
-              </motion.button>
-            ))}
+                  <ChevronRightIcon className="h-[18px] w-[18px] text-white/50 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                </motion.button>
+              ))
+            )}
           </div>
         </div>
 

@@ -7,13 +7,14 @@ import {
   EnvelopeIcon, 
   MapPinIcon, 
   ArrowRightIcon,
-  XMarkIcon,
   PencilSquareIcon,
-  PhoneIcon,
-  DocumentTextIcon,
   ArrowUpTrayIcon
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
+import {
+  PersonProfileModal,
+  type PersonProfile,
+} from '@/src/components/common/PersonProfileModal';
 import { cn } from '@/src/lib/utils';
 import { Teacher, View, Coordinator, Vacancy } from '@/src/types';
 import {
@@ -62,6 +63,34 @@ function mapTeacherFromApi(row: Record<string, unknown>): Teacher {
   };
 }
 
+const IMPORT_PHASE_LABELS_ES: Record<string, string> = {
+  validate: 'Validación del archivo',
+  parse: 'Lectura del Excel',
+  hierarchy: 'Jerarquía académica',
+  core: 'Docentes y catálogo CORE',
+  academic: 'Carga académica',
+  carga_actual: 'Carga actual',
+  proyeccion: 'ACA Proyección',
+};
+
+function formatImportPhaseEs(phase: string): string {
+  return IMPORT_PHASE_LABELS_ES[phase] ?? phase.replace(/_/g, ' ');
+}
+
+function formatImportDurationEs(ms: number): string {
+  if (ms >= 60000) {
+    const min = Math.floor(ms / 60000);
+    const sec = Math.round((ms % 60000) / 1000);
+    return sec > 0 ? `${min} min ${sec} s` : `${min} min`;
+  }
+  if (ms >= 1000) {
+    const sec = ms / 1000;
+    const rounded = sec >= 10 ? Math.round(sec) : Math.round(sec * 10) / 10;
+    return `${String(rounded).replace('.', ',')} s`;
+  }
+  return `${ms} ms`;
+}
+
 interface TeachersViewProps {
   onSelectTeacher: (t: Teacher) => void;
   searchQuery?: string;
@@ -71,13 +100,16 @@ interface TeachersViewProps {
     vacancies: Vacancy[];
     coordinators: Coordinator[];
   } | null;
+  /** Oculta importación Excel (perfil LITE). */
+  hideBulkImport?: boolean;
 }
 
 export const TeachersView: React.FC<TeachersViewProps> = ({ 
   onSelectTeacher, 
   searchQuery = '', 
   setSearchQuery,
-  searchResults 
+  searchResults,
+  hideBulkImport = false,
 }) => {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,8 +118,9 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
   const [totalCount, setTotalCount] = useState(0);
   const listKeyRef = useRef<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'on-leave' | 'inactive'>('all');
-  const [showForm, setShowForm] = useState(false);
-  const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
+  const [profilePerson, setProfilePerson] = useState<PersonProfile | null>(
+    null
+  );
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportTeachersResponse | null>(null);
@@ -157,31 +190,14 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
     { id: 'inactive', label: 'Inactivo' },
   ];
 
-  const handleSaveTeacher = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!editingTeacher) return;
-    const formData = new FormData(e.currentTarget);
-    const teacherData: Partial<Teacher> = {
-      name: formData.get('name') as string,
-      document: formData.get('document') as string,
-      email: formData.get('email') as string,
-      phone: formData.get('phone') as string,
-      program: formData.get('program') as string,
-      campus: formData.get('campus') as string,
-      status: formData.get('status') as any,
-      joinDate: formData.get('joinDate') as string || new Date().toISOString().split('T')[0],
-    };
-
-    setTeachers(prev => prev.map(t => t.id === editingTeacher.id ? { ...t, ...teacherData } : t));
-    
-    setShowForm(false);
-    setEditingTeacher(null);
-  };
-
   const openEdit = (e: React.MouseEvent, teacher: Teacher) => {
     e.stopPropagation();
-    setEditingTeacher(teacher);
-    setShowForm(true);
+    setProfilePerson({
+      id: teacher.id,
+      name: teacher.name,
+      document: teacher.document,
+      role: 'teacher',
+    });
   };
 
   const openImportPicker = () => {
@@ -270,15 +286,18 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                 <RectangleGroupIcon className="h-4.5 w-4.5" />
                 <span>Vista: Cards</span>
               </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleImportFile}
-                className="hidden"
-              />
+              {!hideBulkImport && (
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportFile}
+                  className="hidden"
+                />
+              )}
             </div>
           </div>
+          {!hideBulkImport && (
           <div className="flex flex-col items-stretch lg:items-end gap-1 w-full lg:w-auto">
           <motion.button 
             whileHover={{ scale: 1.02 }}
@@ -297,6 +316,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
             </p>
           )}
           </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2">
@@ -319,7 +339,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
         </div>
       </div>
 
-      {isImporting && (
+      {!hideBulkImport && isImporting && (
         <div className="glass-panel p-4 border border-violet-200/60 bg-white/40 space-y-2">
           <div className="flex justify-between items-center gap-2">
             <p className="text-xs font-semibold text-slate-800 leading-snug">
@@ -333,7 +353,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
           </div>
           {importProgress?.phase != null && importProgress.phase.length > 0 && (
             <p className="text-[10px] uppercase tracking-wider text-slate-500">
-              {importProgress.phase.replace(/_/g, ' ')}
+              {formatImportPhaseEs(importProgress.phase)}
             </p>
           )}
           <div className="h-2.5 rounded-full bg-slate-200/80 overflow-hidden">
@@ -349,19 +369,19 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
         </div>
       )}
 
-      {importError && (
+      {!hideBulkImport && importError && (
         <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-700 text-sm font-medium">
           {importError}
         </div>
       )}
 
-      {importResult && !importResult.success && (
+      {!hideBulkImport && importResult && !importResult.success && (
         <div className="glass-panel p-5 space-y-3 border border-amber-200 bg-amber-50/40">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-bold uppercase tracking-widest text-amber-800">
               Importación con errores
             </span>
-            <span className="text-xs text-slate-500">Import ID: {importResult.importId}</span>
+            <span className="text-xs text-slate-500">ID de importación: {importResult.importId}</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
             <div className="rounded-xl bg-white/60 p-3">
@@ -371,23 +391,23 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
               <strong>Errores (filas):</strong> {importResult.summary.errors.length}
             </div>
             <div className="rounded-xl bg-white/60 p-3">
-              <strong>Duración:</strong> {importResult.summary.duration_ms} ms
+              <strong>Duración:</strong> {formatImportDurationEs(importResult.summary.duration_ms)}
             </div>
           </div>
           {importResult.summary.errors[0] && (
             <p className="text-xs text-amber-900 font-medium">
-              Ejemplo: fila {importResult.summary.errors[0].row}:{' '}
+              Detalle (ejemplo — fila {importResult.summary.errors[0].row}):{' '}
               {importResult.summary.errors[0].reason}
             </p>
           )}
         </div>
       )}
 
-      {importResult?.success && (
+      {!hideBulkImport && importResult?.success && (
         <div className="glass-panel p-5 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-bold uppercase tracking-widest text-emerald-600">Carga completada</span>
-            <span className="text-xs text-slate-500">Import ID: {importResult.importId}</span>
+            <span className="text-xs text-slate-500">ID de importación: {importResult.importId}</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
             <div className="rounded-xl bg-white/60 p-3"><strong>Procesadas:</strong> {importResult.summary.processedRows}</div>
@@ -536,196 +556,12 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
         </div>
       )}
 
-      {/* Teacher Form Modal */}
-      <AnimatePresence>
-        {showForm && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowForm(false)}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-2xl glass-panel p-6 sm:p-8 relative z-10 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar"
-            >
-              <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-500"></div>
-              
-              <div className="flex justify-between items-center mb-8">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center text-violet-600">
-                    <PencilSquareIcon className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-slate-900 font-display">
-                      Editar Perfil
-                    </h2>
-                    <p className="text-xs text-slate-500 font-medium tracking-wide uppercase">
-                      Información académica y personal
-                    </p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setShowForm(false)}
-                  className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveTeacher} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Nombre Completo</label>
-                    <div className="relative">
-                      <UserCircleIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="name"
-                        type="text" 
-                        required
-                        defaultValue={editingTeacher?.name}
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="Ej: Dr. Alejandro Martínez"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Documento / ID</label>
-                    <div className="relative">
-                      <DocumentTextIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="document"
-                        type="text" 
-                        required
-                        defaultValue={editingTeacher?.document}
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="Número de identificación"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Correo Institucional</label>
-                    <div className="relative">
-                      <EnvelopeIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="email"
-                        type="email" 
-                        required
-                        defaultValue={editingTeacher?.email}
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="correo@orbit.edu"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Teléfono</label>
-                    <div className="relative">
-                      <PhoneIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="phone"
-                        type="text" 
-                        required
-                        defaultValue={editingTeacher?.phone}
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="+57 300 000 0000"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Programa Académico</label>
-                    <div className="relative">
-                      <RectangleGroupIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="program"
-                        type="text" 
-                        required
-                        defaultValue={editingTeacher?.program}
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="Ej: Ingeniería de Sistemas"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Sede / Campus</label>
-                    <div className="relative">
-                      <MapPinIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <select 
-                        name="campus"
-                        defaultValue={editingTeacher?.campus || 'Sede Norte'}
-                        className="glass-input pl-12 py-3 text-sm appearance-none"
-                      >
-                        <option value="Sede Norte">Sede Norte</option>
-                        <option value="Sede Centro">Sede Centro</option>
-                        <option value="Sede Sur">Sede Sur</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Estado</label>
-                    <div className="flex gap-3">
-                      {['active', 'on-leave', 'inactive'].map((s) => (
-                        <label key={s} className="flex-1 cursor-pointer">
-                          <input 
-                            type="radio" 
-                            name="status" 
-                            value={s} 
-                            defaultChecked={editingTeacher?.status === s || (!editingTeacher && s === 'active')}
-                            className="sr-only peer" 
-                          />
-                          <div className="w-full py-2.5 text-[10px] font-bold uppercase tracking-widest text-center rounded-xl border border-white/60 bg-white/40 text-slate-400 peer-checked:bg-violet-600 peer-checked:text-white peer-checked:border-violet-600 transition-all">
-                            {s === 'active' ? 'Activo' : s === 'on-leave' ? 'Licencia' : 'Inactivo'}
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Fecha de Ingreso</label>
-                    <div className="relative">
-                      <DocumentTextIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="joinDate"
-                        type="date" 
-                        defaultValue={editingTeacher?.joinDate || new Date().toISOString().split('T')[0]}
-                        className="glass-input pl-12 py-3 text-sm" 
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-4 pt-4">
-                  <button 
-                    type="button"
-                    onClick={() => setShowForm(false)}
-                    className="flex-1 glass-button-secondary py-4 text-xs font-bold uppercase tracking-widest"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit"
-                    className="flex-[2] glass-button-primary py-4 text-xs font-bold uppercase tracking-widest"
-                  >
-                    Guardar Cambios
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <PersonProfileModal
+        open={!!profilePerson}
+        person={profilePerson}
+        onClose={() => setProfilePerson(null)}
+        onProfileUpdated={() => setReloadKey((k) => k + 1)}
+      />
     </div>
   );
 };

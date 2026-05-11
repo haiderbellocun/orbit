@@ -17,6 +17,12 @@ export interface ColumnMap {
   nombreCentroCosto: number;
   escuela: number;
   nombreArea: number;
+  /**
+   * Optional column. Maps to core.person_program_assignments.academic_line
+   * when present in the Excel. If missing, persons will be created without
+   * an academic line and it can be backfilled later.
+   */
+  lineaAcademica?: number;
 }
 
 export interface HeaderDetectionResult {
@@ -68,6 +74,14 @@ const COLUMN_NAMES = {
     "Nombre Area",
     "Area",
     "Campus Area",
+  ],
+  lineaAcademica: [
+    "Línea Académica",
+    "Linea Academica",
+    "Línea académica",
+    "Linea academica",
+    "Linea Acad\u00e9mica",
+    "Academic Line",
   ],
 };
 

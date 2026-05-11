@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/connection";
+import { sqlPersonIsActive } from "../sql/personActive";
 
 const router = Router();
 
@@ -93,7 +94,7 @@ router.get("/academic-load", async (req: Request, res: Response) => {
         al.group_code,
         COUNT(*) OVER() AS total_count
       FROM academic_workload.academic_load al
-      LEFT JOIN person p ON p.id = al.person_id
+      INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
       LEFT JOIN program pr ON pr.id = al.program_id
       LEFT JOIN academic_workload.subject s ON s.subject_code = al.subject_code
       LEFT JOIN academic_workload.class_group cg
@@ -132,6 +133,7 @@ router.get("/academic-load/summary", async (_req: Request, res: Response) => {
         COUNT(*)::int AS total_subjects,
         COUNT(DISTINCT al.person_id)::int AS total_teachers
       FROM academic_workload.academic_load al
+      INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
       GROUP BY al.period_code
       ORDER BY al.period_code DESC
     `);
@@ -164,7 +166,7 @@ router.get("/academic-load/teacher/:document", async (req: Request, res: Respons
         al.subject_code,
         al.group_code
       FROM academic_workload.academic_load al
-      INNER JOIN person p ON p.id = al.person_id
+      INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
       LEFT JOIN program pr ON pr.id = al.program_id
       LEFT JOIN academic_workload.subject s ON s.subject_code = al.subject_code
       LEFT JOIN academic_workload.class_group cg

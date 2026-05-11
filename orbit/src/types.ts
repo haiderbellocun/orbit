@@ -29,17 +29,61 @@ export interface Teacher {
   lite_document?: string;
 }
 
+export type VacancyOperationStatus =
+  | 'open'
+  | 'selected'
+  | 'requisition_sent'
+  | 'hired'
+  | 'closed'
+  | 'cancelled';
+
+/** List row from GET /vacancies (joined with CORE + optional requisition). */
 export interface Vacancy {
   id: string;
-  title: string;
-  program: string;
-  campus: string;
-  coordinator: string;
-  status: 'open' | 'in-progress' | 'filled' | 'cancelled';
+  areaId: number;
+  /** Present when response includes CORE joins (list/detail); bare POST/PATCH may omit. */
+  areaName?: string;
+  schoolId: number;
+  schoolName?: string;
+  programId: number | null;
+  programName?: string | null;
+  positionName: string;
+  curricularLine: string | null;
+  quantity: number;
+  operationStatus: VacancyOperationStatus;
+  operationNotes: string | null;
+  capitalNotes: string | null;
+  shortlistComplied: boolean | null;
+  pdaComplied: boolean | null;
+  contractConditionsComplied: boolean | null;
+  preInterviewCvComplied: boolean | null;
   createdAt: string;
-  priority: 'low' | 'medium' | 'high';
-  period?: string;
+  updatedAt?: string;
+  closedAt?: string | null;
+  reqNumber?: string | null;
+  reqAssignedAt?: string | null;
+  sentToCapitalAt?: string | null;
 }
+
+export type VacancyRequisitionDetail = {
+  id: string;
+  reqNumber: string;
+  assignedAt: string;
+  sentToCapitalAt: string | null;
+};
+
+export type VacancyStatusHistoryEntry = {
+  id: string;
+  previousOperationStatus: string | null;
+  newOperationStatus: string;
+  changedAt: string;
+  changedByPersonId: number | null;
+};
+
+export type VacancyDetail = Vacancy & {
+  requisition: VacancyRequisitionDetail | null;
+  statusHistory: VacancyStatusHistoryEntry[];
+};
 
 export interface Reinstatement {
   id: string;
@@ -62,10 +106,12 @@ export interface NewsItem {
 
 export interface Coordinator {
   id: string;
+  document: string;
   name: string;
   email: string;
   phone: string;
   campus: string;
+  school: string;
   assignments: number;
   status: 'active' | 'inactive';
 }
@@ -101,10 +147,12 @@ export const NAV_ITEMS = [
   { id: 'home', label: 'Command Center', iconKey: 'dashboard' },
   { id: 'teachers', label: 'Docentes', iconKey: 'teachers' },
   { id: 'academic-load', label: 'Carga Académica', iconKey: 'academic-load' },
-  { id: 'vacancies', label: 'Vacantes', iconKey: 'vacancies' },
-  { id: 'reinstatements', label: 'Reintegros', iconKey: 'reinstatements' },
-  { id: 'news', label: 'Novedades', iconKey: 'news' },
   { id: 'coordinators', label: 'Coordinadores', iconKey: 'coordinators' },
   { id: 'lites', label: 'LITEs', iconKey: 'lites' },
-  { id: 'audit', label: 'Auditoría', iconKey: 'audit' },
-];
+  { id: 'vacancies', label: 'Vacantes', iconKey: 'vacancies' },
+  // { id: 'reinstatements', label: 'Reintegros', iconKey: 'reinstatements' },
+  // { id: 'news', label: 'Novedades', iconKey: 'news' },
+  // { id: 'audit', label: 'Auditoría', iconKey: 'audit' },
+] as const;
+
+export type NavItem = (typeof NAV_ITEMS)[number];
