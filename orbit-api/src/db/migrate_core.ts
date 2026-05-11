@@ -118,6 +118,7 @@ export async function migrateCore(): Promise<void> {
       address VARCHAR(255),
       full_name VARCHAR(300) NOT NULL,
       marital_status VARCHAR(50),
+      is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     );
@@ -135,6 +136,19 @@ export async function migrateCore(): Promise<void> {
       updated_at TIMESTAMP DEFAULT NOW()
     );
 
+    -- Create person_program_assignments table (depends on person)
+    -- 1 row per person; programs_id holds INTEGER[] of program.id values.
+    -- Allows a single person to be linked to multiple programs while keeping
+    -- person.program_id as the "primary" program for legacy queries.
+    CREATE TABLE IF NOT EXISTS person_program_assignments (
+      id BIGSERIAL PRIMARY KEY,
+      person_id BIGINT NOT NULL UNIQUE REFERENCES person(id) ON DELETE CASCADE,
+      programs_id INTEGER[] NOT NULL DEFAULT '{}',
+      academic_line VARCHAR(150),
+      created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+      updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+    );
+
     -- Create indexes for common lookups
     CREATE INDEX IF NOT EXISTS idx_person_document ON person(document);
     CREATE INDEX IF NOT EXISTS idx_person_email ON person(email);
@@ -142,6 +156,12 @@ export async function migrateCore(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_program_school_id ON program(school_id);
     CREATE INDEX IF NOT EXISTS idx_role_permission_role_id ON role_permission(role_id);
     CREATE INDEX IF NOT EXISTS idx_user_person_id ON "user"(person_id);
+    CREATE INDEX IF NOT EXISTS idx_ppa_programs_id_gin ON person_program_assignments USING GIN (programs_id);
+    CREATE INDEX IF NOT EXISTS idx_ppa_academic_line ON person_program_assignments(academic_line);
+
+    -- person.is_active: inactivos no aparecen en listados (LITE / coordinador / docente)
+    ALTER TABLE person ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+    UPDATE person SET is_active = true WHERE is_active IS NULL;
   `;
 
   try {

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sidebar } from './components/layout/Sidebar';
 import { LoginView } from './components/views/LoginView';
@@ -18,23 +18,69 @@ import { LitesView } from './components/views/LitesView';
 import { AcademicLoadView } from './components/views/AcademicLoadView';
 import { AuditView } from './components/views/AuditView';
 import { ProgramsView } from './components/views/ProgramsView';
-import { View, Teacher, Vacancy } from './types';
+import { View, Teacher, Vacancy, NAV_ITEMS } from './types';
 import { VacancyDetailView } from './components/views/VacancyDetailView';
 import { MOCK_TEACHERS, MOCK_VACANCIES, MOCK_COORDINATORS } from './data/mockData';
 
 import { BRAND_CONFIG } from './config/brand';
 import { Logo } from './components/common/Logo';
-import type { GoogleAuthResponse } from "./lib/api";
+import {
+  clearOrbitSession,
+  getStoredOrbitAccess,
+  isStoredJwtValid,
+  type GoogleAuthResponse,
+  type OrbitAccess,
+} from "./lib/api";
+
+const LITE_ALLOWED_VIEWS = new Set<View>(['home', 'teachers', 'teacher-detail']);
+const LITE_NAV_IDS = new Set<string>(['home', 'teachers']);
 
 export default function App() {
   const [view, setView] = useState<View>('login');
+  const [orbitAccess, setOrbitAccess] = useState<OrbitAccess | null>(null);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
   const [selectedVacancy, setSelectedVacancy] = useState<Vacancy | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  useEffect(() => {
+    const jwtPresent =
+      typeof localStorage !== "undefined" &&
+      Boolean(localStorage.getItem("orbit_jwt")?.trim());
+    if (jwtPresent && !isStoredJwtValid()) {
+      clearOrbitSession();
+      return;
+    }
+    if (!isStoredJwtValid()) return;
+    const access = getStoredOrbitAccess() ?? "full";
+    setOrbitAccess(access);
+    setView("home");
+  }, []);
+
+  useEffect(() => {
+    if (view === "login" || orbitAccess !== "lite") return;
+    if (!LITE_ALLOWED_VIEWS.has(view)) {
+      setView("home");
+    }
+  }, [view, orbitAccess]);
+
+  const sidebarNavItems = useMemo(() => {
+    if (orbitAccess === "lite") {
+      return NAV_ITEMS.filter((item) => LITE_NAV_IDS.has(item.id));
+    }
+    return [...NAV_ITEMS];
+  }, [orbitAccess]);
+
+  const handleLogout = useCallback(() => {
+    clearOrbitSession();
+    setOrbitAccess(null);
+    setSelectedTeacher(null);
+    setSelectedVacancy(null);
+  }, []);
+
   const handleLogin = (auth: GoogleAuthResponse) => {
-    console.log("Logged in:", auth.user.email);
+    const access: OrbitAccess = auth.user.orbitAccess ?? "full";
+    setOrbitAccess(access);
     setView('home');
   };
 
@@ -48,25 +94,56 @@ export default function App() {
     setView('vacancy-detail');
   };
 
+  const handleVacancySaved = useCallback((v: Vacancy) => {
+    setSelectedVacancy((prev) =>
+      prev?.id === v.id ? { ...prev, ...v } : prev
+    );
+  }, []);
+
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return null;
     const query = searchQuery.toLowerCase();
-    
-    const teachers = MOCK_TEACHERS.filter(t => t.name.toLowerCase().includes(query));
-    const vacancies = MOCK_VACANCIES.filter(v => v.title.toLowerCase().includes(query));
-    const coordinators = MOCK_COORDINATORS.filter(c => c.name.toLowerCase().includes(query));
-    
+
+    const teachers = MOCK_TEACHERS.filter((t) =>
+      t.name.toLowerCase().includes(query)
+    );
+    if (orbitAccess === "lite") {
+      return { teachers, vacancies: [], coordinators: [] };
+    }
+    const vacancies = MOCK_VACANCIES.filter(
+      (v) =>
+        v.positionName.toLowerCase().includes(query) ||
+        (v.programName ?? "").toLowerCase().includes(query) ||
+        (v.areaName ?? "").toLowerCase().includes(query) ||
+        v.id.toLowerCase().includes(query)
+    );
+    const coordinators = MOCK_COORDINATORS.filter((c) =>
+      c.name.toLowerCase().includes(query)
+    );
+
     return { teachers, vacancies, coordinators };
-  }, [searchQuery]);
+  }, [searchQuery, orbitAccess]);
 
   const renderView = () => {
     const commonProps = { searchQuery, setSearchQuery, searchResults };
     
     switch (view) {
       case 'home':
-        return <HomeView setView={setView} {...commonProps} />;
+        return (
+          <HomeView
+            setView={setView}
+            isLiteUser={orbitAccess === "lite"}
+            {...commonProps}
+          />
+        );
       case 'teachers':
-        return <TeachersView onSelectTeacher={handleSelectTeacher} {...commonProps} />;
+        return (
+          <TeachersView
+            onSelectTeacher={handleSelectTeacher}
+            hideBulkImport={orbitAccess === "lite"}
+            {...commonProps}
+          />
+        );
       case 'teacher-detail':
         return selectedTeacher ? (
           <TeacherDetailView teacher={selectedTeacher} setView={setView} {...commonProps} />
@@ -74,12 +151,22 @@ export default function App() {
           <HomeView setView={setView} {...commonProps} />
         );
       case 'vacancies':
-        return <VacanciesView onSelectVacancy={handleSelectVacancy} {...commonProps} />;
+        return (
+          <VacanciesView
+            onSelectVacancy={handleSelectVacancy}
+            onVacancySaved={handleVacancySaved}
+            {...commonProps}
+          />
+        );
       case 'vacancy-detail':
         return selectedVacancy ? (
-          <VacancyDetailView vacancy={selectedVacancy} setView={setView} {...commonProps} />
+          <VacancyDetailView summary={selectedVacancy} setView={setView} {...commonProps} />
         ) : (
-          <VacanciesView onSelectVacancy={handleSelectVacancy} {...commonProps} />
+          <VacanciesView
+            onSelectVacancy={handleSelectVacancy}
+            onVacancySaved={handleVacancySaved}
+            {...commonProps}
+          />
         );
       case 'reinstatements':
         return <ReinstatementsView {...commonProps} />;
@@ -125,6 +212,8 @@ export default function App() {
         }} 
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        navItems={sidebarNavItems}
+        onLogout={handleLogout}
       />
       
       {/* Mobile Overlay */}

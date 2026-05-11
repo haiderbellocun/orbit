@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { truncateUtf } from "../lib/stringTruncate";
 
 export interface ProjectUpsertResult {
   id: number | null;
@@ -15,12 +16,13 @@ export async function upsertProject(
   pool: Pool,
   name: string
 ): Promise<ProjectUpsertResult> {
+  const safeName = truncateUtf(name, 200) ?? "";
   const found = await pool.query(
     `SELECT id
      FROM substantive_hours.project
      WHERE LOWER(name) = LOWER($1)
      LIMIT 1`,
-    [name]
+    [safeName]
   );
   if (found.rows.length > 0) {
     return { id: found.rows[0].id as number, isNew: false };
@@ -30,7 +32,7 @@ export async function upsertProject(
     `INSERT INTO substantive_hours.project (name)
      VALUES ($1)
      RETURNING id`,
-    [name]
+    [safeName]
   );
 
   return {

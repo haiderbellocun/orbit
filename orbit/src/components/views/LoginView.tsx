@@ -4,7 +4,11 @@ import { ExclamationCircleIcon } from "@heroicons/react/24/solid";
 import { GoogleLogin } from "@react-oauth/google";
 import { BRAND_CONFIG } from "@/src/config/brand";
 import { Logo } from "../common/Logo";
-import { loginWithGoogleIdToken, type GoogleAuthResponse } from "@/src/lib/api";
+import {
+  loginWithGoogleIdToken,
+  loginWithLocalEmail,
+  type GoogleAuthResponse,
+} from "@/src/lib/api";
 
 interface LoginViewProps {
   onLogin: (auth: GoogleAuthResponse) => void;
@@ -18,6 +22,42 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     const v = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? "";
     return Boolean(v.trim());
   }, []);
+
+  const showLocalEmailLogin = useMemo(() => {
+    if (import.meta.env.DEV) return true;
+    const v = (import.meta.env.VITE_ALLOW_LOCAL_EMAIL_LOGIN as string | undefined) ?? "";
+    return v.trim().toLowerCase() === "1" || v.trim().toLowerCase() === "true";
+  }, []);
+
+  const [localEmail, setLocalEmail] = useState("");
+  const [localLoading, setLocalLoading] = useState(false);
+
+  async function handleLocalEmailSubmit(
+    e: React.FormEvent<HTMLFormElement>
+  ): Promise<void> {
+    e.preventDefault();
+    const trimmed = localEmail.trim().toLowerCase();
+    if (!trimmed.includes("@")) {
+      setError("Introduce un correo electrónico válido.");
+      return;
+    }
+    setLocalLoading(true);
+    setError(null);
+    try {
+      const auth = await loginWithLocalEmail(trimmed);
+      localStorage.setItem("orbit_jwt", auth.token);
+      localStorage.setItem("orbit_user", JSON.stringify(auth.user));
+      onLogin(auth);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo iniciar sesión con ese correo."
+      );
+    } finally {
+      setLocalLoading(false);
+    }
+  }
 
   async function handleGoogleCredential(credential: string): Promise<void> {
     setIsLoading(true);
@@ -153,6 +193,32 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                 </div>
               )}
             </div>
+
+            {/* {showLocalEmailLogin && (
+              <div className="pt-6 mt-6 border-t border-slate-200/80 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  Desarrollo local
+                </p>
+                <form onSubmit={(e) => void handleLocalEmailSubmit(e)} className="space-y-3">
+                  <input
+                    type="email"
+                    autoComplete="username"
+                    placeholder="correo@dominio.com"
+                    value={localEmail}
+                    onChange={(e) => setLocalEmail(e.target.value)}
+                    disabled={localLoading || isLoading}
+                    className="glass-input w-full text-sm"
+                  />
+                  <button
+                    type="submit"
+                    disabled={localLoading || isLoading || !localEmail.trim()}
+                    className="w-full py-3 rounded-xl text-sm font-bold bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                  >
+                    {localLoading ? "Entrando…" : "Entrar con correo (local)"}
+                  </button>
+                </form>
+              </div>
+            )} */}
           </div>
         </div>
 

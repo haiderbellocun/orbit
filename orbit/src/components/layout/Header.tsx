@@ -175,10 +175,10 @@ export const Header: React.FC<HeaderProps> = ({
 
                           <div>
                             <p className="text-sm font-bold text-slate-900">
-                              {v.title}
+                              {v.positionName}
                             </p>
                             <p className="text-[10px] text-slate-400">
-                              {v.program}
+                              {(v.programName ?? v.schoolName) ?? ""}
                             </p>
                           </div>
                         </button>

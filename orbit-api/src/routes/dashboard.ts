@@ -1,5 +1,7 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { pool } from "../db/connection";
+import { sqlPersonIsActive } from "../sql/personActive";
+import { liteTeacherScopeFromRequest } from "../middleware/orbitAuth";
 
 const router = Router();
 
@@ -32,8 +34,13 @@ type DashboardSummaryResponse = {
   updatedAt: string;
 };
 
-async function getActiveTeachersCount(): Promise<number> {
+async function getActiveTeachersCount(req: Request): Promise<number> {
   const useLegacy = await hasLegacyTeachersTable();
+  const lite = liteTeacherScopeFromRequest(req);
+
+  if (useLegacy && lite != null) {
+    return 0;
+  }
 
   if (useLegacy) {
     const result = await pool.query(
@@ -42,18 +49,37 @@ async function getActiveTeachersCount(): Promise<number> {
     return Number(result.rows[0]?.total ?? 0);
   }
 
+  if (lite != null) {
+    const result = await pool.query(
+      `SELECT COUNT(*)::int AS total
+       FROM person p
+       LEFT JOIN role r ON r.id = p.role_id
+       LEFT JOIN person_program_assignments ppa ON ppa.person_id = p.id
+       WHERE ${sqlPersonIsActive("p")}
+         AND r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')
+         AND p.school_id = $1
+         AND (
+           p.program_id = ANY($2::integer[])
+           OR COALESCE(ppa.programs_id, ARRAY[]::integer[]) && $2::integer[]
+         )`,
+      [lite.schoolId, lite.programIds]
+    );
+    return Number(result.rows[0]?.total ?? 0);
+  }
+
   const result = await pool.query(
     `SELECT COUNT(*)::int AS total
      FROM person p
      LEFT JOIN role r ON r.id = p.role_id
-     WHERE r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')`
+     WHERE ${sqlPersonIsActive("p")}
+       AND r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')`
   );
   return Number(result.rows[0]?.total ?? 0);
 }
 
-router.get("/dashboard/summary", async (_req, res) => {
+router.get("/dashboard/summary", async (req, res) => {
   try {
-    const activeTeachers = await getActiveTeachersCount();
+    const activeTeachers = await getActiveTeachersCount(req);
 
     const payload: DashboardSummaryResponse = {
       activeTeachers: {

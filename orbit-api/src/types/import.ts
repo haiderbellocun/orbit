@@ -33,6 +33,11 @@ export interface NormalizedRecord {
   programName: string;
   schoolName: string;
   cityName: string;
+  /**
+   * Optional academic line for the person (e.g. for LITES). Persisted into
+   * core.person_program_assignments.academic_line when present.
+   */
+  academicLine: string | null;
 }
 
 export interface AcademicProjectionRecord {
@@ -110,6 +115,7 @@ export interface ImportSummary {
     cities: number;
     schools: number;
     programs: number;
+    programAssignments?: number;
     subjects?: number;
     classGroups?: number;
     classPreparations?: number;
@@ -119,6 +125,7 @@ export interface ImportSummary {
   };
   updated: {
     persons: number;
+    programAssignments?: number;
   };
   warnings?: ImportError[];
 }
@@ -142,6 +149,7 @@ export interface ImportResult {
       cities: number;
       schools: number;
       programs: number;
+      programAssignments?: number;
       subjects?: number;
       classGroups?: number;
       classPreparations?: number;
@@ -151,6 +159,7 @@ export interface ImportResult {
     };
     updated: {
       persons: number;
+      programAssignments?: number;
     };
     errors: ImportError[];
     warnings?: ImportError[];

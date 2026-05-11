@@ -17,6 +17,10 @@ import {
   deleteImportRoom,
   type ImportStreamEvent,
 } from "../services/importProgressHub";
+import {
+  IMPORT_GENERIC_SERVER_ERROR,
+  translateImportErrorDetail,
+} from "../services/importUserMessages";
 
 const router = Router();
 
@@ -60,7 +64,7 @@ const upload = multer({
     } else {
       cb(
         new Error(
-          `Invalid file type: ${file.mimetype}. Only .xlsx and .xls files are allowed.`
+          `Tipo de archivo no válido (${file.mimetype}). Solo se permiten .xlsx y .xls.`
         )
       );
     }
@@ -144,8 +148,9 @@ function runImportInBackground(
       console.error("Import async error:", error);
       emitImportStream(importId, {
         type: "error",
-        message:
-          error instanceof Error ? error.message : "Internal server error",
+        message: translateImportErrorDetail(
+          error instanceof Error ? error.message : IMPORT_GENERIC_SERVER_ERROR
+        ),
       });
     } finally {
       if (fs.existsSync(filePath)) {
@@ -175,7 +180,7 @@ router.post(
       if (!req.file) {
         res.status(400).json({
           success: false,
-          error: "No file uploaded. Please provide an Excel file.",
+          error: "No se subió ningún archivo. Adjunte un archivo Excel (.xlsx o .xls).",
         });
         return;
       }
@@ -239,8 +244,9 @@ router.post(
 
       res.status(500).json({
         success: false,
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: translateImportErrorDetail(
+          error instanceof Error ? error.message : IMPORT_GENERIC_SERVER_ERROR
+        ),
       });
 
       // Clean up temp file if it exists
@@ -284,7 +290,7 @@ router.get(
 
       if (result.rows.length === 0) {
         res.status(404).json({
-          error: "Import not found",
+          error: "No se encontró esa importación.",
         });
         return;
       }
@@ -293,7 +299,9 @@ router.get(
     } catch (error) {
       console.error("Status check error:", error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : "Internal server error",
+        error: translateImportErrorDetail(
+          error instanceof Error ? error.message : IMPORT_GENERIC_SERVER_ERROR
+        ),
       });
     }
   }
@@ -337,7 +345,9 @@ router.get(
     } catch (error) {
       console.error("Logs retrieval error:", error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : "Internal server error",
+        error: translateImportErrorDetail(
+          error instanceof Error ? error.message : IMPORT_GENERIC_SERVER_ERROR
+        ),
       });
     }
   }
