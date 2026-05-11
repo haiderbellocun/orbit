@@ -1,5 +1,6 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { pool } from "../db/connection";
+import { liteTeacherScopeFromRequest } from "../middleware/orbitAuth";
 import { insertAutoVacancyOnDeactivate } from "../lib/createVacancyOnDeactivate";
 import { resolveCoreSchemaMode } from "../lib/coreSchema";
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
@@ -25,6 +26,16 @@ function splitFullName(fullName: string): { firstName: string; lastName: string 
 
 const TEACHER_ROLE_SQL = `r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')`;
 
+type LiteTeacherScope = { schoolId: number; programIds: number[] };
+
+function denyLiteWrite(req: Request, res: Response): boolean {
+  if (liteTeacherScopeFromRequest(req) != null) {
+    res.status(403).json({ error: "No tienes permiso para modificar docentes" });
+    return true;
+  }
+  return false;
+}
+
 function normalizeProgramsIdArray(v: unknown): number[] {
   if (!Array.isArray(v)) return [];
   const out: number[] = [];
@@ -40,8 +51,19 @@ function normalizeProgramsIdArray(v: unknown): number[] {
 
 /** Detalle docente (CORE / `person`), sin filtrar por is_active. */
 async function fetchTeacherDetailRow(
-  id: number
+  id: number,
+  lite: LiteTeacherScope | null
 ): Promise<Record<string, unknown> | null> {
+  const liteSql =
+    lite != null
+      ? ` AND p.school_id = $2 AND (
+           p.program_id = ANY($3::integer[])
+           OR COALESCE(ppa.programs_id, ARRAY[]::integer[]) && $3::integer[]
+         )`
+      : "";
+  const params: unknown[] =
+    lite != null ? [id, lite.schoolId, lite.programIds] : [id];
+
   const result = await pool.query(
     `SELECT
        p.id,
@@ -82,8 +104,8 @@ async function fetchTeacherDetailRow(
        FROM program pr2
        WHERE pr2.id = ANY(COALESCE(ppa.programs_id, ARRAY[]::INTEGER[]))
      ) pnames ON TRUE
-     WHERE p.id = $1 AND ${TEACHER_ROLE_SQL}`,
-    [id]
+     WHERE p.id = $1 AND ${TEACHER_ROLE_SQL}${liteSql}`,
+    params
   );
   if (result.rows.length === 0) return null;
   const row = result.rows[0] as Record<string, unknown>;
@@ -167,9 +189,17 @@ router.get("/teachers", async (req, res) => {
     const queryValues = [...values, limit, offset];
 
     const useLegacy = await hasLegacyTeachersTable();
+    const lite = liteTeacherScopeFromRequest(req);
     let rows: Record<string, unknown>[] = [];
 
     if (useLegacy) {
+      if (lite != null) {
+        res.json({
+          data: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        });
+        return;
+      }
       const result = await pool.query(
         `SELECT t.*, c.name AS coordinator_name, COUNT(*) OVER() AS total_count
          FROM teachers t
@@ -210,6 +240,17 @@ router.get("/teachers", async (req, res) => {
         idx++;
       }
 
+      if (lite != null) {
+        personFilters.push(`p.school_id = $${idx}`);
+        personValues.push(lite.schoolId);
+        idx++;
+        personFilters.push(
+          `(p.program_id = ANY($${idx}::integer[]) OR COALESCE(ppa.programs_id, ARRAY[]::integer[]) && $${idx}::integer[])`
+        );
+        personValues.push(lite.programIds);
+        idx++;
+      }
+
       const personWhere =
         personFilters.length > 0 ? `WHERE ${personFilters.join(" AND ")}` : "";
       const pLimitIdx = idx;
@@ -243,6 +284,7 @@ router.get("/teachers", async (req, res) => {
          LEFT JOIN city ci ON ci.id = p.city_id
          LEFT JOIN contract_type ct ON ct.id = p.contract_type_id
          LEFT JOIN role r ON r.id = p.role_id
+         LEFT JOIN person_program_assignments ppa ON ppa.person_id = p.id
          ${personWhere ? `${personWhere} AND` : "WHERE"}
          ${sqlPersonIsActive("p")} AND
          r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')
@@ -294,9 +336,14 @@ router.get("/teachers/:id", async (req, res) => {
     }
 
     const useLegacy = await hasLegacyTeachersTable();
+    const lite = liteTeacherScopeFromRequest(req);
     let rows: Record<string, unknown>[] = [];
 
     if (useLegacy) {
+      if (lite != null) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
       const result = await pool.query(
         `SELECT t.*, c.name AS coordinator_name
          FROM teachers t
@@ -306,7 +353,7 @@ router.get("/teachers/:id", async (req, res) => {
       );
       rows = result.rows;
     } else {
-      const row = await fetchTeacherDetailRow(id);
+      const row = await fetchTeacherDetailRow(id, lite);
       rows = row ? [row] : [];
     }
 
@@ -324,6 +371,7 @@ router.get("/teachers/:id", async (req, res) => {
 
 router.post("/teachers", async (req, res) => {
   try {
+    if (denyLiteWrite(req, res)) return;
     const b = req.body as Record<string, unknown>;
     const document =
       typeof b.document === "string" ? b.document.trim() : undefined;
@@ -402,6 +450,7 @@ router.post("/teachers", async (req, res) => {
 
 router.put("/teachers/:id", async (req, res) => {
   try {
+    if (denyLiteWrite(req, res)) return;
     const id = Number.parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
       res.status(400).json({ error: "Invalid id" });
@@ -501,6 +550,7 @@ router.put("/teachers/:id", async (req, res) => {
 
 router.patch("/teachers/:id", async (req, res) => {
   try {
+    if (denyLiteWrite(req, res)) return;
     const id = Number.parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
       res.status(400).json({ error: "Invalid id" });
@@ -775,7 +825,10 @@ router.patch("/teachers/:id", async (req, res) => {
       client.release();
     }
 
-    const detail = await fetchTeacherDetailRow(id);
+    const detail = await fetchTeacherDetailRow(
+      id,
+      liteTeacherScopeFromRequest(req)
+    );
     if (detail == null) {
       res.status(404).json({ error: "Not found" });
       return;

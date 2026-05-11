@@ -100,13 +100,16 @@ interface TeachersViewProps {
     vacancies: Vacancy[];
     coordinators: Coordinator[];
   } | null;
+  /** Oculta importación Excel (perfil LITE). */
+  hideBulkImport?: boolean;
 }
 
 export const TeachersView: React.FC<TeachersViewProps> = ({ 
   onSelectTeacher, 
   searchQuery = '', 
   setSearchQuery,
-  searchResults 
+  searchResults,
+  hideBulkImport = false,
 }) => {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
@@ -283,15 +286,18 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                 <RectangleGroupIcon className="h-4.5 w-4.5" />
                 <span>Vista: Cards</span>
               </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleImportFile}
-                className="hidden"
-              />
+              {!hideBulkImport && (
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportFile}
+                  className="hidden"
+                />
+              )}
             </div>
           </div>
+          {!hideBulkImport && (
           <div className="flex flex-col items-stretch lg:items-end gap-1 w-full lg:w-auto">
           <motion.button 
             whileHover={{ scale: 1.02 }}
@@ -310,6 +316,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
             </p>
           )}
           </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2">
@@ -332,7 +339,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
         </div>
       </div>
 
-      {isImporting && (
+      {!hideBulkImport && isImporting && (
         <div className="glass-panel p-4 border border-violet-200/60 bg-white/40 space-y-2">
           <div className="flex justify-between items-center gap-2">
             <p className="text-xs font-semibold text-slate-800 leading-snug">
@@ -362,13 +369,13 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
         </div>
       )}
 
-      {importError && (
+      {!hideBulkImport && importError && (
         <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-700 text-sm font-medium">
           {importError}
         </div>
       )}
 
-      {importResult && !importResult.success && (
+      {!hideBulkImport && importResult && !importResult.success && (
         <div className="glass-panel p-5 space-y-3 border border-amber-200 bg-amber-50/40">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-bold uppercase tracking-widest text-amber-800">
@@ -396,7 +403,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
         </div>
       )}
 
-      {importResult?.success && (
+      {!hideBulkImport && importResult?.success && (
         <div className="glass-panel p-5 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-bold uppercase tracking-widest text-emerald-600">Carga completada</span>

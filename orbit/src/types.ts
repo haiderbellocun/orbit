@@ -153,4 +153,6 @@ export const NAV_ITEMS = [
   // { id: 'reinstatements', label: 'Reintegros', iconKey: 'reinstatements' },
   // { id: 'news', label: 'Novedades', iconKey: 'news' },
   // { id: 'audit', label: 'Auditoría', iconKey: 'audit' },
-];
+] as const;
+
+export type NavItem = (typeof NAV_ITEMS)[number];
