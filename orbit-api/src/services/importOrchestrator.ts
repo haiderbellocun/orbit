@@ -104,6 +104,8 @@ export class ImportOrchestrator {
   private errors: ImportError[] = [];
   private warnings: ImportError[] = [];
   private lastProgressAt = 0;
+  /** Conteos de filas en hojas académicas (informativo; antes se mezclaban en totalRows). */
+  private academicSourceRows = { cargaActual: 0, proyeccion: 0 };
 
   constructor(
     pool: Pool,
@@ -175,11 +177,17 @@ export class ImportOrchestrator {
       );
       const academicSchemasData = parseAcademicSchemasFromExcel(this.filePath);
 
-      this.counters.totalRows =
-        records.length +
-        parseErrors.length +
-        academicSchemasData.currentLoadRecords.length +
-        academicSchemasData.projectionRecords.length;
+      this.academicSourceRows = {
+        cargaActual: academicSchemasData.currentLoadRecords.length,
+        proyeccion: academicSchemasData.projectionRecords.length,
+      };
+
+      // Solo hoja CORE de docentes: filas válidas + filas con error de validación
+      // (una fila puede generar varios mensajes; se cuenta una vez por número de fila).
+      const coreParseErrorRows = new Set(
+        parseErrors.map((e) => e.row).filter((row) => row >= 0)
+      );
+      this.counters.totalRows = records.length + coreParseErrorRows.size;
       this.errors.push(...parseErrors);
       this.warnings.push(...academicSchemasData.warnings);
 
@@ -680,6 +688,7 @@ export class ImportOrchestrator {
         processedRows: this.counters.processedRows,
         skippedRows:
           this.counters.totalRows - this.counters.processedRows,
+        academicSourceRows: { ...this.academicSourceRows },
         created: {
           persons: this.counters.createdPersons,
           contractTypes: this.counters.createdContractTypes,

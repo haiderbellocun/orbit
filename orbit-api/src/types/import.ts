@@ -142,6 +142,11 @@ export interface ImportResult {
     totalRows: number;
     processedRows: number;
     skippedRows: number;
+    /** Filas leídas en hojas académicas (no son «omitidas» del CORE; solo contexto). */
+    academicSourceRows?: {
+      cargaActual: number;
+      proyeccion: number;
+    };
     created: {
       persons: number;
       contractTypes: number;

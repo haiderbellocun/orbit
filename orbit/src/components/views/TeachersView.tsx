@@ -415,6 +415,14 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
             <div className="rounded-xl bg-white/60 p-3"><strong>Creadas:</strong> {importResult.summary.created.persons}</div>
             <div className="rounded-xl bg-white/60 p-3"><strong>Actualizadas:</strong> {importResult.summary.updated.persons}</div>
           </div>
+          {importResult.summary.academicSourceRows != null && (
+            <p className="text-xs text-slate-600">
+              Hojas académicas leídas: Carga Actual{' '}
+              {importResult.summary.academicSourceRows.cargaActual} filas, ACA Proyección{' '}
+              {importResult.summary.academicSourceRows.proyeccion} filas (van aparte del conteo CORE
+              de docentes).
+            </p>
+          )}
           <p className="text-xs text-slate-500">
             Catálogos creados: contratos {importResult.summary.created.contractTypes}, roles {importResult.summary.created.roles}, escuelas {importResult.summary.created.schools}, programas {importResult.summary.created.programs}, ciudades {importResult.summary.created.cities}.
           </p>
