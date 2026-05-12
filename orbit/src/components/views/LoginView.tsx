@@ -168,7 +168,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               {isLoading ? (
                 <div className="w-5 h-5 border-2 border-violet-500/30 border-t-violet-600 rounded-full animate-spin" />
               ) : (
-                <div className={googleClientIdPresent ? "" : "pointer-events-none opacity-50"}>
+                <div
+                  className={googleClientIdPresent ? "" : "pointer-events-none opacity-50"}
+                >
                   <GoogleLogin
                     onSuccess={(cred) => {
                       const token =
