@@ -15,6 +15,8 @@ export function getLiteRoleId(): number {
 function normalizeRoleLabel(s: string | null | undefined): string {
   return (s ?? "")
     .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
     .replace(/\s+/g, " ");
 }
@@ -47,6 +49,12 @@ export function classifyOrbitRole(input: {
 
   if (nameNorm === AUXILIAR_NORM || codeNorm === AUXILIAR_NORM) return "full";
   if (nameNorm === DESARROLLADOR_NORM || codeNorm === DESARROLLADOR_NORM) return "full";
+  if (
+    nameNorm.startsWith(`${DESARROLLADOR_NORM} `) ||
+    codeNorm.startsWith(`${DESARROLLADOR_NORM} `)
+  ) {
+    return "full";
+  }
 
   return null;
 }
