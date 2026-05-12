@@ -14,6 +14,13 @@ async function hasLegacyTeachersTable(): Promise<boolean> {
   return result.rows[0]?.table_name != null;
 }
 
+async function hasPersonProgramAssignmentsTable(): Promise<boolean> {
+  const result = await pool.query(
+    `SELECT to_regclass('person_program_assignments') AS t`
+  );
+  return result.rows[0]?.t != null;
+}
+
 function splitFullName(fullName: string): { firstName: string; lastName: string } {
   const normalized = fullName.trim().replace(/\s+/g, " ");
   if (!normalized) return { firstName: "", lastName: "" };
@@ -52,17 +59,36 @@ function normalizeProgramsIdArray(v: unknown): number[] {
 /** Detalle docente (CORE / `person`), sin filtrar por is_active. */
 async function fetchTeacherDetailRow(
   id: number,
-  lite: LiteTeacherScope | null
+  lite: LiteTeacherScope | null,
+  options?: { hasPpa?: boolean }
 ): Promise<Record<string, unknown> | null> {
+  const hasPpa =
+    options?.hasPpa ?? (await hasPersonProgramAssignmentsTable());
+
   const liteSql =
     lite != null
-      ? ` AND p.school_id = $2 AND (
+      ? hasPpa
+        ? ` AND p.school_id = $2 AND (
            p.program_id = ANY($3::integer[])
            OR COALESCE(ppa.programs_id, ARRAY[]::integer[]) && $3::integer[]
          )`
+        : ` AND p.school_id = $2 AND p.program_id = ANY($3::integer[])`
       : "";
   const params: unknown[] =
     lite != null ? [id, lite.schoolId, lite.programIds] : [id];
+
+  const ppaJoin = hasPpa
+    ? `LEFT JOIN person_program_assignments ppa ON ppa.person_id = p.id`
+    : "";
+  const programsIdSql = hasPpa
+    ? `COALESCE(ppa.programs_id, ARRAY[]::INTEGER[]) AS programs_id`
+    : `ARRAY[]::INTEGER[] AS programs_id`;
+  const academicLineSql = hasPpa
+    ? `ppa.academic_line AS academic_line`
+    : `NULL::text AS academic_line`;
+  const lateralWhere = hasPpa
+    ? `WHERE pr2.id = ANY(COALESCE(ppa.programs_id, ARRAY[]::INTEGER[]))`
+    : `WHERE p.program_id IS NOT NULL AND pr2.id = p.program_id`;
 
   const result = await pool.query(
     `SELECT
@@ -88,8 +114,8 @@ async function fetchTeacherDetailRow(
        NULL::text AS payroll_class,
        NULL::integer AS coordinator_id,
        NULL::text AS coordinator_name,
-       COALESCE(ppa.programs_id, ARRAY[]::INTEGER[]) AS programs_id,
-       ppa.academic_line AS academic_line,
+       ${programsIdSql},
+       ${academicLineSql},
        COALESCE(pnames.program_names, ARRAY[]::TEXT[]) AS programs
      FROM person p
      LEFT JOIN program pr ON pr.id = p.program_id
@@ -98,11 +124,11 @@ async function fetchTeacherDetailRow(
      LEFT JOIN city ci ON ci.id = p.city_id
      LEFT JOIN contract_type ct ON ct.id = p.contract_type_id
      LEFT JOIN role r ON r.id = p.role_id
-     LEFT JOIN person_program_assignments ppa ON ppa.person_id = p.id
+     ${ppaJoin}
      LEFT JOIN LATERAL (
        SELECT array_agg(pr2.name ORDER BY pr2.name) AS program_names
        FROM program pr2
-       WHERE pr2.id = ANY(COALESCE(ppa.programs_id, ARRAY[]::INTEGER[]))
+       ${lateralWhere}
      ) pnames ON TRUE
      WHERE p.id = $1 AND ${TEACHER_ROLE_SQL}${liteSql}`,
     params
@@ -211,6 +237,7 @@ router.get("/teachers", async (req, res) => {
       );
       rows = result.rows;
     } else {
+      const hasPpa = await hasPersonProgramAssignmentsTable();
       const personFilters: string[] = [];
       const personValues: unknown[] = [];
       let idx = 1;
@@ -244,9 +271,13 @@ router.get("/teachers", async (req, res) => {
         personFilters.push(`p.school_id = $${idx}`);
         personValues.push(lite.schoolId);
         idx++;
-        personFilters.push(
-          `(p.program_id = ANY($${idx}::integer[]) OR COALESCE(ppa.programs_id, ARRAY[]::integer[]) && $${idx}::integer[])`
-        );
+        if (hasPpa) {
+          personFilters.push(
+            `(p.program_id = ANY($${idx}::integer[]) OR COALESCE(ppa.programs_id, ARRAY[]::integer[]) && $${idx}::integer[])`
+          );
+        } else {
+          personFilters.push(`p.program_id = ANY($${idx}::integer[])`);
+        }
         personValues.push(lite.programIds);
         idx++;
       }
@@ -256,6 +287,10 @@ router.get("/teachers", async (req, res) => {
       const pLimitIdx = idx;
       const pOffsetIdx = idx + 1;
       const personQueryValues = [...personValues, limit, offset];
+
+      const ppaJoin = hasPpa
+        ? `LEFT JOIN person_program_assignments ppa ON ppa.person_id = p.id`
+        : "";
 
       const result = await pool.query(
         `SELECT
@@ -284,7 +319,7 @@ router.get("/teachers", async (req, res) => {
          LEFT JOIN city ci ON ci.id = p.city_id
          LEFT JOIN contract_type ct ON ct.id = p.contract_type_id
          LEFT JOIN role r ON r.id = p.role_id
-         LEFT JOIN person_program_assignments ppa ON ppa.person_id = p.id
+         ${ppaJoin}
          ${personWhere ? `${personWhere} AND` : "WHERE"}
          ${sqlPersonIsActive("p")} AND
          r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')
@@ -353,7 +388,8 @@ router.get("/teachers/:id", async (req, res) => {
       );
       rows = result.rows;
     } else {
-      const row = await fetchTeacherDetailRow(id, lite);
+      const hasPpa = await hasPersonProgramAssignmentsTable();
+      const row = await fetchTeacherDetailRow(id, lite, { hasPpa });
       rows = row ? [row] : [];
     }
 
@@ -622,6 +658,15 @@ router.patch("/teachers/:id", async (req, res) => {
       return;
     }
 
+    const hasPpa = await hasPersonProgramAssignmentsTable();
+    if (!hasPpa && (hasProgramsIdsProp || hasAcademicLineProp)) {
+      res.status(400).json({
+        error:
+          "La tabla person_program_assignments no existe en esta base. Ejecuta migrate_core o node scripts/migrate-create-person-program-assignments.mjs antes de usar programs_id o academic_line.",
+      });
+      return;
+    }
+
     let preDeactivate: {
       was_active: boolean;
       full_name: string | null;
@@ -749,7 +794,7 @@ router.patch("/teachers/:id", async (req, res) => {
         hasAcademicLineProp ||
         (hasProgramId && !hasProgramsIdsProp);
 
-      if (shouldTouchPpa) {
+      if (shouldTouchPpa && hasPpa) {
         const prev = await client.query(
           `SELECT programs_id, academic_line
            FROM person_program_assignments
@@ -827,7 +872,8 @@ router.patch("/teachers/:id", async (req, res) => {
 
     const detail = await fetchTeacherDetailRow(
       id,
-      liteTeacherScopeFromRequest(req)
+      liteTeacherScopeFromRequest(req),
+      { hasPpa }
     );
     if (detail == null) {
       res.status(404).json({ error: "Not found" });
