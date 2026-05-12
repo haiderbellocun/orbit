@@ -163,6 +163,10 @@ async function fetchWithTimeout(
 }
 
 function abortErrorMessage(timeoutMs: number): string {
+  const sec = Math.round(timeoutMs / 1000);
+  if (sec < 120) {
+    return `La solicitud superó el tiempo de espera (${sec}s). Comprueba que la API responda y que la base de datos sea alcanzable desde Cloud Run (p. ej. conector Cloud SQL en DB_HOST).`;
+  }
   const min = Math.round(timeoutMs / 60_000);
   return `La solicitud superó el tiempo de espera (${min} min). Comprueba que la API responda y la base de datos no esté bloqueada.`;
 }
@@ -210,6 +214,9 @@ async function handleJson<T>(response: Response): Promise<T> {
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
+/** Login sin JWT previo: timeout acotado para no quedar en spinner infinito si la API/DB cuelgan. */
+const AUTH_LOGIN_TIMEOUT_MS = 60_000;
+
 export type AuthUser = {
   id: number;
   personId: number | null;
@@ -236,24 +243,58 @@ export type GoogleAuthResponse = {
 export async function loginWithGoogleIdToken(
   idToken: string
 ): Promise<GoogleAuthResponse> {
-  const response = await fetch(`${BASE_URL}/auth/google`, {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify({ idToken }),
-  });
-  return handleJson(response);
+  try {
+    const response = await fetchWithTimeout(
+      `${BASE_URL}/auth/google`,
+      {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ idToken }),
+      },
+      AUTH_LOGIN_TIMEOUT_MS
+    );
+    return handleJson(response);
+  } catch (e: unknown) {
+    if (
+      (e instanceof DOMException && e.name === "AbortError") ||
+      (typeof e === "object" &&
+        e !== null &&
+        "name" in e &&
+        (e as { name: string }).name === "AbortError")
+    ) {
+      throw new Error(abortErrorMessage(AUTH_LOGIN_TIMEOUT_MS));
+    }
+    throw e;
+  }
 }
 
 /** Solo para desarrollo local: mismo JWT que Google, sin idToken. */
 export async function loginWithLocalEmail(
   email: string
 ): Promise<GoogleAuthResponse> {
-  const response = await fetch(`${BASE_URL}/auth/local-email`, {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify({ email: email.trim() }),
-  });
-  return handleJson(response);
+  try {
+    const response = await fetchWithTimeout(
+      `${BASE_URL}/auth/local-email`,
+      {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ email: email.trim() }),
+      },
+      AUTH_LOGIN_TIMEOUT_MS
+    );
+    return handleJson(response);
+  } catch (e: unknown) {
+    if (
+      (e instanceof DOMException && e.name === "AbortError") ||
+      (typeof e === "object" &&
+        e !== null &&
+        "name" in e &&
+        (e as { name: string }).name === "AbortError")
+    ) {
+      throw new Error(abortErrorMessage(AUTH_LOGIN_TIMEOUT_MS));
+    }
+    throw e;
+  }
 }
 
 // Teachers

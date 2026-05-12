@@ -1,0 +1,44 @@
+# Build Orbit (Vite → nginx) with public API URL and Google client ID baked into the bundle, then deploy to Cloud Run.
+# Run from repo root:
+#   gcloud builds submit . --config=gcp/cloudbuild-orbit-frontend.yaml --project=it-fab-contenido-edu-6
+substitutions:
+  _REGION: us-central1
+  _SERVICE: orbit-frontend
+  _AR_REPO: cloud-run-source-deploy
+  # Defaults match proyecto it-fab-contenido-edu-6; override with --substitutions=_VITE_API_URL=...
+  _VITE_API_URL: https://orbit-backend-526995286786.us-central1.run.app/api
+  _VITE_GOOGLE_CLIENT_ID: "526995286786-c292djsqta9pgassddcrlecocpf2rgfo.apps.googleusercontent.com"
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID
+      - --build-arg
+      - VITE_API_URL=${_VITE_API_URL}
+      - --build-arg
+      - VITE_GOOGLE_CLIENT_ID=${_VITE_GOOGLE_CLIENT_ID}
+      - orbit
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID
+      - --region=${_REGION}
+      - --platform=managed
+      - --quiet
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID
+
+options:
+  logging: CLOUD_LOGGING_ONLY

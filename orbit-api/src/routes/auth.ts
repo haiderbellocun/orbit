@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router, type Request, type Response } from "express";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { pool } from "../db/connection";
@@ -9,6 +9,66 @@ import {
 } from "../lib/orbitRoles";
 
 const router = Router();
+
+/** GIS redirect POST puede ser JSON o form-urlencoded. */
+const gisCallbackBodyParsers: express.RequestHandler[] = [
+  express.json({ limit: "2mb" }),
+  express.urlencoded({ extended: true, limit: "2mb" }),
+];
+
+function readCookie(req: Request, name: string): string | undefined {
+  const raw = req.headers.cookie;
+  if (!raw) return undefined;
+  for (const part of raw.split(";")) {
+    const p = part.trim();
+    if (!p.startsWith(`${name}=`)) continue;
+    return decodeURIComponent(p.slice(name.length + 1));
+  }
+  return undefined;
+}
+
+function verifyGisRedirectCsrf(req: Request, body: Record<string, unknown>): boolean {
+  const cookieTok = readCookie(req, "g_csrf_token");
+  const bodyTok =
+    typeof body.g_csrf_token === "string" ? body.g_csrf_token.trim() : "";
+  if (cookieTok && bodyTok) return cookieTok === bodyTok;
+  // Si solo llega una de las dos (muy habitual: `g_csrf_token` en el POST pero la cookie quedó en el origen del SPA
+  // y no se envía al `login_uri` en otro host), no podemos comparar; la autenticación real es verifyIdToken(credential).
+  return true;
+}
+
+function getOrbitFrontendBaseUrl(): string {
+  const v = (process.env.ORBIT_FRONTEND_URL ?? "").trim().replace(/\/$/, "");
+  if (v) return v;
+  if ((process.env.NODE_ENV ?? "").trim().toLowerCase() === "development") {
+    return "http://localhost:3000";
+  }
+  throw new Error("Missing ORBIT_FRONTEND_URL (required for Google redirect login in production)");
+}
+
+function sendGisCallbackHtml(res: Response, status: number, title: string, bodyHtml: string): void {
+  res.status(status).type("html").send(`<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title}</title></head>
+<body style="font-family:system-ui,sans-serif;padding:2rem;">${bodyHtml}</body></html>`);
+}
+
+function sendGisSuccessRedirect(res: Response, auth: AuthSuccessBody): void {
+  const target = `${getOrbitFrontendBaseUrl().replace(/\/$/, "")}/`;
+  const tokenJs = JSON.stringify(auth.token);
+  res
+    .status(200)
+    .type("html")
+    .send(`<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"/><title>Entrando…</title></head>
+<body>
+<script>
+  localStorage.setItem("orbit_jwt", ${tokenJs});
+  localStorage.setItem("orbit_user", ${JSON.stringify(JSON.stringify(auth.user))});
+  location.replace(${JSON.stringify(target)});
+</script>
+<p>Entrando a Orbit…</p>
+</body></html>`);
+}
 
 type GoogleLoginBody = {
   idToken?: unknown;
@@ -311,19 +371,22 @@ async function buildTokenResponse(params: {
   };
 }
 
-router.post("/auth/google", async (req, res) => {
-  try {
-    const body = (req.body ?? {}) as GoogleLoginBody;
-    const idToken = typeof body.idToken === "string" ? body.idToken.trim() : "";
-    if (!idToken) {
-      res.status(400).json({ error: "idToken is required" });
-      return;
-    }
+type GoogleSignInFailure = { ok: false; status: number; error: string };
+type GoogleSignInSuccess = { ok: true; body: AuthSuccessBody };
 
+async function completeGoogleSignInWithIdToken(
+  idToken: string
+): Promise<GoogleSignInSuccess | GoogleSignInFailure> {
+  const trimmed = idToken.trim();
+  if (!trimmed) {
+    return { ok: false, status: 400, error: "idToken is required" };
+  }
+
+  try {
     const googleClientId = getRequiredEnv("GOOGLE_CLIENT_ID");
     const client = new OAuth2Client({ clientId: googleClientId });
     const ticket = await client.verifyIdToken({
-      idToken,
+      idToken: trimmed,
       audience: googleClientId,
     });
     const payload = ticket.getPayload();
@@ -334,13 +397,11 @@ router.post("/auth/google", async (req, res) => {
     const picture = (payload?.picture ?? "").trim();
 
     if (!email || !googleSub) {
-      res.status(401).json({ error: "Invalid Google token" });
-      return;
+      return { ok: false, status: 401, error: "Invalid Google token" };
     }
 
     if (!email.endsWith("@cun.edu.co")) {
-      res.status(403).json({ error: "Only @cun.edu.co accounts are allowed" });
-      return;
+      return { ok: false, status: 403, error: "Only @cun.edu.co accounts are allowed" };
     }
 
     const tableCheck = await pool.query(
@@ -350,17 +411,17 @@ router.post("/auth/google", async (req, res) => {
 
     const person = await fetchPersonByEmail(email);
     if (!person) {
-      res.status(403).json({
+      return {
+        ok: false,
+        status: 403,
         error:
           "Tu cuenta no está registrada en ORBIT o no tiene permisos. Contacta al administrador.",
-      });
-      return;
+      };
     }
 
     const gate = gateOrbitRoleAndLite(person);
     if (!gate.ok) {
-      res.status(gate.status).json({ error: gate.error });
-      return;
+      return { ok: false, status: gate.status, error: gate.error };
     }
 
     const personId = Number(person.person_id);
@@ -383,7 +444,78 @@ router.post("/auth/google", async (req, res) => {
       sub: googleSub,
       userId,
     });
-    res.json(bodyOut);
+    return { ok: true, body: bodyOut };
+  } catch (e: unknown) {
+    console.error("completeGoogleSignInWithIdToken failed:", e);
+    const message = e instanceof Error ? e.message : String(e);
+    const isProd = (process.env.NODE_ENV ?? "").trim().toLowerCase() === "production";
+    return {
+      ok: false,
+      status: 500,
+      error: isProd ? "Internal server error" : `Internal server error: ${message}`,
+    };
+  }
+}
+
+router.post(
+  "/auth/google/gis-callback",
+  ...gisCallbackBodyParsers,
+  async (req: Request, res: Response) => {
+    try {
+      getOrbitFrontendBaseUrl();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      sendGisCallbackHtml(res, 500, "Error de configuración", `<p>${escapeHtml(msg)}</p>`);
+      return;
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (!verifyGisRedirectCsrf(req, body)) {
+      sendGisCallbackHtml(
+        res,
+        403,
+        "Sesión inválida",
+        "<p>No se pudo validar la solicitud de inicio de sesión (CSRF). Cierra otras pestañas e inténtalo de nuevo.</p>"
+      );
+      return;
+    }
+
+    const credential = typeof body.credential === "string" ? body.credential.trim() : "";
+    const result = await completeGoogleSignInWithIdToken(credential);
+    if (!result.ok) {
+      sendGisCallbackHtml(
+        res,
+        result.status,
+        "No se pudo entrar",
+        `<p>${escapeHtml(result.error)}</p><p><a href="${escapeHtml(
+          getOrbitFrontendBaseUrl()
+        )}/">Volver a Orbit</a></p>`
+      );
+      return;
+    }
+
+    sendGisSuccessRedirect(res, result.body);
+  }
+);
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+router.post("/auth/google", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as GoogleLoginBody;
+    const idToken = typeof body.idToken === "string" ? body.idToken.trim() : "";
+    const result = await completeGoogleSignInWithIdToken(idToken);
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json(result.body);
   } catch (e: unknown) {
     console.error("POST /auth/google failed:", e);
     const message = e instanceof Error ? e.message : String(e);

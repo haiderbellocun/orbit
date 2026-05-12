@@ -1,0 +1,7 @@
+# Raíz del repo: usado por `gcloud builds submit .` (p. ej. gcp/cloudbuild-orbit-frontend.yaml)
+**/node_modules/
+**/.git/
+orbit/dist/
+orbit-api/dist/
+**/*.log
+.DS_Store
