@@ -5,12 +5,54 @@ import type {
   VacancyOperationStatus,
 } from "@/src/types";
 
-const BASE_URL =
-  (import.meta.env.VITE_API_URL as string | undefined) ??
-  "http://localhost:4000/api";
-const IMPORT_BASE_URL =
-  (import.meta.env.VITE_IMPORT_API_URL as string | undefined) ??
-  "http://localhost:4000/api";
+const DEFAULT_API_BASE = "http://localhost:4000/api";
+
+/** Asegura prefijo `/api` cuando solo se pasó el origen (p. ej. `https://….run.app`). */
+function normalizeOrbitApiBase(raw: string | undefined, fallback: string): string {
+  const s = (raw ?? "").trim();
+  if (!s) return fallback;
+  try {
+    const u = new URL(s);
+    let path = u.pathname || "/";
+    path = path.replace(/\/+$/, "") || "/";
+    if (path === "/") {
+      return `${u.origin}/api`;
+    }
+    return `${u.origin}${path}`;
+  } catch {
+    return fallback;
+  }
+}
+
+const BASE_URL = normalizeOrbitApiBase(
+  import.meta.env.VITE_API_URL as string | undefined,
+  DEFAULT_API_BASE
+);
+/** Por defecto igual que la API; solo define `VITE_IMPORT_API_URL` si el import debe ir a otro host. */
+const IMPORT_BASE_URL = normalizeOrbitApiBase(
+  import.meta.env.VITE_IMPORT_API_URL as string | undefined,
+  BASE_URL
+);
+
+/**
+ * El import por multipart no puede ir al mismo host que el SPA si ese host es solo nginx estático
+ * (p. ej. Cloud Run `orbit-frontend`): devuelve 413. Mismo host con reverse proxy a Express: `VITE_ALLOW_SAME_ORIGIN_API=true`.
+ */
+function assertImportUsesBackendHost(apiBase: string): void {
+  if (!import.meta.env.PROD || typeof window === "undefined") return;
+  if (import.meta.env.VITE_ALLOW_SAME_ORIGIN_API === "true") return;
+  let host: string;
+  try {
+    host = new URL(apiBase).hostname;
+  } catch {
+    return;
+  }
+  if (host === window.location.hostname) {
+    throw new Error(
+      "La importación está configurada contra el mismo host que esta página. En Cloud Run el frontend suele ser solo nginx: usa en el build VITE_API_URL con la URL del servicio backend (p. ej. https://orbit-backend-…us-central1.run.app/api), no la del frontend. Luego reconstruye y redespliega."
+    );
+  }
+}
 
 export type PaginationMeta = {
   total: number;
@@ -812,6 +854,8 @@ export async function importTeachersExcel(
   file: File,
   options?: { onProgress?: (e: ImportStreamProgress) => void }
 ): Promise<ImportTeachersResponse> {
+  assertImportUsesBackendHost(IMPORT_BASE_URL);
+
   const formData = new FormData();
   formData.append("file", file);
 
@@ -837,6 +881,12 @@ export async function importTeachersExcel(
   if (response.status === 401) {
     clearOrbitSession();
     throw new Error("Sesión expirada. Vuelve a iniciar sesión.");
+  }
+
+  if (response.status === 413) {
+    throw new Error(
+      "413: cuerpo de la petición rechazado. Si el Excel pesa menos de ~30 MB, lo más habitual es que la subida esté yendo al host del frontend (nginx suele limitar a ~1 MB), no a la API: revisa que VITE_API_URL en el build apunte a la URL completa del backend (p. ej. …run.app/api). Si el archivo es muy grande (>~32 MB en Cloud Run), reduce el archivo o usa subida a almacenamiento (p. ej. Cloud Storage)."
+    );
   }
 
   if (response.status === 202) {
