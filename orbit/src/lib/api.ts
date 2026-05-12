@@ -73,6 +73,10 @@ export type ImportTeachersResponse = {
     totalRows: number;
     processedRows: number;
     skippedRows: number;
+    academicSourceRows?: {
+      cargaActual: number;
+      proyeccion: number;
+    };
     created: {
       persons: number;
       contractTypes: number;

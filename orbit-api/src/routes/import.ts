@@ -133,7 +133,8 @@ function runImportInBackground(
           result.importId,
           fileName,
           result.summary.totalRows,
-          result.summary.processedRows - result.summary.skippedRows,
+          result.summary.created.persons +
+            result.summary.updated.persons,
           result.summary.errors.length,
           result.summary.skippedRows,
           result.summary.created,
@@ -222,7 +223,8 @@ router.post(
           result.importId,
           fileName,
           result.summary.totalRows,
-          result.summary.processedRows - result.summary.skippedRows,
+          result.summary.created.persons +
+            result.summary.updated.persons,
           result.summary.errors.length,
           result.summary.skippedRows,
           result.summary.created,
