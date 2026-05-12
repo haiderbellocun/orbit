@@ -162,6 +162,12 @@ export async function migrateCore(): Promise<void> {
     -- person.is_active: inactivos no aparecen en listados (LITE / coordinador / docente)
     ALTER TABLE person ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
     UPDATE person SET is_active = true WHERE is_active IS NULL;
+
+    -- Login usa role.code/name: filas con code vacío fallan otras integraciones; rellenar desde name
+    UPDATE role
+    SET code = upper(regexp_replace(trim(name), '\\s+', '_', 'g'))
+    WHERE trim(name) <> ''
+      AND (code IS NULL OR trim(code) = '');
   `;
 
   try {

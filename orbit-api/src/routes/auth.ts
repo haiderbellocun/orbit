@@ -49,28 +49,57 @@ async function fetchPersonByEmail(emailNorm: string): Promise<PersonRow | null> 
   );
   const personTable = tableCheck.rows[0]?.person_table as string | null | undefined;
   if (!personTable) return null;
+
+  const ppaCheck = await pool.query(
+    `SELECT to_regclass('person_program_assignments') AS ppa_table`
+  );
+  const ppaTable = ppaCheck.rows[0]?.ppa_table as string | null | undefined;
+  const programsSelect = ppaTable
+    ? `COALESCE(ppa.programs_id, ARRAY[]::INTEGER[]) AS programs_id`
+    : `ARRAY[]::INTEGER[] AS programs_id`;
+  const ppaJoin = ppaTable
+    ? `LEFT JOIN person_program_assignments ppa ON ppa.person_id = p.id`
+    : "";
+
+  const activeCol = await pool.query(
+    `SELECT EXISTS (
+      SELECT 1
+      FROM pg_attribute a
+      WHERE a.attrelid = to_regclass('person')
+        AND a.attname = 'is_active'
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+    ) AS has_is_active`
+  );
+  const hasPersonIsActive = Boolean(activeCol.rows[0]?.has_is_active);
+  const activeSql = hasPersonIsActive ? `AND COALESCE(p.is_active, true) = true` : "";
+
   try {
     const personResult = await pool.query(
       `SELECT
          p.id AS person_id,
          p.full_name,
-         COALESCE(NULLIF(p.edu_email, ''), NULLIF(p.email, '')) AS email,
+         COALESCE(NULLIF(TRIM(p.edu_email), ''), NULLIF(TRIM(p.email), '')) AS email,
          p.role_id,
          p.school_id,
          p.program_id,
-         COALESCE(ppa.programs_id, ARRAY[]::INTEGER[]) AS programs_id,
+         ${programsSelect},
          r.code AS role_code,
          r.name AS role_name
        FROM person p
        LEFT JOIN role r ON r.id = p.role_id
-       LEFT JOIN person_program_assignments ppa ON ppa.person_id = p.id
-       WHERE (LOWER(p.email) = $1 OR LOWER(p.edu_email) = $1)
-         AND COALESCE(p.is_active, true) = true
+       ${ppaJoin}
+       WHERE (
+           LOWER(TRIM(p.email)) = $1
+           OR LOWER(TRIM(p.edu_email)) = $1
+         )
+         ${activeSql}
        LIMIT 1`,
       [emailNorm]
     );
     return (personResult.rows[0] ?? null) as PersonRow | null;
-  } catch {
+  } catch (e: unknown) {
+    console.warn("fetchPersonByEmail failed:", e);
     return null;
   }
 }
