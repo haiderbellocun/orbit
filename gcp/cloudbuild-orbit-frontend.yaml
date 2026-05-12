@@ -1,6 +1,9 @@
 # Build Orbit (Vite → nginx) with public API URL and Google client ID baked into the bundle, then deploy to Cloud Run.
 # Run from repo root:
 #   gcloud builds submit . --config=gcp/cloudbuild-orbit-frontend.yaml --project=it-fab-contenido-edu-6
+#
+# Importación Excel: VITE_API_URL debe ser la URL del BACKEND (…run.app de la API), no la del frontend;
+# si apunta al host del estático, nginx devuelve 413 para archivos > ~1 MB.
 substitutions:
   _REGION: us-central1
   _SERVICE: orbit-frontend
