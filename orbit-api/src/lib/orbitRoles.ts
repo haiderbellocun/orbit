@@ -24,7 +24,10 @@ function normalizeRoleLabel(s: string | null | undefined): string {
 function isCoordinatorLike(name: string | null, code: string | null): boolean {
   const n = (name ?? "").trim();
   const c = (code ?? "").trim();
-  return /^coord/i.test(n) || /^coord/i.test(c);
+  if (/^coord/i.test(n) || /^coord/i.test(c)) return true;
+  /** Errata frecuente en catálogo: "COODINADOR…" no coincide con /^coord/. */
+  if (/coodinad/i.test(n) || /coodinad/i.test(c)) return true;
+  return false;
 }
 
 /**
@@ -44,6 +47,8 @@ export function classifyOrbitRole(input: {
   const nameNorm = normalizeRoleLabel(name);
   const codeNorm = normalizeRoleLabel(code);
   if (nameNorm === "LITE" || codeNorm === "LITE") return "lite";
+  /** En Core el rol suele llamarse "LIDER" (p. ej. id 12), equivalente a perfil LITE en ORBIT. */
+  if (nameNorm === "LIDER" || codeNorm === "LIDER") return "lite";
 
   if (isCoordinatorLike(name, code)) return "full";
 
