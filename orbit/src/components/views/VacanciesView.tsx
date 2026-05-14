@@ -570,6 +570,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         {(showCreate || editRow) && (
           <ModalShell
             title={editRow ? 'Editar vacante' : 'Nueva vacante'}
+            panelMaxClassName="max-w-4xl"
             onClose={() => {
               setShowCreate(false);
               setEditRow(null);
@@ -581,13 +582,13 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
             )}
             <form
               onSubmit={editRow ? handleEditSubmit : handleCreate}
-              className="space-y-4 max-h-[70vh] overflow-y-auto pr-1"
+              className="space-y-4 max-h-[min(82vh,calc(90vh-7rem))] overflow-y-auto overflow-x-visible pr-1 min-w-0"
             >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <Field label="Área *">
                   <select
                     required
-                    className="glass-input py-2.5 text-sm w-full"
+                    className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full"
                     value={createAreaId === '' ? '' : String(createAreaId)}
                     onChange={(e) =>
                       onAreaChange(e.target.value ? Number(e.target.value) : '')
@@ -604,7 +605,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 <Field label="Escuela *">
                   <select
                     required
-                    className="glass-input py-2.5 text-sm w-full"
+                    className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full"
                     value={createSchoolId === '' ? '' : String(createSchoolId)}
                     onChange={(e) =>
                       onSchoolChange(e.target.value ? Number(e.target.value) : '')
@@ -623,7 +624,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
               </div>
               <Field label="Programa (opcional)">
                 <select
-                  className="glass-input py-2.5 text-sm w-full"
+                  className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full"
                   value={
                     createProgramId === 'none' || createProgramId === ''
                       ? 'none'
@@ -692,7 +693,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Field label="Estado operación">
                     <select
-                      className="glass-input py-2.5 text-sm w-full"
+                      className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full"
                       value={editRow.operationStatus}
                       onChange={(e) => {
                         const st = e.target.value as VacancyOperationStatus;
@@ -721,7 +722,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   Use &quot;Guardar cambios&quot; para aplicar el estado operación seleccionado.
                 </p>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
                 <TriField label="Terna" value={createTerna} onChange={setCreateTerna} />
                 <TriField label="PDA" value={createPda} onChange={setCreatePda} />
                 <TriField
@@ -862,10 +863,13 @@ function ModalShell({
   title,
   children,
   onClose,
+  panelMaxClassName = 'max-w-lg',
 }: {
   title: string;
   children: React.ReactNode;
   onClose: () => void;
+  /** Tailwind max-width for the panel (e.g. max-w-4xl for wide forms). */
+  panelMaxClassName?: string;
 }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
@@ -880,7 +884,10 @@ function ModalShell({
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 12 }}
-        className="w-full max-w-lg glass-panel p-6 sm:p-8 relative z-10 shadow-2xl max-h-[90vh] overflow-hidden flex flex-col"
+        className={cn(
+          'w-full glass-panel p-6 sm:p-8 relative z-10 shadow-2xl max-h-[92vh] overflow-hidden flex flex-col min-w-0',
+          panelMaxClassName,
+        )}
       >
         <div className="flex justify-between items-start mb-6 gap-4">
           <h2 className="text-xl font-bold text-slate-900 font-display">{title}</h2>
@@ -927,7 +934,7 @@ function TriField({
   return (
     <Field label={label}>
       <select
-        className="glass-input py-2.5 text-sm w-full"
+        className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full"
         value={value}
         onChange={(e) => onChange(e.target.value as TriSelectValue)}
       >
