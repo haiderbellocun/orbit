@@ -5,7 +5,7 @@ import {
   personMatchesAcademicCoordinator,
 } from "../lib/createVacancyOnDeactivate";
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
-import { getLiteRoleId } from "../lib/orbitRoles";
+import { getLiteRoleId, sqlPersonIsOrbitLiteExists } from "../lib/orbitRoles";
 
 const router = Router();
 
@@ -95,11 +95,11 @@ router.get("/coordinators", async (req, res) => {
 
       const where = `WHERE ${conditions.join(" AND ")}`;
 
-      /** LITEs por `ORBIT_LITE_ROLE_ID` (defecto 9); misma escuela que el coordinador. */
+      /** LITEs: mismo criterio que GET /lites (id ORBIT_LITE_ROLE_ID o rol LITE/LIDER en catálogo). */
       const litesCountExpr = `(
         SELECT COUNT(*)::int
         FROM ${prefix}person pl
-        WHERE pl.role_id = ${liteRoleId}
+        WHERE ${sqlPersonIsOrbitLiteExists("pl", prefix, liteRoleId)}
           AND ${sqlPersonIsActive("pl")}
           AND pl.school_id IS NOT NULL
           AND p.school_id IS NOT NULL

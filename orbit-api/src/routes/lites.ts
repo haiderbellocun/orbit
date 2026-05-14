@@ -2,7 +2,11 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/connection";
 import { insertAutoVacancyOnDeactivate } from "../lib/createVacancyOnDeactivate";
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
-import { getLiteRoleId } from "../lib/orbitRoles";
+import {
+  getLiteRoleId,
+  sqlPersonIsOrbitLite,
+  sqlPersonIsOrbitLiteExists,
+} from "../lib/orbitRoles";
 
 const router = Router();
 
@@ -59,7 +63,7 @@ router.get("/lites", async (req: Request, res: Response) => {
     if (coreMode != null) {
       const prefix = coreMode === "core" ? "core." : "";
       const conditions: string[] = [
-        `p.role_id = ${liteRoleId}`,
+        sqlPersonIsOrbitLite("p", "p_role", liteRoleId),
         sqlPersonIsActive("p"),
       ];
       const values: unknown[] = [];
@@ -129,6 +133,7 @@ router.get("/lites", async (req: Request, res: Response) => {
           ${sqlPersonStatusText("p")} AS status,
           COUNT(*) OVER() AS total_count
         FROM ${prefix}person p
+        LEFT JOIN ${prefix}role p_role ON p_role.id = p.role_id
         LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
         LEFT JOIN ${prefix}school s ON s.id = p.school_id
         LEFT JOIN ${prefix}person_program_assignments ppa ON ppa.person_id = p.id
@@ -264,6 +269,7 @@ router.get("/lites/:id", async (req: Request, res: Response) => {
            crd.coordinator_document,
            ${sqlPersonStatusText("p")} AS status
          FROM ${prefix}person p
+         LEFT JOIN ${prefix}role p_role ON p_role.id = p.role_id
          LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
          LEFT JOIN ${prefix}school s ON s.id = p.school_id
          LEFT JOIN ${prefix}person_program_assignments ppa ON ppa.person_id = p.id
@@ -289,7 +295,7 @@ router.get("/lites/:id", async (req: Request, res: Response) => {
            ORDER BY pc.full_name ASC NULLS LAST
            LIMIT 1
          ) crd ON TRUE
-         WHERE p.id = $1 AND p.role_id = ${liteRoleId}
+         WHERE p.id = $1 AND ${sqlPersonIsOrbitLite("p", "p_role", liteRoleId)}
            AND ${sqlPersonIsActive("p")}`,
         [id]
       );
@@ -389,7 +395,7 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
          NULLIF(TRIM(COALESCE(ppa.academic_line, '')), '') AS academic_line
        FROM ${prefix}person p
        LEFT JOIN ${prefix}person_program_assignments ppa ON ppa.person_id = p.id
-       WHERE p.id = $1 AND p.role_id = ${liteRoleId}`,
+       WHERE p.id = $1 AND ${sqlPersonIsOrbitLiteExists("p", prefix, liteRoleId)}`,
       [id]
     );
     if (preDeactivate.rows.length === 0) {
@@ -424,10 +430,10 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
     setParts.push("updated_at = NOW()");
 
     const updatePerson = await client.query(
-      `UPDATE ${prefix}person
+      `UPDATE ${prefix}person p
        SET ${setParts.join(", ")}
-       WHERE id = $1 AND role_id = ${liteRoleId}
-       RETURNING id`,
+       WHERE p.id = $1 AND ${sqlPersonIsOrbitLiteExists("p", prefix, liteRoleId)}
+       RETURNING p.id`,
       updateParams
     );
 
@@ -505,6 +511,7 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
          crd.coordinator_document,
          ${sqlPersonStatusText("p")} AS status
        FROM ${prefix}person p
+       LEFT JOIN ${prefix}role p_role ON p_role.id = p.role_id
        LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
        LEFT JOIN ${prefix}school s ON s.id = p.school_id
        LEFT JOIN ${prefix}person_program_assignments ppa ON ppa.person_id = p.id
@@ -530,7 +537,7 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
          ORDER BY pc.full_name ASC NULLS LAST
          LIMIT 1
        ) crd ON TRUE
-       WHERE p.id = $1 AND p.role_id = ${liteRoleId}
+       WHERE p.id = $1 AND ${sqlPersonIsOrbitLite("p", "p_role", liteRoleId)}
        LIMIT 1`,
       [id]
     );
