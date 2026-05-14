@@ -137,7 +137,7 @@ export const LitesView: React.FC<LitesViewProps> = ({
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Buscar coordinador..." 
+              placeholder="Buscar LITE..." 
               className="glass-input w-full pl-10 pr-4 py-3 text-sm"
               value={searchQuery}
               onChange={(e) => setSearchQuery?.(e.target.value)}

@@ -5,6 +5,7 @@ import {
   personMatchesAcademicCoordinator,
 } from "../lib/createVacancyOnDeactivate";
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
+import { getLiteRoleId } from "../lib/orbitRoles";
 
 const router = Router();
 
@@ -57,6 +58,7 @@ router.get("/coordinators", async (req, res) => {
     }
 
     if (useCore) {
+      const liteRoleId = getLiteRoleId();
       const prefix = coreMode === "core" ? "core." : "";
       const conditions: string[] = [];
       const values: unknown[] = [];
@@ -93,11 +95,11 @@ router.get("/coordinators", async (req, res) => {
 
       const where = `WHERE ${conditions.join(" AND ")}`;
 
-      /** LITEs = person.role_id = 9; se agrupan por la misma escuela que el coordinador. */
+      /** LITEs por `ORBIT_LITE_ROLE_ID` (defecto 9); misma escuela que el coordinador. */
       const litesCountExpr = `(
         SELECT COUNT(*)::int
         FROM ${prefix}person pl
-        WHERE pl.role_id = 9
+        WHERE pl.role_id = ${liteRoleId}
           AND ${sqlPersonIsActive("pl")}
           AND pl.school_id IS NOT NULL
           AND p.school_id IS NOT NULL
