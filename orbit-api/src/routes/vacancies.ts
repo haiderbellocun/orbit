@@ -1,10 +1,11 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { pool } from "../db/connection";
 import {
   qualifiedCoreTable,
   resolveCoreSchemaMode,
   type CoreSchemaMode,
 } from "../lib/coreSchema";
+import { toUpperAscii, toUpperAsciiOrNull } from "../lib/textNormalize";
 
 const router = Router();
 
@@ -208,21 +209,147 @@ async function loadProgramSchoolArea(
   return { schoolId: r.school_id, areaId: r.area_id };
 }
 
-function mapVacancyRow(row: Record<string, unknown>) {
+type VacancyOperationNoteDto = {
+  id: string;
+  text: string;
+  createdAt: string;
+  createdByPersonId: number | null;
+  createdByName: string | null;
+};
+
+function sqlOperationNotesAgg(personTable: string): string {
+  return `(
+    SELECT COALESCE(
+      json_agg(
+        json_build_object(
+          'id', n.id::text,
+          'text', n.body,
+          'createdAt', n.created_at,
+          'createdByPersonId', n.created_by_person_id,
+          'createdByName', per.full_name
+        )
+        ORDER BY n.created_at ASC
+      ),
+      '[]'::json
+    )
+    FROM vacancies.vacancy_operation_note n
+    LEFT JOIN ${personTable} per ON per.id = n.created_by_person_id
+    WHERE n.vacancy_id = v.id
+  )`;
+}
+
+function mapNotesFromJsonRaw(raw: unknown): VacancyOperationNoteDto[] {
+  if (raw == null) return [];
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: VacancyOperationNoteDto[] = [];
+  for (const item of parsed) {
+    if (item == null || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const id = o.id != null ? String(o.id) : "";
+    const text = o.text != null ? String(o.text) : "";
+    if (id === "" || text === "") continue;
+    const createdAtRaw = o.createdAt ?? o.created_at;
+    const createdAt =
+      createdAtRaw != null
+        ? new Date(String(createdAtRaw)).toISOString()
+        : "";
+    const cbp = o.createdByPersonId ?? o.created_by_person_id;
+    const createdByPersonId =
+      cbp == null || cbp === "" ? null : Number(cbp);
+    const cname = o.createdByName ?? o.created_by_name;
+    const createdByName =
+      cname == null || String(cname).trim() === ""
+        ? null
+        : String(cname);
+    out.push({
+      id,
+      text,
+      createdAt,
+      createdByPersonId:
+        createdByPersonId != null && Number.isFinite(createdByPersonId)
+          ? createdByPersonId
+          : null,
+      createdByName,
+    });
+  }
+  return out;
+}
+
+async function loadOperationNotesForVacancy(
+  vacancyId: string,
+  mode: CoreSchemaMode
+): Promise<VacancyOperationNoteDto[]> {
+  const personT = qualifiedCoreTable(mode, "person");
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         n.id,
+         n.body,
+         n.created_at,
+         n.created_by_person_id,
+         per.full_name AS created_by_name
+       FROM vacancies.vacancy_operation_note n
+       LEFT JOIN ${personT} per ON per.id = n.created_by_person_id
+       WHERE n.vacancy_id = $1
+       ORDER BY n.created_at ASC`,
+      [vacancyId]
+    );
+    return rows.map((r) => ({
+      id: String((r as { id: unknown }).id),
+      text: String((r as { body: unknown }).body ?? ""),
+      createdAt:
+        (r as { created_at?: unknown }).created_at != null
+          ? new Date(
+              (r as { created_at: string | Date }).created_at
+            ).toISOString()
+          : "",
+      createdByPersonId:
+        (r as { created_by_person_id?: unknown }).created_by_person_id ==
+        null
+          ? null
+          : Number((r as { created_by_person_id: unknown }).created_by_person_id),
+      createdByName:
+        (r as { created_by_name?: unknown }).created_by_name == null
+          ? null
+          : String((r as { created_by_name: unknown }).created_by_name),
+    }));
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === "42P01" || code === "42703") {
+      console.warn(
+        "vacancy_operation_note / person join: returning empty notes.",
+        e
+      );
+      return [];
+    }
+    throw e;
+  }
+}
+
+function mapVacancyRow(
+  row: Record<string, unknown>,
+  operationNotes: VacancyOperationNoteDto[]
+) {
   return {
     id: String(row.id),
     areaId: Number(row.area_id),
-    schoolId: Number(row.school_id),
+    schoolId:
+      row.school_id == null ? null : Number(row.school_id),
     programId:
       row.program_id == null ? null : Number(row.program_id),
     positionName: String(row.position_name ?? ""),
     curricularLine:
       row.curricular_line == null ? null : String(row.curricular_line),
     quantity: Number(row.quantity ?? 0),
-    operationNotes:
-      row.operation_notes == null ? null : String(row.operation_notes),
-    capitalNotes:
-      row.capital_notes == null ? null : String(row.capital_notes),
+    operationNotes,
     shortlistComplied:
       row.shortlist_complied === null || row.shortlist_complied === undefined
         ? null
@@ -258,7 +385,9 @@ function mapVacancyRow(row: Record<string, unknown>) {
 }
 
 function mapListRow(row: Record<string, unknown>) {
-  const base = mapVacancyRow(row);
+  const notes = mapNotesFromJsonRaw(row.operation_notes_json);
+  const base = mapVacancyRow(row, notes);
+  const cap = row.requisition_capital_notes;
   return {
     ...base,
     areaName: String(row.area_name ?? ""),
@@ -274,6 +403,8 @@ function mapListRow(row: Record<string, unknown>) {
       row.sent_to_capital_at == null
         ? null
         : new Date(row.sent_to_capital_at as string | Date).toISOString(),
+    capitalNotes:
+      cap == null || String(cap).trim() === "" ? null : String(cap),
   };
 }
 
@@ -290,6 +421,8 @@ router.get("/vacancies", async (_req, res) => {
     const areaT = qualifiedCoreTable(mode, "area");
     const schoolT = qualifiedCoreTable(mode, "school");
     const programT = qualifiedCoreTable(mode, "program");
+    const personT = qualifiedCoreTable(mode, "person");
+    const opNotesSql = sqlOperationNotesAgg(personT);
 
     const { rows } = await pool.query(
       `SELECT
@@ -304,8 +437,7 @@ router.get("/vacancies", async (_req, res) => {
          v.curricular_line,
          v.quantity,
          v.operation_status,
-         v.operation_notes,
-         v.capital_notes,
+         ${opNotesSql} AS operation_notes_json,
          v.shortlist_complied,
          v.pda_complied,
          v.contract_conditions_complied,
@@ -315,10 +447,11 @@ router.get("/vacancies", async (_req, res) => {
          v.closed_at,
          r.req_number,
          r.assigned_at AS req_assigned_at,
-         r.sent_to_capital_at
+         r.sent_to_capital_at,
+         r.capital_notes AS requisition_capital_notes
        FROM vacancies.vacancy v
        JOIN ${areaT} a ON a.id = v.area_id
-       JOIN ${schoolT} s ON s.id = v.school_id
+       LEFT JOIN ${schoolT} s ON s.id = v.school_id
        LEFT JOIN ${programT} p ON p.id = v.program_id
        LEFT JOIN vacancies.requisition r ON r.vacancy_id = v.id
        ORDER BY v.created_at DESC`
@@ -332,7 +465,7 @@ router.get("/vacancies", async (_req, res) => {
 });
 
 /** POST /vacancies */
-router.post("/vacancies", async (req, res) => {
+router.post("/vacancies", async (req: Request, res) => {
   try {
     const mode = await resolveCoreSchemaMode();
     if (mode == null) {
@@ -344,24 +477,32 @@ router.post("/vacancies", async (req, res) => {
 
     const b = req.body as Record<string, unknown>;
     let areaId = numOrUndef(b.areaId);
-    let schoolId = numOrUndef(b.schoolId);
+    let schoolId: number | null = null;
+    if (
+      b.schoolId !== undefined &&
+      b.schoolId !== null &&
+      String(b.schoolId).trim() !== ""
+    ) {
+      const sid = numOrUndef(b.schoolId);
+      if (sid == null || Number.isNaN(sid)) {
+        res.status(400).json({ error: "Invalid schoolId" });
+        return;
+      }
+      schoolId = sid;
+    }
     const programIdRaw = numOrUndef(b.programId);
 
     const positionName =
-      typeof b.positionName === "string" ? b.positionName.trim() : "";
+      typeof b.positionName === "string" ? toUpperAscii(b.positionName) : "";
     const curricularLine =
       typeof b.curricularLine === "string" && b.curricularLine.trim() !== ""
-        ? b.curricularLine.trim()
+        ? toUpperAscii(b.curricularLine)
         : null;
 
     const quantity = numOrUndef(b.quantity);
-    const operationNotes =
+    const initialOperationNote =
       typeof b.operationNotes === "string" && b.operationNotes.trim() !== ""
-        ? b.operationNotes.trim()
-        : null;
-    const capitalNotes =
-      typeof b.capitalNotes === "string" && b.capitalNotes.trim() !== ""
-        ? b.capitalNotes.trim()
+        ? toUpperAscii(b.operationNotes)
         : null;
 
     const shortlistComplied = parseOptionalBool(b.shortlistComplied);
@@ -373,10 +514,6 @@ router.post("/vacancies", async (req, res) => {
 
     if (areaId == null || Number.isNaN(areaId)) {
       res.status(400).json({ error: "areaId is required" });
-      return;
-    }
-    if (schoolId == null || Number.isNaN(schoolId)) {
-      res.status(400).json({ error: "schoolId is required" });
       return;
     }
     if (positionName === "") {
@@ -410,7 +547,6 @@ router.post("/vacancies", async (req, res) => {
       `INSERT INTO vacancies.vacancy (
         area_id, school_id, program_id,
         position_name, curricular_line, quantity,
-        operation_notes, capital_notes,
         shortlist_complied, pda_complied,
         contract_conditions_complied, pre_interview_cv_complied,
         operation_status
@@ -419,7 +555,6 @@ router.post("/vacancies", async (req, res) => {
         $4, $5, $6,
         $7, $8,
         $9, $10,
-        $11, $12,
         'open'
       ) RETURNING *`,
       [
@@ -429,8 +564,6 @@ router.post("/vacancies", async (req, res) => {
         positionName,
         curricularLine,
         quantity,
-        operationNotes,
-        capitalNotes,
         shortlistComplied,
         pdaComplied,
         contractConditionsComplied,
@@ -439,7 +572,28 @@ router.post("/vacancies", async (req, res) => {
     );
 
     const row = rows[0] as Record<string, unknown>;
-    res.status(201).json(mapVacancyRow(row));
+    const vacancyId = String(row.id);
+    const personId =
+      req.orbitUser != null &&
+      Number.isFinite(req.orbitUser.personId) &&
+      req.orbitUser.personId > 0
+        ? req.orbitUser.personId
+        : null;
+
+    if (initialOperationNote != null) {
+      await pool.query(
+        `INSERT INTO vacancies.vacancy_operation_note
+          (vacancy_id, body, created_by_person_id)
+         VALUES ($1, $2, $3)`,
+        [vacancyId, initialOperationNote, personId]
+      );
+    }
+
+    const operationNotes = await loadOperationNotesForVacancy(
+      vacancyId,
+      mode
+    );
+    res.status(201).json(mapVacancyRow(row, operationNotes));
   } catch (e) {
     console.error("POST /vacancies failed:", e);
     res.status(500).json({ error: "Internal server error" });
@@ -479,6 +633,8 @@ router.patch("/vacancies/:id/close", async (req, res) => {
       return;
     }
 
+    const mode = await resolveCoreSchemaMode();
+
     const { rows } = await pool.query(
       `UPDATE vacancies.vacancy
        SET operation_status = $1,
@@ -497,9 +653,111 @@ router.patch("/vacancies/:id/close", async (req, res) => {
       operationStatus: statusIn,
     });
 
-    res.json(mapVacancyRow(rows[0] as Record<string, unknown>));
+    const row = rows[0] as Record<string, unknown>;
+    const notes =
+      mode != null
+        ? await loadOperationNotesForVacancy(id, mode)
+        : [];
+    res.json(mapVacancyRow(row, notes));
   } catch (e) {
     console.error("PATCH /vacancies/:id/close failed:", e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** POST /vacancies/:id/operation-notes */
+router.post("/vacancies/:id/operation-notes", async (req: Request, res) => {
+  try {
+    const id = req.params.id;
+    if (!isUuid(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const gate = await vacancyEditableGate(id);
+    if (gate === "missing") {
+      res.status(404).json({ error: "Vacancy not found" });
+      return;
+    }
+    if (gate === "terminal") {
+      res.status(409).json({ error: TERMINAL_VACANCY_BLOCKED_MESSAGE });
+      return;
+    }
+
+    const mode = await resolveCoreSchemaMode();
+    if (mode == null) {
+      res.status(503).json({
+        error: "CORE catalog (area/school/program) is not available",
+      });
+      return;
+    }
+
+    const b = req.body as Record<string, unknown>;
+    const text = toUpperAscii(
+      typeof b.text === "string"
+        ? b.text
+        : typeof b.operationNotes === "string"
+          ? b.operationNotes
+          : ""
+    );
+    if (text === "") {
+      res.status(400).json({ error: "text is required" });
+      return;
+    }
+
+    const personId =
+      req.orbitUser != null &&
+      Number.isFinite(req.orbitUser.personId) &&
+      req.orbitUser.personId > 0
+        ? req.orbitUser.personId
+        : null;
+
+    const ins = await pool.query(
+      `INSERT INTO vacancies.vacancy_operation_note
+        (vacancy_id, body, created_by_person_id)
+       VALUES ($1, $2, $3)
+       RETURNING id, body, created_at, created_by_person_id`,
+      [id, text, personId]
+    );
+    const r0 = ins.rows[0] as {
+      id: unknown;
+      body: unknown;
+      created_at: unknown;
+      created_by_person_id: unknown;
+    };
+    const personT = qualifiedCoreTable(mode, "person");
+    let createdByName: string | null = null;
+    if (personId != null) {
+      const pn = await pool.query(
+        `SELECT full_name FROM ${personT} WHERE id = $1`,
+        [personId]
+      );
+      if (pn.rows.length > 0) {
+        createdByName = String(
+          (pn.rows[0] as { full_name?: unknown }).full_name ?? ""
+        );
+        if (createdByName.trim() === "") createdByName = null;
+      }
+    }
+
+    const note: VacancyOperationNoteDto = {
+      id: String(r0.id),
+      text: String(r0.body ?? ""),
+      createdAt:
+        r0.created_at != null
+          ? new Date(r0.created_at as string | Date).toISOString()
+          : "",
+      createdByPersonId: personId,
+      createdByName,
+    };
+
+    await insertVacancyChangeLog(pool, id, "UPDATE", {
+      operationNoteAppended: true,
+    });
+
+    res.status(201).json({ note });
+  } catch (e) {
+    console.error("POST /vacancies/:id/operation-notes failed:", e);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -514,7 +772,7 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
 
   const b = req.body as Record<string, unknown>;
   const reqNumber =
-    typeof b.reqNumber === "string" ? b.reqNumber.trim() : "";
+    typeof b.reqNumber === "string" ? toUpperAscii(b.reqNumber) : "";
   if (reqNumber === "") {
     res.status(400).json({ error: "reqNumber is required" });
     return;
@@ -529,6 +787,11 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
     }
     sentToCapitalAt = d;
   }
+
+  const capitalNotes =
+    typeof b.capitalNotes === "string" && b.capitalNotes.trim() !== ""
+      ? toUpperAscii(b.capitalNotes)
+      : null;
 
   const client = await pool.connect();
   try {
@@ -566,9 +829,9 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
 
     try {
       await client.query(
-        `INSERT INTO vacancies.requisition (vacancy_id, req_number, sent_to_capital_at)
-         VALUES ($1, $2, $3)`,
-        [id, reqNumber, sentToCapitalAt]
+        `INSERT INTO vacancies.requisition (vacancy_id, req_number, sent_to_capital_at, capital_notes)
+         VALUES ($1, $2, $3, $4)`,
+        [id, reqNumber, sentToCapitalAt, capitalNotes]
       );
     } catch (insErr) {
       await client.query("ROLLBACK");
@@ -593,6 +856,7 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
     await insertVacancyChangeLog(client, id, "UPDATE", {
       reqNumber,
       sentToCapitalAt,
+      capitalNotes,
     });
 
     await client.query("COMMIT");
@@ -605,19 +869,37 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
     const areaT = qualifiedCoreTable(mode, "area");
     const schoolT = qualifiedCoreTable(mode, "school");
     const programT = qualifiedCoreTable(mode, "program");
+    const personT = qualifiedCoreTable(mode, "person");
+    const opNotesSql = sqlOperationNotesAgg(personT);
 
     const { rows } = await pool.query(
       `SELECT
-         v.*,
+         v.id,
+         v.area_id,
          a.name AS area_name,
+         v.school_id,
          s.name AS school_name,
+         v.program_id,
          p.name AS program_name,
+         v.position_name,
+         v.curricular_line,
+         v.quantity,
+         v.operation_status,
+         ${opNotesSql} AS operation_notes_json,
+         v.shortlist_complied,
+         v.pda_complied,
+         v.contract_conditions_complied,
+         v.pre_interview_cv_complied,
+         v.created_at,
+         v.updated_at,
+         v.closed_at,
          r.req_number,
          r.assigned_at AS req_assigned_at,
-         r.sent_to_capital_at
+         r.sent_to_capital_at,
+         r.capital_notes AS requisition_capital_notes
        FROM vacancies.vacancy v
        JOIN ${areaT} a ON a.id = v.area_id
-       JOIN ${schoolT} s ON s.id = v.school_id
+       LEFT JOIN ${schoolT} s ON s.id = v.school_id
        LEFT JOIN ${programT} p ON p.id = v.program_id
        LEFT JOIN vacancies.requisition r ON r.vacancy_id = v.id
        WHERE v.id = $1`,
@@ -654,20 +936,38 @@ router.get("/vacancies/:id", async (req, res) => {
     const areaT = qualifiedCoreTable(mode, "area");
     const schoolT = qualifiedCoreTable(mode, "school");
     const programT = qualifiedCoreTable(mode, "program");
+    const personT = qualifiedCoreTable(mode, "person");
+    const opNotesSql = sqlOperationNotesAgg(personT);
 
     const { rows } = await pool.query(
       `SELECT
-         v.*,
+         v.id,
+         v.area_id,
          a.name AS area_name,
+         v.school_id,
          s.name AS school_name,
+         v.program_id,
          p.name AS program_name,
+         v.position_name,
+         v.curricular_line,
+         v.quantity,
+         v.operation_status,
+         ${opNotesSql} AS operation_notes_json,
+         v.shortlist_complied,
+         v.pda_complied,
+         v.contract_conditions_complied,
+         v.pre_interview_cv_complied,
+         v.created_at,
+         v.updated_at,
+         v.closed_at,
          r.id AS requisition_id,
          r.req_number,
          r.assigned_at AS req_assigned_at,
-         r.sent_to_capital_at
+         r.sent_to_capital_at,
+         r.capital_notes AS requisition_capital_notes
        FROM vacancies.vacancy v
        JOIN ${areaT} a ON a.id = v.area_id
-       JOIN ${schoolT} s ON s.id = v.school_id
+       LEFT JOIN ${schoolT} s ON s.id = v.school_id
        LEFT JOIN ${programT} p ON p.id = v.program_id
        LEFT JOIN vacancies.requisition r ON r.vacancy_id = v.id
        WHERE v.id = $1`,
@@ -698,6 +998,11 @@ router.get("/vacancies/:id", async (req, res) => {
                 : new Date(
                     raw.sent_to_capital_at as string | Date
                   ).toISOString(),
+            capitalNotes:
+              raw.requisition_capital_notes == null ||
+              String(raw.requisition_capital_notes).trim() === ""
+                ? null
+                : String(raw.requisition_capital_notes),
           };
 
     let statusHistory: Array<{
@@ -754,6 +1059,132 @@ router.get("/vacancies/:id", async (req, res) => {
     });
   } catch (e) {
     console.error("GET /vacancies/:id failed:", e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** PATCH /vacancies/:id/requisition */
+router.patch("/vacancies/:id/requisition", async (req: Request, res) => {
+  try {
+    const id = req.params.id;
+    if (!isUuid(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const gate = await vacancyEditableGate(id);
+    if (gate === "missing") {
+      res.status(404).json({ error: "Vacancy not found" });
+      return;
+    }
+    if (gate === "terminal") {
+      res.status(409).json({ error: TERMINAL_VACANCY_BLOCKED_MESSAGE });
+      return;
+    }
+
+    const b = req.body as Record<string, unknown>;
+    const updates: string[] = [];
+    const values: unknown[] = [];
+    let p = 1;
+
+    if (b.capitalNotes !== undefined) {
+      updates.push(`capital_notes = $${p}`);
+      values.push(
+        b.capitalNotes === null || String(b.capitalNotes).trim() === ""
+          ? null
+          : toUpperAscii(String(b.capitalNotes))
+      );
+      p++;
+    }
+
+    if (b.sentToCapitalAt !== undefined) {
+      if (b.sentToCapitalAt === null || String(b.sentToCapitalAt).trim() === "") {
+        updates.push(`sent_to_capital_at = $${p}`);
+        values.push(null);
+      } else {
+        const d = new Date(String(b.sentToCapitalAt));
+        if (Number.isNaN(d.getTime())) {
+          res.status(400).json({ error: "Invalid sentToCapitalAt" });
+          return;
+        }
+        updates.push(`sent_to_capital_at = $${p}`);
+        values.push(d.toISOString());
+      }
+      p++;
+    }
+
+    if (updates.length === 0) {
+      res.status(400).json({ error: "No fields to update" });
+      return;
+    }
+
+    values.push(id);
+    const result = await pool.query(
+      `UPDATE vacancies.requisition
+       SET ${updates.join(", ")}
+       WHERE vacancy_id = $${p}
+       RETURNING id`,
+      values
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: "Requisition not found for this vacancy" });
+      return;
+    }
+
+    await insertVacancyChangeLog(pool, id, "UPDATE", {
+      requisitionPatch: b,
+    });
+
+    const mode = await resolveCoreSchemaMode();
+    if (mode == null) {
+      res.json({ ok: true });
+      return;
+    }
+
+    const areaT = qualifiedCoreTable(mode, "area");
+    const schoolT = qualifiedCoreTable(mode, "school");
+    const programT = qualifiedCoreTable(mode, "program");
+    const personT = qualifiedCoreTable(mode, "person");
+    const opNotesSql = sqlOperationNotesAgg(personT);
+
+    const { rows } = await pool.query(
+      `SELECT
+         v.id,
+         v.area_id,
+         a.name AS area_name,
+         v.school_id,
+         s.name AS school_name,
+         v.program_id,
+         p.name AS program_name,
+         v.position_name,
+         v.curricular_line,
+         v.quantity,
+         v.operation_status,
+         ${opNotesSql} AS operation_notes_json,
+         v.shortlist_complied,
+         v.pda_complied,
+         v.contract_conditions_complied,
+         v.pre_interview_cv_complied,
+         v.created_at,
+         v.updated_at,
+         v.closed_at,
+         r.req_number,
+         r.assigned_at AS req_assigned_at,
+         r.sent_to_capital_at,
+         r.capital_notes AS requisition_capital_notes
+       FROM vacancies.vacancy v
+       JOIN ${areaT} a ON a.id = v.area_id
+       LEFT JOIN ${schoolT} s ON s.id = v.school_id
+       LEFT JOIN ${programT} p ON p.id = v.program_id
+       LEFT JOIN vacancies.requisition r ON r.vacancy_id = v.id
+       WHERE v.id = $1`,
+      [id]
+    );
+
+    res.json(mapListRow(rows[0] as Record<string, unknown>));
+  } catch (e) {
+    console.error("PATCH /vacancies/:id/requisition failed:", e);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -828,17 +1259,22 @@ router.patch("/vacancies/:id", async (req, res) => {
         setCol("area_id", n);
       }
       if (b.schoolId !== undefined) {
-        const n = numOrUndef(b.schoolId);
-        if (n == null || Number.isNaN(n)) {
-          res.status(400).json({ error: "Invalid schoolId" });
-          return;
+        if (b.schoolId === null || b.schoolId === "") {
+          setCol("school_id", null);
+        } else {
+          const n = numOrUndef(b.schoolId);
+          if (n == null || Number.isNaN(n)) {
+            res.status(400).json({ error: "Invalid schoolId" });
+            return;
+          }
+          setCol("school_id", n);
         }
-        setCol("school_id", n);
       }
     }
 
     if (b.positionName !== undefined) {
-      const s = typeof b.positionName === "string" ? b.positionName.trim() : "";
+      const s =
+        typeof b.positionName === "string" ? toUpperAscii(b.positionName) : "";
       if (s === "") {
         res.status(400).json({ error: "positionName cannot be empty" });
         return;
@@ -848,9 +1284,11 @@ router.patch("/vacancies/:id", async (req, res) => {
     if (b.curricularLine !== undefined) {
       setCol(
         "curricular_line",
-        b.curricularLine === null || b.curricularLine === ""
-          ? null
-          : String(b.curricularLine).trim()
+        toUpperAsciiOrNull(
+          b.curricularLine === null || b.curricularLine === ""
+            ? null
+            : String(b.curricularLine)
+        )
       );
     }
     if (b.quantity !== undefined) {
@@ -860,22 +1298,6 @@ router.patch("/vacancies/:id", async (req, res) => {
         return;
       }
       setCol("quantity", n);
-    }
-    if (b.operationNotes !== undefined) {
-      setCol(
-        "operation_notes",
-        b.operationNotes === null || b.operationNotes === ""
-          ? null
-          : String(b.operationNotes).trim()
-      );
-    }
-    if (b.capitalNotes !== undefined) {
-      setCol(
-        "capital_notes",
-        b.capitalNotes === null || b.capitalNotes === ""
-          ? null
-          : String(b.capitalNotes).trim()
-      );
     }
     if (b.shortlistComplied !== undefined) {
       setCol("shortlist_complied", parseOptionalBool(b.shortlistComplied));
@@ -936,7 +1358,8 @@ router.patch("/vacancies/:id", async (req, res) => {
     await insertVacancyChangeLog(pool, id, "UPDATE", b);
 
     const row = result.rows[0] as Record<string, unknown>;
-    res.json(mapVacancyRow(row));
+    const notes = await loadOperationNotesForVacancy(id, mode);
+    res.json(mapVacancyRow(row, notes));
   } catch (e) {
     console.error("PATCH /vacancies/:id failed:", e);
     res.status(500).json({ error: "Internal server error" });

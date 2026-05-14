@@ -4,6 +4,7 @@ import {
   resolveCoreSchemaMode,
   type CoreSchemaMode,
 } from "./coreSchema";
+import { toUpperAscii, toUpperAsciiOrNull } from "./textNormalize";
 
 async function vacanciesTableExists(): Promise<boolean> {
   const r = await pool.query(`SELECT to_regclass('vacancies.vacancy') AS t`);
@@ -158,34 +159,50 @@ export async function insertAutoVacancyOnDeactivate(
   const name =
     input.personFullName ??
     (row.full_name != null ? String(row.full_name) : "");
-  const operationNotes =
+  const operationNotes = toUpperAscii(
     name !== ""
       ? `Autogenerada al inhabilitar a ${name} (persona id ${input.personId}).`
-      : `Autogenerada al inhabilitar persona id ${input.personId}.`;
+      : `Autogenerada al inhabilitar persona id ${input.personId}.`
+  );
 
-  await pool.query(
+  const ins = await pool.query(
     `INSERT INTO vacancies.vacancy (
       area_id, school_id, program_id,
       position_name, curricular_line, quantity,
-      operation_notes, capital_notes,
       shortlist_complied, pda_complied,
       contract_conditions_complied, pre_interview_cv_complied,
       operation_status
     ) VALUES (
       $1, $2, $3,
       $4, $5, 1,
-      $6, NULL,
       NULL, NULL,
       NULL, NULL,
       'open'
-    )`,
+    ) RETURNING id`,
     [
       areaId,
       schoolId,
       programId,
-      input.positionName.trim() || "VACANTE",
-      input.curricularLine,
-      operationNotes,
+      toUpperAscii(input.positionName.trim() || "VACANTE"),
+      toUpperAsciiOrNull(input.curricularLine),
     ]
   );
+  const vacancyId = String((ins.rows[0] as { id: unknown }).id);
+  try {
+    await pool.query(
+      `INSERT INTO vacancies.vacancy_operation_note
+        (vacancy_id, body, created_by_person_id)
+       VALUES ($1, $2, $3)`,
+      [vacancyId, operationNotes, input.personId]
+    );
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === "42P01") {
+      console.warn(
+        "insertAutoVacancyOnDeactivate: vacancy_operation_note no existe; ejecute migrate:vacancies."
+      );
+      return;
+    }
+    throw e;
+  }
 }

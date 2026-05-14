@@ -11,13 +11,16 @@ import {
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
+import { toUpperAscii, toUpperAsciiOrNull } from '@/src/lib/textNormalize';
 import type { Vacancy, Teacher, Coordinator, VacancyOperationStatus } from '@/src/types';
 import {
   getVacancies,
   createVacancy,
   patchVacancy,
   createVacancyRequisition,
+  patchVacancyRequisition,
   closeVacancy,
+  appendVacancyOperationNote,
   getCatalogAreas,
   getCatalogSchools,
   getCatalogPrograms,
@@ -107,7 +110,9 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const [createLine, setCreateLine] = useState('');
   const [createQty, setCreateQty] = useState('1');
   const [createOpNotes, setCreateOpNotes] = useState('');
-  const [createCapNotes, setCreateCapNotes] = useState('');
+  const [newOpNoteDraft, setNewOpNoteDraft] = useState('');
+  const [opNoteSaving, setOpNoteSaving] = useState(false);
+  const [editReqCapitalNotes, setEditReqCapitalNotes] = useState('');
   const [createTerna, setCreateTerna] = useState<TriSelectValue>('');
   const [createPda, setCreatePda] = useState<TriSelectValue>('');
   const [createContract, setCreateContract] = useState<TriSelectValue>('');
@@ -115,18 +120,22 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
 
   const [reqNumber, setReqNumber] = useState('');
   const [reqSentAt, setReqSentAt] = useState('');
+  const [reqCapNotes, setReqCapNotes] = useState('');
 
   const [closeStatus, setCloseStatus] = useState<'hired' | 'closed' | 'cancelled'>('closed');
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<Vacancy[]> => {
     setLoading(true);
     setLoadError(null);
     try {
       const res = await getVacancies();
-      setRows(Array.isArray(res.data) ? res.data : []);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setRows(list);
+      return list;
     } catch (e) {
       setRows([]);
       setLoadError(e instanceof Error ? e.message : 'No se pudo cargar');
+      return [];
     } finally {
       setLoading(false);
     }
@@ -200,7 +209,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     setCreateLine('');
     setCreateQty('1');
     setCreateOpNotes('');
-    setCreateCapNotes('');
+    setNewOpNoteDraft('');
+    setEditReqCapitalNotes('');
     setCreateTerna('');
     setCreatePda('');
     setCreateContract('');
@@ -213,8 +223,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
-    if (createAreaId === '' || createSchoolId === '') {
-      setFormError('Seleccione área y escuela.');
+    if (createAreaId === '') {
+      setFormError('Seleccione área.');
       return;
     }
     const qty = Number(createQty);
@@ -228,13 +238,12 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     }
     const payload: CreateVacancyPayload = {
       areaId: Number(createAreaId),
-      schoolId: Number(createSchoolId),
+      schoolId: createSchoolId === '' ? null : Number(createSchoolId),
       programId: createProgramId === 'none' || createProgramId === '' ? null : Number(createProgramId),
-      positionName: createPosition.trim(),
-      curricularLine: createLine.trim() || null,
+      positionName: toUpperAscii(createPosition),
+      curricularLine: toUpperAsciiOrNull(createLine),
       quantity: qty,
-      operationNotes: createOpNotes.trim() || null,
-      capitalNotes: createCapNotes.trim() || null,
+      operationNotes: createOpNotes.trim() ? toUpperAscii(createOpNotes) : null,
       shortlistComplied: triToBool(createTerna),
       pdaComplied: triToBool(createPda),
       contractConditionsComplied: triToBool(createContract),
@@ -266,18 +275,16 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     }
     const patch: PatchVacancyPayload = {
       areaId: createAreaId === '' ? undefined : Number(createAreaId),
-      schoolId: createSchoolId === '' ? undefined : Number(createSchoolId),
+      schoolId: createSchoolId === '' ? null : Number(createSchoolId),
       programId:
         createProgramId === 'none'
           ? null
           : createProgramId === ''
             ? undefined
             : Number(createProgramId),
-      positionName: createPosition.trim(),
-      curricularLine: createLine.trim() || null,
+      positionName: toUpperAscii(createPosition),
+      curricularLine: toUpperAsciiOrNull(createLine),
       quantity: qty,
-      operationNotes: createOpNotes.trim() || null,
-      capitalNotes: createCapNotes.trim() || null,
       shortlistComplied: triToBool(createTerna),
       pdaComplied: triToBool(createPda),
       contractConditionsComplied: triToBool(createContract),
@@ -286,23 +293,61 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     };
     try {
       const apiRow = (await patchVacancy(editRow.id, patch)) as Vacancy;
+      const normCap = (s: string | null | undefined) => {
+        const t = (s ?? '').trim();
+        return t === '' ? null : toUpperAscii(t);
+      };
+      if (editRow.reqNumber != null && editRow.reqNumber !== '') {
+        const nextCap = normCap(editReqCapitalNotes);
+        const prevCap = normCap(editRow.capitalNotes ?? null);
+        if (nextCap !== prevCap) {
+          await patchVacancyRequisition(editRow.id, { capitalNotes: nextCap });
+        }
+      }
+      const list = await refresh();
+      const fresh = list.find((x) => x.id === editRow.id) ?? editRow;
       const merged: Vacancy = {
         ...editRow,
         ...apiRow,
-        areaName: editRow.areaName ?? apiRow.areaName,
-        schoolName: editRow.schoolName ?? apiRow.schoolName,
-        programName: editRow.programName ?? apiRow.programName,
-        reqNumber: editRow.reqNumber ?? apiRow.reqNumber,
+        ...fresh,
+        areaName: fresh.areaName ?? editRow.areaName ?? apiRow.areaName,
+        schoolName: fresh.schoolName ?? editRow.schoolName ?? apiRow.schoolName,
+        programName: fresh.programName ?? editRow.programName ?? apiRow.programName,
+        reqNumber: fresh.reqNumber ?? editRow.reqNumber ?? apiRow.reqNumber,
+        operationNotes: fresh.operationNotes ?? apiRow.operationNotes,
+        capitalNotes: fresh.capitalNotes ?? apiRow.capitalNotes,
       };
       onVacancySaved?.(merged);
       setEditRow(null);
       resetCreateForm();
-      await refresh();
       setSaveBanner(
-        'Cambios guardados (observaciones, cumplimientos y demás campos).'
+        'Cambios guardados (cumplimientos, estado y demás campos).'
       );
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Error al guardar');
+    }
+  }
+
+  async function handleAppendOperationNote() {
+    if (!editRow) return;
+    const text = newOpNoteDraft.trim();
+    if (text === '') {
+      setFormError('Escriba un comentario para añadir.');
+      return;
+    }
+    setFormError(null);
+    setOpNoteSaving(true);
+    try {
+      await appendVacancyOperationNote(editRow.id, { text: toUpperAscii(newOpNoteDraft) });
+      setNewOpNoteDraft('');
+      const list = await refresh();
+      const fresh = list.find((x) => x.id === editRow.id);
+      if (fresh) setEditRow(fresh);
+      setSaveBanner('Comentario de operación añadido.');
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Error al añadir comentario');
+    } finally {
+      setOpNoteSaving(false);
     }
   }
 
@@ -316,14 +361,16 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     }
     try {
       await createVacancyRequisition(reqRow.id, {
-        reqNumber: reqNumber.trim(),
+        reqNumber: toUpperAscii(reqNumber),
         sentToCapitalAt: reqSentAt.trim()
           ? new Date(reqSentAt).toISOString()
           : null,
+        capitalNotes: reqCapNotes.trim() ? toUpperAscii(reqCapNotes) : null,
       });
       setReqRow(null);
       setReqNumber('');
       setReqSentAt('');
+      setReqCapNotes('');
       await refresh();
       setSaveBanner('Requisición registrada.');
     } catch (err) {
@@ -350,19 +397,23 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     setSaveBanner(null);
     setEditRow(v);
     setCreateAreaId(v.areaId);
-    setCreateSchoolId(v.schoolId);
+    setCreateSchoolId(v.schoolId == null ? '' : v.schoolId);
     setCreateProgramId(v.programId == null ? 'none' : v.programId);
     setCreatePosition(v.positionName);
     setCreateLine(v.curricularLine ?? '');
     setCreateQty(String(v.quantity));
-    setCreateOpNotes(v.operationNotes ?? '');
-    setCreateCapNotes(v.capitalNotes ?? '');
+    setCreateOpNotes('');
+    setNewOpNoteDraft('');
+    setEditReqCapitalNotes(v.capitalNotes ?? '');
     setCreateTerna(boolToTri(v.shortlistComplied));
     setCreatePda(boolToTri(v.pdaComplied));
     setCreateContract(boolToTri(v.contractConditionsComplied));
     setCreateCv(boolToTri(v.preInterviewCvComplied));
     void getCatalogSchools({ area_id: v.areaId }).then(setSchools);
-    void getCatalogPrograms({ school_id: v.schoolId }).then(setPrograms);
+    void (v.schoolId != null
+      ? getCatalogPrograms({ school_id: v.schoolId })
+      : Promise.resolve([])
+    ).then(setPrograms);
   };
 
   return (
@@ -602,9 +653,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     ))}
                   </select>
                 </Field>
-                <Field label="Escuela *">
+                <Field label="Escuela (opcional)">
                   <select
-                    required
                     className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full"
                     value={createSchoolId === '' ? '' : String(createSchoolId)}
                     onChange={(e) =>
@@ -612,7 +662,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     }
                   >
                     <option value="">
-                      {createAreaId === '' ? 'Primero elija área' : 'Seleccione...'}
+                      {createAreaId === '' ? 'Primero elija área' : 'Sin escuela / elegir…'}
                     </option>
                     {schools.map((s) => (
                       <option key={s.id} value={s.id}>
@@ -675,20 +725,64 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   onChange={(e) => setCreateQty(e.target.value)}
                 />
               </Field>
-              <Field label="Observaciones operación">
-                <textarea
-                  className="glass-input py-2.5 text-sm w-full min-h-[72px]"
-                  value={createOpNotes}
-                  onChange={(e) => setCreateOpNotes(e.target.value)}
-                />
-              </Field>
-              <Field label="Observaciones capital humano">
-                <textarea
-                  className="glass-input py-2.5 text-sm w-full min-h-[56px]"
-                  value={createCapNotes}
-                  onChange={(e) => setCreateCapNotes(e.target.value)}
-                />
-              </Field>
+              {!editRow && (
+                <Field label="Comentario inicial de operación (opcional)">
+                  <textarea
+                    className="glass-input py-2.5 text-sm w-full min-h-[72px]"
+                    value={createOpNotes}
+                    onChange={(e) => setCreateOpNotes(e.target.value)}
+                  />
+                </Field>
+              )}
+              {editRow && (
+                <>
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 space-y-2">
+                    <p className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">
+                      Comentarios de operación
+                    </p>
+                    <ul className="space-y-2 max-h-44 overflow-y-auto text-sm text-slate-700">
+                      {(editRow.operationNotes ?? []).length === 0 ? (
+                        <li className="text-slate-400 text-xs">Sin comentarios aún.</li>
+                      ) : (
+                        (editRow.operationNotes ?? []).map((n) => (
+                          <li key={n.id} className="border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                            <div className="text-[10px] text-slate-500 font-medium">
+                              {formatDt(n.createdAt)}
+                              {n.createdByName ? ` · ${n.createdByName}` : ''}
+                            </div>
+                            <p className="mt-0.5 whitespace-pre-wrap">{n.text}</p>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                      <textarea
+                        className="glass-input py-2 text-sm w-full min-h-[56px] flex-1"
+                        placeholder="Nuevo comentario…"
+                        value={newOpNoteDraft}
+                        onChange={(e) => setNewOpNoteDraft(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        disabled={opNoteSaving}
+                        onClick={() => void handleAppendOperationNote()}
+                        className="glass-button-secondary py-2.5 px-4 text-xs font-bold uppercase tracking-widest whitespace-nowrap shrink-0"
+                      >
+                        {opNoteSaving ? '…' : 'Añadir'}
+                      </button>
+                    </div>
+                  </div>
+                  {editRow.reqNumber != null && editRow.reqNumber !== '' && (
+                    <Field label="Notas capital humano (requisición)">
+                      <textarea
+                        className="glass-input py-2.5 text-sm w-full min-h-[56px]"
+                        value={editReqCapitalNotes}
+                        onChange={(e) => setEditReqCapitalNotes(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                </>
+              )}
               {editRow && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Field label="Estado operación">
@@ -765,6 +859,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
               setReqRow(null);
               setReqNumber('');
               setReqSentAt('');
+              setReqCapNotes('');
               setFormError(null);
             }}
           >
@@ -792,13 +887,27 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   onChange={(e) => setReqSentAt(e.target.value)}
                 />
               </Field>
+              <Field label="Notas capital humano (opcional)">
+                <textarea
+                  className="glass-input py-2.5 text-sm w-full min-h-[56px]"
+                  value={reqCapNotes}
+                  onChange={(e) => setReqCapNotes(e.target.value)}
+                  placeholder="Observaciones para capital humano…"
+                />
+              </Field>
               <div className="flex gap-3">
                 <button type="submit" className="flex-1 glass-button-primary py-3 text-xs font-bold uppercase tracking-widest">
                   Registrar requisición
                 </button>
                 <button
                   type="button"
-                  onClick={() => setReqRow(null)}
+                  onClick={() => {
+                    setReqRow(null);
+                    setReqNumber('');
+                    setReqSentAt('');
+                    setReqCapNotes('');
+                    setFormError(null);
+                  }}
                   className="flex-1 glass-button-secondary py-3 text-xs font-bold uppercase tracking-widest"
                 >
                   Cancelar

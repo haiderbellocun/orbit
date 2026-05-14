@@ -20,13 +20,11 @@ CREATE SCHEMA IF NOT EXISTS vacancies;
 CREATE TABLE IF NOT EXISTS vacancies.vacancy (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   area_id INTEGER NOT NULL,
-  school_id INTEGER NOT NULL,
+  school_id INTEGER,
   program_id INTEGER,
   position_name VARCHAR(255) NOT NULL,
   curricular_line VARCHAR(500),
   quantity INTEGER NOT NULL,
-  operation_notes TEXT,
-  capital_notes TEXT,
   shortlist_complied BOOLEAN,
   pda_complied BOOLEAN,
   contract_conditions_complied BOOLEAN,
@@ -57,10 +55,22 @@ CREATE TABLE IF NOT EXISTS vacancies.requisition (
   vacancy_id UUID NOT NULL UNIQUE REFERENCES vacancies.vacancy(id) ON DELETE CASCADE,
   req_number VARCHAR(100) NOT NULL UNIQUE,
   assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  sent_to_capital_at TIMESTAMPTZ
+  sent_to_capital_at TIMESTAMPTZ,
+  capital_notes TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_requisition_vacancy ON vacancies.requisition(vacancy_id);
+
+CREATE TABLE IF NOT EXISTS vacancies.vacancy_operation_note (
+  id BIGSERIAL PRIMARY KEY,
+  vacancy_id UUID NOT NULL REFERENCES vacancies.vacancy(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by_person_id INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_von_vacancy_created
+  ON vacancies.vacancy_operation_note(vacancy_id, created_at ASC);
 
 CREATE TABLE IF NOT EXISTS vacancies.vacancy_status_history (
   id BIGSERIAL PRIMARY KEY,
@@ -220,6 +230,83 @@ END $migrate_log_op_status$;
 `;
 }
 
+/**
+ * Evolución idempotente para bases que ya tenían vacancy.operation_notes /
+ * vacancy.capital_notes antes del modelo con vacancy_operation_note y
+ * requisition.capital_notes.
+ */
+async function upgradeVacanciesLegacyColumns(): Promise<void> {
+  await pool.query(
+    `ALTER TABLE vacancies.requisition
+       ADD COLUMN IF NOT EXISTS capital_notes TEXT`
+  );
+
+  await pool.query(`
+DO $body$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns c
+    WHERE c.table_schema = 'vacancies'
+      AND c.table_name = 'vacancy'
+      AND c.column_name = 'capital_notes'
+  ) THEN
+    UPDATE vacancies.requisition r
+    SET capital_notes = COALESCE(
+      NULLIF(btrim(COALESCE(r.capital_notes::text, '')), ''),
+      NULLIF(btrim(v.capital_notes::text), '')
+    )
+    FROM vacancies.vacancy v
+    WHERE r.vacancy_id = v.id
+      AND v.capital_notes IS NOT NULL
+      AND btrim(v.capital_notes::text) <> '';
+  END IF;
+END
+$body$;
+`);
+
+  await pool.query(`
+DO $body$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns c
+    WHERE c.table_schema = 'vacancies'
+      AND c.table_name = 'vacancy'
+      AND c.column_name = 'operation_notes'
+  ) THEN
+    INSERT INTO vacancies.vacancy_operation_note (
+      vacancy_id, body, created_at, created_by_person_id
+    )
+    SELECT
+      v.id,
+      btrim(v.operation_notes::text),
+      COALESCE(v.updated_at, v.created_at),
+      NULL
+    FROM vacancies.vacancy v
+    WHERE v.operation_notes IS NOT NULL
+      AND btrim(v.operation_notes::text) <> ''
+      AND NOT EXISTS (
+        SELECT 1
+        FROM vacancies.vacancy_operation_note n
+        WHERE n.vacancy_id = v.id
+      );
+  END IF;
+END
+$body$;
+`);
+
+  await pool.query(`
+ALTER TABLE vacancies.vacancy
+  DROP COLUMN IF EXISTS capital_notes,
+  DROP COLUMN IF EXISTS operation_notes
+`);
+
+  await pool.query(
+    `ALTER TABLE vacancies.vacancy ALTER COLUMN school_id DROP NOT NULL`
+  );
+}
+
 async function createTriggerExecute(
   triggerSqlFunction: string,
   triggerSqlProcedure: string
@@ -262,6 +349,7 @@ export async function migrateVacancies(): Promise<void> {
     );
   }
   await pool.query(buildVacanciesDdl(mode));
+  await upgradeVacanciesLegacyColumns();
 
   await pool.query(
     `DROP TRIGGER IF EXISTS trg_vacancy_touch_updated ON vacancies.vacancy`
