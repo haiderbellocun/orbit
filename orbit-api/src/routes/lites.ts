@@ -2,11 +2,9 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/connection";
 import { insertAutoVacancyOnDeactivate } from "../lib/createVacancyOnDeactivate";
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
+import { getLiteRoleId } from "../lib/orbitRoles";
 
 const router = Router();
-
-/** Rol CORE para personas LITE (Líder de Investigación y Transformación EDU). */
-const LITE_ROLE_ID = 9;
 
 type CoreSchemaMode = "public" | "core";
 
@@ -44,6 +42,7 @@ function coordinatorMatchSql(areaAlias: string, hierarchyAlias: string, roleAlia
 
 router.get("/lites", async (req: Request, res: Response) => {
   try {
+    const liteRoleId = getLiteRoleId();
     const {
       search,
       school,
@@ -60,7 +59,7 @@ router.get("/lites", async (req: Request, res: Response) => {
     if (coreMode != null) {
       const prefix = coreMode === "core" ? "core." : "";
       const conditions: string[] = [
-        `p.role_id = ${LITE_ROLE_ID}`,
+        `p.role_id = ${liteRoleId}`,
         sqlPersonIsActive("p"),
       ];
       const values: unknown[] = [];
@@ -234,6 +233,7 @@ router.get("/lites", async (req: Request, res: Response) => {
 
 router.get("/lites/:id", async (req: Request, res: Response) => {
   try {
+    const liteRoleId = getLiteRoleId();
     const id = Number.parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
       res.status(400).json({ error: "Invalid id" });
@@ -289,7 +289,7 @@ router.get("/lites/:id", async (req: Request, res: Response) => {
            ORDER BY pc.full_name ASC NULLS LAST
            LIMIT 1
          ) crd ON TRUE
-         WHERE p.id = $1 AND p.role_id = ${LITE_ROLE_ID}
+         WHERE p.id = $1 AND p.role_id = ${liteRoleId}
            AND ${sqlPersonIsActive("p")}`,
         [id]
       );
@@ -373,6 +373,7 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
     return;
   }
 
+  const liteRoleId = getLiteRoleId();
   const prefix = coreMode === "core" ? "core." : "";
   const client = await pool.connect();
   try {
@@ -388,7 +389,7 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
          NULLIF(TRIM(COALESCE(ppa.academic_line, '')), '') AS academic_line
        FROM ${prefix}person p
        LEFT JOIN ${prefix}person_program_assignments ppa ON ppa.person_id = p.id
-       WHERE p.id = $1 AND p.role_id = ${LITE_ROLE_ID}`,
+       WHERE p.id = $1 AND p.role_id = ${liteRoleId}`,
       [id]
     );
     if (preDeactivate.rows.length === 0) {
@@ -425,7 +426,7 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
     const updatePerson = await client.query(
       `UPDATE ${prefix}person
        SET ${setParts.join(", ")}
-       WHERE id = $1 AND role_id = ${LITE_ROLE_ID}
+       WHERE id = $1 AND role_id = ${liteRoleId}
        RETURNING id`,
       updateParams
     );
@@ -529,7 +530,7 @@ router.patch("/lites/:id", async (req: Request, res: Response) => {
          ORDER BY pc.full_name ASC NULLS LAST
          LIMIT 1
        ) crd ON TRUE
-       WHERE p.id = $1 AND p.role_id = ${LITE_ROLE_ID}
+       WHERE p.id = $1 AND p.role_id = ${liteRoleId}
        LIMIT 1`,
       [id]
     );
