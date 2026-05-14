@@ -12,6 +12,42 @@ export function getLiteRoleId(): number {
   return Number.isFinite(n) ? n : 9;
 }
 
+/**
+ * Coincide con `classifyOrbitRole` (perfil LITE en ORBIT): id configurable o rol LITE/LIDER en catálogo.
+ * Requiere `LEFT JOIN …role ${roleAlias} ON ${roleAlias}.id = ${personAlias}.role_id`.
+ */
+export function sqlPersonIsOrbitLite(
+  personAlias: string,
+  roleAlias: string,
+  liteRoleId: number
+): string {
+  return `(
+    ${personAlias}.role_id = ${liteRoleId}
+    OR trim(upper(COALESCE(${roleAlias}.name, ''))) IN ('LITE', 'LIDER')
+    OR trim(upper(COALESCE(${roleAlias}.code, ''))) IN ('LITE', 'LIDER')
+  )`;
+}
+
+/** Misma lógica que `sqlPersonIsOrbitLite` sin JOIN previo a `role` (p. ej. UPDATE). */
+export function sqlPersonIsOrbitLiteExists(
+  personAlias: string,
+  schemaPrefix: string,
+  liteRoleId: number
+): string {
+  return `(
+    ${personAlias}.role_id = ${liteRoleId}
+    OR EXISTS (
+      SELECT 1
+      FROM ${schemaPrefix}role r_orbit_lite
+      WHERE r_orbit_lite.id = ${personAlias}.role_id
+        AND (
+          trim(upper(COALESCE(r_orbit_lite.name, ''))) IN ('LITE', 'LIDER')
+          OR trim(upper(COALESCE(r_orbit_lite.code, ''))) IN ('LITE', 'LIDER')
+        )
+    )
+  )`;
+}
+
 function normalizeRoleLabel(s: string | null | undefined): string {
   return (s ?? "")
     .trim()
