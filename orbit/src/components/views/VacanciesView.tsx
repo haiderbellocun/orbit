@@ -528,7 +528,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                         >
                           <PencilSquareIcon className="h-4 w-4" />
                         </button>
-                        {/* <button
+                        <button
                           type="button"
                           title="Convertir en requisición"
                           disabled={Boolean(v.reqNumber)}
@@ -541,7 +541,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                           className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 disabled:opacity-35"
                         >
                           <DocumentTextIcon className="h-4 w-4" />
-                        </button> */}
+                        </button>
                         <button
                           type="button"
                           title="Cerrar vacante"
