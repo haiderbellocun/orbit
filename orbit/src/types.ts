@@ -37,13 +37,23 @@ export type VacancyOperationStatus =
   | 'closed'
   | 'cancelled';
 
+/** One append-only operation comment on a vacancy (from vacancy_operation_note). */
+export interface VacancyOperationNoteEntry {
+  id: string;
+  text: string;
+  createdAt: string;
+  createdByPersonId: number | null;
+  /** Present when API joined person.full_name. */
+  createdByName?: string | null;
+}
+
 /** List row from GET /vacancies (joined with CORE + optional requisition). */
 export interface Vacancy {
   id: string;
   areaId: number;
   /** Present when response includes CORE joins (list/detail); bare POST/PATCH may omit. */
   areaName?: string;
-  schoolId: number;
+  schoolId: number | null;
   schoolName?: string;
   programId: number | null;
   programName?: string | null;
@@ -51,8 +61,12 @@ export interface Vacancy {
   curricularLine: string | null;
   quantity: number;
   operationStatus: VacancyOperationStatus;
-  operationNotes: string | null;
-  capitalNotes: string | null;
+  operationNotes: VacancyOperationNoteEntry[];
+  /**
+   * Notas de capital humano desde la requisición asociada (solo si existe REQ).
+   * En detalle, preferir `requisition.capitalNotes`.
+   */
+  capitalNotes?: string | null;
   shortlistComplied: boolean | null;
   pdaComplied: boolean | null;
   contractConditionsComplied: boolean | null;
@@ -70,6 +84,7 @@ export type VacancyRequisitionDetail = {
   reqNumber: string;
   assignedAt: string;
   sentToCapitalAt: string | null;
+  capitalNotes: string | null;
 };
 
 export type VacancyStatusHistoryEntry = {

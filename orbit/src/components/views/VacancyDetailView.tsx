@@ -68,7 +68,20 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
     };
   }, [summary.id, summary.updatedAt]);
 
-  const v = detail ?? { ...summary, requisition: null, statusHistory: [] as VacancyDetail['statusHistory'] };
+  const v = detail ?? {
+    ...summary,
+    requisition:
+      summary.reqNumber != null && summary.reqNumber !== ''
+        ? {
+            id: '',
+            reqNumber: summary.reqNumber,
+            assignedAt: summary.reqAssignedAt ?? '',
+            sentToCapitalAt: summary.sentToCapitalAt ?? null,
+            capitalNotes: summary.capitalNotes ?? null,
+          }
+        : null,
+    statusHistory: [] as VacancyDetail['statusHistory'],
+  };
 
   return (
     <div className="space-y-8">
@@ -187,13 +200,21 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                 <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
                   Operación
                 </span>
-                {v.operationNotes?.trim() ? v.operationNotes : '—'}
-              </p>
-              <p>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
-                  Capital humano
-                </span>
-                {v.capitalNotes?.trim() ? v.capitalNotes : '—'}
+                {(v.operationNotes ?? []).length === 0 ? (
+                  '—'
+                ) : (
+                  <ul className="space-y-2 mt-1">
+                    {(v.operationNotes ?? []).map((n) => (
+                      <li key={n.id} className="border-l-2 border-violet-200 pl-2">
+                        <span className="text-[10px] text-slate-500">
+                          {formatTs(n.createdAt)}
+                          {n.createdByName ? ` · ${n.createdByName}` : ''}
+                        </span>
+                        <span className="block text-slate-700 whitespace-pre-wrap">{n.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </p>
             </div>
           </motion.div>
@@ -220,6 +241,16 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                   label="Envío a capital"
                   value={formatTs(v.requisition.sentToCapitalAt)}
                 />
+                <div>
+                  <dt className="text-[10px] font-bold uppercase text-slate-400 mb-1">
+                    Notas capital humano
+                  </dt>
+                  <dd className="text-slate-700 whitespace-pre-wrap">
+                    {v.requisition.capitalNotes?.trim()
+                      ? v.requisition.capitalNotes
+                      : '—'}
+                  </dd>
+                </div>
               </dl>
             )}
           </motion.div>

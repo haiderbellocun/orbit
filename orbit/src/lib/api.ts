@@ -2,6 +2,7 @@ import type {
   Teacher,
   Vacancy,
   VacancyDetail,
+  VacancyOperationNoteEntry,
   VacancyOperationStatus,
 } from "@/src/types";
 
@@ -455,13 +456,14 @@ export async function updateTeacherProfile(
 // Vacancies (schema `vacancies.vacancy`)
 export type CreateVacancyPayload = {
   areaId: number;
-  schoolId: number;
+  /** Opcional; si hay `programId`, la API infiere la escuela desde el programa. */
+  schoolId?: number | null;
   programId: number | null;
   positionName: string;
   curricularLine?: string | null;
   quantity: number;
+  /** Primer comentario de operación (opcional). */
   operationNotes?: string | null;
-  capitalNotes?: string | null;
   shortlistComplied?: boolean | null;
   pdaComplied?: boolean | null;
   contractConditionsComplied?: boolean | null;
@@ -470,13 +472,11 @@ export type CreateVacancyPayload = {
 
 export type PatchVacancyPayload = Partial<{
   areaId: number;
-  schoolId: number;
+  schoolId: number | null;
   programId: number | null;
   positionName: string;
   curricularLine: string | null;
   quantity: number;
-  operationNotes: string | null;
-  capitalNotes: string | null;
   shortlistComplied: boolean | null;
   pdaComplied: boolean | null;
   contractConditionsComplied: boolean | null;
@@ -528,14 +528,51 @@ export async function patchVacancy(
   return handleJson(response);
 }
 
+export async function appendVacancyOperationNote(
+  id: string,
+  body: { text: string }
+): Promise<{ note: VacancyOperationNoteEntry }> {
+  const response = await authFetch(
+    `${BASE_URL}/vacancies/${encodeURIComponent(id)}/operation-notes`,
+    {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify(body),
+    }
+  );
+  return handleJson(response);
+}
+
 export async function createVacancyRequisition(
   id: string,
-  body: { reqNumber: string; sentToCapitalAt?: string | null }
+  body: {
+    reqNumber: string;
+    sentToCapitalAt?: string | null;
+    capitalNotes?: string | null;
+  }
 ): Promise<Vacancy> {
   const response = await authFetch(
     `${BASE_URL}/vacancies/${encodeURIComponent(id)}/requisition`,
     {
       method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify(body),
+    }
+  );
+  return handleJson(response);
+}
+
+export async function patchVacancyRequisition(
+  id: string,
+  body: {
+    capitalNotes?: string | null;
+    sentToCapitalAt?: string | null;
+  }
+): Promise<Vacancy> {
+  const response = await authFetch(
+    `${BASE_URL}/vacancies/${encodeURIComponent(id)}/requisition`,
+    {
+      method: "PATCH",
       headers: jsonHeaders,
       body: JSON.stringify(body),
     }
