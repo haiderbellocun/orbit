@@ -4,6 +4,7 @@ import {
   qualifiedCoreTable,
   resolveCoreSchemaMode,
 } from "../lib/coreSchema";
+import { schoolScopeFromRequest } from "../middleware/orbitAuth";
 
 const router = Router();
 
@@ -35,7 +36,18 @@ router.get("/catalog/schools", async (req, res) => {
       res.json([]);
       return;
     }
+    const schoolScope = schoolScopeFromRequest(req);
     const table = qualifiedCoreTable(coreMode, "school");
+    if (schoolScope != null) {
+      const { rows } = await pool.query(
+        `SELECT id, name, area_id
+         FROM ${table}
+         WHERE id = $1 AND COALESCE(is_active, true) = true`,
+        [schoolScope.schoolId]
+      );
+      res.json(rows);
+      return;
+    }
     const areaIdRaw =
       typeof req.query.area_id === "string" ? req.query.area_id.trim() : "";
     const areaId = areaIdRaw ? Number.parseInt(areaIdRaw, 10) : null;
@@ -86,8 +98,12 @@ router.get("/catalog/programs", async (req, res) => {
       return;
     }
     const table = qualifiedCoreTable(coreMode, "program");
-    const schoolIdRaw =
-      typeof req.query.school_id === "string" ? req.query.school_id.trim() : "";
+    const schoolScope = schoolScopeFromRequest(req);
+    const schoolIdRaw = schoolScope
+      ? String(schoolScope.schoolId)
+      : typeof req.query.school_id === "string"
+        ? req.query.school_id.trim()
+        : "";
     const schoolId = schoolIdRaw ? Number.parseInt(schoolIdRaw, 10) : null;
     if (schoolIdRaw && (schoolId == null || Number.isNaN(schoolId))) {
       res.status(400).json({ error: "Invalid school_id" });

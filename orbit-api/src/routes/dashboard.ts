@@ -1,7 +1,10 @@
 import { Router, type Request } from "express";
 import { pool } from "../db/connection";
 import { sqlPersonIsActive } from "../sql/personActive";
-import { liteTeacherScopeFromRequest } from "../middleware/orbitAuth";
+import {
+  liteTeacherScopeFromRequest,
+  schoolScopeFromRequest,
+} from "../middleware/orbitAuth";
 
 const router = Router();
 
@@ -37,6 +40,7 @@ type DashboardSummaryResponse = {
 async function getActiveTeachersCount(req: Request): Promise<number> {
   const useLegacy = await hasLegacyTeachersTable();
   const lite = liteTeacherScopeFromRequest(req);
+  const schoolScope = schoolScopeFromRequest(req);
 
   if (useLegacy && lite != null) {
     return 0;
@@ -63,6 +67,19 @@ async function getActiveTeachersCount(req: Request): Promise<number> {
            OR COALESCE(ppa.programs_id, ARRAY[]::integer[]) && $2::integer[]
          )`,
       [lite.schoolId, lite.programIds]
+    );
+    return Number(result.rows[0]?.total ?? 0);
+  }
+
+  if (schoolScope != null) {
+    const result = await pool.query(
+      `SELECT COUNT(*)::int AS total
+       FROM person p
+       LEFT JOIN role r ON r.id = p.role_id
+       WHERE ${sqlPersonIsActive("p")}
+         AND r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')
+         AND p.school_id = $1`,
+      [schoolScope.schoolId]
     );
     return Number(result.rows[0]?.total ?? 0);
   }

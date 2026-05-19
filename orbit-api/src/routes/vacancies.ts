@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { pool } from "../db/connection";
-import { orbitPersonIdFromRequest } from "../middleware/orbitAuth";
+import {
+  orbitPersonIdFromRequest,
+  schoolScopeFromRequest,
+  vacancyAllowedForSchoolScope,
+} from "../middleware/orbitAuth";
 import {
   qualifiedCoreTable,
   resolveCoreSchemaMode,
@@ -222,6 +226,44 @@ async function insertVacancyChangeLog(
   );
 }
 
+async function loadSchoolArea(
+  mode: CoreSchemaMode,
+  schoolId: number
+): Promise<{ areaId: number | null } | null> {
+  const schoolT = qualifiedCoreTable(mode, "school");
+  const { rows } = await pool.query(
+    `SELECT area_id
+     FROM ${schoolT}
+     WHERE id = $1 AND COALESCE(is_active, true) = true`,
+    [schoolId]
+  );
+  if (rows.length === 0) return null;
+  const r = rows[0] as { area_id: number | null };
+  return { areaId: r.area_id };
+}
+
+async function denyIfVacancyOutOfSchoolScope(
+  req: import("express").Request,
+  res: import("express").Response,
+  vacancyId: string
+): Promise<boolean> {
+  if (schoolScopeFromRequest(req) == null) return false;
+  const r = await pool.query(
+    `SELECT school_id FROM vacancies.vacancy WHERE id = $1`,
+    [vacancyId]
+  );
+  if (r.rows.length === 0) {
+    res.status(404).json({ error: "Not found" });
+    return true;
+  }
+  const sid = (r.rows[0] as { school_id: number | null }).school_id;
+  if (!vacancyAllowedForSchoolScope(req, sid)) {
+    res.status(403).json({ error: "No tienes permiso para este recurso" });
+    return true;
+  }
+  return false;
+}
+
 async function loadProgramSchoolArea(
   mode: CoreSchemaMode,
   programId: number
@@ -423,7 +465,7 @@ function mapListRow(row: Record<string, unknown>) {
 }
 
 /** GET /vacancies */
-router.get("/vacancies", async (_req, res) => {
+router.get("/vacancies", async (req, res) => {
   try {
     const mode = await resolveCoreSchemaMode();
     if (mode == null) {
@@ -437,6 +479,9 @@ router.get("/vacancies", async (_req, res) => {
     const programT = qualifiedCoreTable(mode, "program");
     const personT = qualifiedCoreTable(mode, "person");
     const opNotesSql = sqlOperationNotesAgg(personT);
+    const schoolScope = schoolScopeFromRequest(req);
+    const schoolFilter = schoolScope ? `WHERE v.school_id = $1` : "";
+    const queryParams = schoolScope ? [schoolScope.schoolId] : [];
 
     const { rows } = await pool.query(
       `SELECT
@@ -465,7 +510,9 @@ router.get("/vacancies", async (_req, res) => {
        LEFT JOIN ${schoolT} s ON s.id = v.school_id
        LEFT JOIN ${programT} p ON p.id = v.program_id
        LEFT JOIN vacancies.requisition r ON r.vacancy_id = v.id
-       ORDER BY v.created_at DESC`
+       ${schoolFilter}
+       ORDER BY v.created_at DESC`,
+      queryParams
     );
 
     res.json({ data: rows.map((r) => mapListRow(r as Record<string, unknown>)) });
@@ -487,9 +534,12 @@ router.post("/vacancies", async (req, res) => {
     }
 
     const b = req.body as Record<string, unknown>;
+    const schoolScope = schoolScopeFromRequest(req);
     let areaId = numOrUndef(b.areaId);
     let schoolId: number | null = null;
-    if (
+    if (schoolScope != null) {
+      schoolId = schoolScope.schoolId;
+    } else if (
       b.schoolId !== undefined &&
       b.schoolId !== null &&
       String(b.schoolId).trim() !== ""
@@ -516,6 +566,18 @@ router.post("/vacancies", async (req, res) => {
         ? toUpperAscii(b.operationNotes)
         : null;
 
+    if (schoolScope != null) {
+      const schoolCtx = await loadSchoolArea(mode, schoolScope.schoolId);
+      if (schoolCtx == null) {
+        res.status(400).json({ error: "School not found or inactive" });
+        return;
+      }
+      schoolId = schoolScope.schoolId;
+      if (schoolCtx.areaId != null) {
+        areaId = schoolCtx.areaId;
+      }
+    }
+
     if (areaId == null || Number.isNaN(areaId)) {
       res.status(400).json({ error: "areaId is required" });
       return;
@@ -540,11 +602,25 @@ router.post("/vacancies", async (req, res) => {
         res.status(400).json({ error: "programId not found or inactive" });
         return;
       }
+      if (schoolScope != null && ctx.schoolId !== schoolScope.schoolId) {
+        res.status(400).json({
+          error: "El programa no pertenece a tu escuela",
+        });
+        return;
+      }
       programId = programIdRaw;
       schoolId = ctx.schoolId;
       if (ctx.areaId != null) {
         areaId = ctx.areaId;
       }
+    }
+
+    if (
+      schoolScope != null &&
+      (schoolId == null || schoolId !== schoolScope.schoolId)
+    ) {
+      res.status(403).json({ error: "No tienes permiso para este recurso" });
+      return;
     }
 
     const { rows } = await pool.query(
@@ -599,6 +675,7 @@ router.patch("/vacancies/:id/close", async (req, res) => {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
+    if (await denyIfVacancyOutOfSchoolScope(req, res, id)) return;
 
     const b = (req.body ?? {}) as Record<string, unknown>;
     const statusIn =
@@ -664,6 +741,7 @@ router.post("/vacancies/:id/operation-notes", async (req, res) => {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
+    if (await denyIfVacancyOutOfSchoolScope(req, res, id)) return;
 
     const gate = await vacancyEditGate(id);
     if (gate === "missing") {
@@ -755,6 +833,7 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
+  if (await denyIfVacancyOutOfSchoolScope(req, res, id)) return;
 
   const b = req.body as Record<string, unknown>;
   const reqNumber =
@@ -931,6 +1010,7 @@ router.get("/vacancies/:id", async (req, res) => {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
+    if (await denyIfVacancyOutOfSchoolScope(req, res, id)) return;
 
     const mode = await resolveCoreSchemaMode();
     if (mode == null) {
@@ -1076,6 +1156,7 @@ router.patch("/vacancies/:id/requisition", async (req, res) => {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
+    if (await denyIfVacancyOutOfSchoolScope(req, res, id)) return;
 
     const gate = await vacancyEditGate(id);
     if (gate === "missing") {
@@ -1211,6 +1292,7 @@ router.patch("/vacancies/:id", async (req, res) => {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
+    if (await denyIfVacancyOutOfSchoolScope(req, res, id)) return;
 
     const gate = await vacancyEditGate(id);
     if (gate === "missing") {

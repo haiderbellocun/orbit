@@ -6,6 +6,11 @@ import {
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
+export {
+  schoolScopeFromRequest,
+  vacancyAllowedForSchoolScope,
+  personAllowedForSchoolScope,
+} from "../lib/schoolScope";
 
 export type OrbitJwtUser = {
   userId: number;
@@ -107,7 +112,11 @@ export function orbitAuthMiddleware(
       programIds?: unknown;
     };
 
-    if (decoded.orbitAccess !== "lite" && decoded.orbitAccess !== "full") {
+    if (
+      decoded.orbitAccess !== "lite" &&
+      decoded.orbitAccess !== "full" &&
+      decoded.orbitAccess !== "school"
+    ) {
       res.status(401).json({ error: "Token inválido o expirado" });
       return;
     }
@@ -142,7 +151,10 @@ export function orbitAuthMiddleware(
       roleId: Number.isFinite(roleId) ? roleId : null,
       orbitAccess,
       capabilities,
-      schoolId: orbitAccess === "lite" && Number.isFinite(schoolId) ? schoolId : null,
+      schoolId:
+        (orbitAccess === "lite" || orbitAccess === "school") && Number.isFinite(schoolId)
+          ? schoolId
+          : null,
       programIds: orbitAccess === "lite" ? parseProgramIds(decoded.programIds) : [],
     };
     next();

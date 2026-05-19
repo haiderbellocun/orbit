@@ -146,7 +146,10 @@ export default function App() {
     return { teachers, vacancies, coordinators };
   }, [searchQuery, capabilities]);
 
-  const hideBulkImport = !canBulkImportTeachers(capabilities) || orbitAccess === "lite";
+  const hideBulkImport =
+    !canBulkImportTeachers(capabilities) ||
+    orbitAccess === "lite" ||
+    orbitAccess === "school";
   const canVacancies = canManageVacancies(capabilities);
 
   const renderView = () => {
@@ -157,7 +160,11 @@ export default function App() {
         return (
           <HomeView
             setView={setView}
-            canBulkImport={canBulkImportTeachers(capabilities) && orbitAccess !== "lite"}
+            canBulkImport={
+              canBulkImportTeachers(capabilities) &&
+              orbitAccess !== "lite" &&
+              orbitAccess !== "school"
+            }
             canManageVacancies={canVacancies}
             isLiteUser={orbitAccess === "lite"}
             {...commonProps}
