@@ -26,18 +26,26 @@ import { BRAND_CONFIG } from './config/brand';
 import { Logo } from './components/common/Logo';
 import {
   clearOrbitSession,
+  getStoredCapabilities,
   getStoredOrbitAccess,
   isStoredJwtValid,
   type GoogleAuthResponse,
   type OrbitAccess,
 } from "./lib/api";
-
-const LITE_ALLOWED_VIEWS = new Set<View>(['home', 'teachers', 'teacher-detail']);
-const LITE_NAV_IDS = new Set<string>(['home', 'teachers']);
+import {
+  canAccessView,
+  canBulkImportTeachers,
+  canManageVacancies,
+  filterNavItems,
+  getDefaultView,
+  hasCapability,
+  ORBIT_CAPABILITY,
+} from "./lib/permissions";
 
 export default function App() {
   const [view, setView] = useState<View>('login');
   const [orbitAccess, setOrbitAccess] = useState<OrbitAccess | null>(null);
+  const [capabilities, setCapabilities] = useState<string[]>([]);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
   const [selectedVacancy, setSelectedVacancy] = useState<Vacancy | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,36 +60,38 @@ export default function App() {
       return;
     }
     if (!isStoredJwtValid()) return;
-    const access = getStoredOrbitAccess() ?? "full";
-    setOrbitAccess(access);
-    setView("home");
+    const caps = getStoredCapabilities();
+    setOrbitAccess(getStoredOrbitAccess() ?? "full");
+    setCapabilities(caps);
+    setView(getDefaultView(caps));
   }, []);
 
   useEffect(() => {
-    if (view === "login" || orbitAccess !== "lite") return;
-    if (!LITE_ALLOWED_VIEWS.has(view)) {
-      setView("home");
+    if (view === "login") return;
+    if (!canAccessView(view, capabilities)) {
+      setView(getDefaultView(capabilities));
     }
-  }, [view, orbitAccess]);
+  }, [view, capabilities]);
 
-  const sidebarNavItems = useMemo(() => {
-    if (orbitAccess === "lite") {
-      return NAV_ITEMS.filter((item) => LITE_NAV_IDS.has(item.id));
-    }
-    return [...NAV_ITEMS];
-  }, [orbitAccess]);
+  const sidebarNavItems = useMemo(
+    () => filterNavItems(NAV_ITEMS, capabilities),
+    [capabilities]
+  );
 
   const handleLogout = useCallback(() => {
     clearOrbitSession();
     setOrbitAccess(null);
+    setCapabilities([]);
     setSelectedTeacher(null);
     setSelectedVacancy(null);
   }, []);
 
   const handleLogin = (auth: GoogleAuthResponse) => {
     const access: OrbitAccess = auth.user.orbitAccess ?? "full";
+    const caps = auth.user.capabilities ?? [];
     setOrbitAccess(access);
-    setView('home');
+    setCapabilities(caps);
+    setView(getDefaultView(caps));
   };
 
   const handleSelectTeacher = (teacher: Teacher) => {
@@ -107,22 +117,37 @@ export default function App() {
     const teachers = MOCK_TEACHERS.filter((t) =>
       t.name.toLowerCase().includes(query)
     );
-    if (orbitAccess === "lite") {
+    const canSearchVacancies = hasCapability(
+      capabilities,
+      ORBIT_CAPABILITY.VACANCIES
+    );
+    const canSearchCoordinators = hasCapability(
+      capabilities,
+      ORBIT_CAPABILITY.COORDINATORS
+    );
+    if (!canSearchVacancies && !canSearchCoordinators) {
       return { teachers, vacancies: [], coordinators: [] };
     }
-    const vacancies = MOCK_VACANCIES.filter(
-      (v) =>
-        v.positionName.toLowerCase().includes(query) ||
-        (v.programName ?? "").toLowerCase().includes(query) ||
-        (v.areaName ?? "").toLowerCase().includes(query) ||
-        v.id.toLowerCase().includes(query)
-    );
-    const coordinators = MOCK_COORDINATORS.filter((c) =>
-      c.name.toLowerCase().includes(query)
-    );
+    const vacancies = canSearchVacancies
+      ? MOCK_VACANCIES.filter(
+          (v) =>
+            v.positionName.toLowerCase().includes(query) ||
+            (v.programName ?? "").toLowerCase().includes(query) ||
+            (v.areaName ?? "").toLowerCase().includes(query) ||
+            v.id.toLowerCase().includes(query)
+        )
+      : [];
+    const coordinators = canSearchCoordinators
+      ? MOCK_COORDINATORS.filter((c) =>
+          c.name.toLowerCase().includes(query)
+        )
+      : [];
 
     return { teachers, vacancies, coordinators };
-  }, [searchQuery, orbitAccess]);
+  }, [searchQuery, capabilities]);
+
+  const hideBulkImport = !canBulkImportTeachers(capabilities) || orbitAccess === "lite";
+  const canVacancies = canManageVacancies(capabilities);
 
   const renderView = () => {
     const commonProps = { searchQuery, setSearchQuery, searchResults };
@@ -132,6 +157,8 @@ export default function App() {
         return (
           <HomeView
             setView={setView}
+            canBulkImport={canBulkImportTeachers(capabilities) && orbitAccess !== "lite"}
+            canManageVacancies={canVacancies}
             isLiteUser={orbitAccess === "lite"}
             {...commonProps}
           />
@@ -140,7 +167,7 @@ export default function App() {
         return (
           <TeachersView
             onSelectTeacher={handleSelectTeacher}
-            hideBulkImport={orbitAccess === "lite"}
+            hideBulkImport={hideBulkImport}
             {...commonProps}
           />
         );
@@ -231,11 +258,11 @@ export default function App() {
 
       <main className="flex-1 md:ml-64 p-3 md:p-5 xl:p-6 min-h-screen w-full relative">
         {/* Mobile Header Toggle */}
-        <div className="md:hidden sticky top-0 -mx-4 px-4 py-3 mb-6 bg-white/80 backdrop-blur-lg border-b border-slate-200/50 flex items-center justify-between z-40">
+        <motion.div className="md:hidden sticky top-0 -mx-4 px-4 py-3 mb-6 bg-white/80 backdrop-blur-lg border-b border-slate-200/50 flex items-center justify-between z-40">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 bg-white rounded-xl flex items-center justify-center text-white shadow-lg`}>
+            <motion.div className={`w-10 h-10 bg-white rounded-xl flex items-center justify-center text-white shadow-lg`}>
               <Logo className="h-6 w-6" />
-            </div>
+            </motion.div>
             <span className="font-bold text-xl tracking-tight text-slate-900 font-display">{BRAND_CONFIG.name}</span>
           </div>
           <button 
@@ -244,7 +271,7 @@ export default function App() {
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg>
           </button>
-        </div>
+        </motion.div>
 
         <AnimatePresence mode="wait">
         <motion.div

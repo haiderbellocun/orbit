@@ -1,6 +1,11 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import type { OrbitAccess } from "../lib/orbitRoles";
+import {
+  hasCapability,
+  ORBIT_CAPABILITY,
+  type OrbitAccess,
+  type OrbitCapability,
+} from "../lib/orbitCapabilities";
 
 export type OrbitJwtUser = {
   userId: number;
@@ -10,7 +15,9 @@ export type OrbitJwtUser = {
   picture?: string;
   sub: string;
   role: string | null;
+  roleId: number | null;
   orbitAccess: OrbitAccess;
+  capabilities: OrbitCapability[];
   schoolId: number | null;
   programIds: number[];
 };
@@ -35,6 +42,17 @@ function parseProgramIds(v: unknown): number[] {
   for (const x of v) {
     const n = typeof x === "number" ? x : Number.parseInt(String(x), 10);
     if (Number.isFinite(n)) out.push(n);
+  }
+  return [...new Set(out)];
+}
+
+function parseCapabilities(v: unknown): OrbitCapability[] {
+  if (!Array.isArray(v)) return [];
+  const out: OrbitCapability[] = [];
+  for (const x of v) {
+    if (typeof x === "string" && x.trim() !== "") {
+      out.push(x.trim() as OrbitCapability);
+    }
   }
   return [...new Set(out)];
 }
@@ -82,7 +100,9 @@ export function orbitAuthMiddleware(
       picture?: unknown;
       sub?: unknown;
       role?: unknown;
+      roleId?: unknown;
       orbitAccess?: unknown;
+      capabilities?: unknown;
       schoolId?: unknown;
       programIds?: unknown;
     };
@@ -92,10 +112,22 @@ export function orbitAuthMiddleware(
       return;
     }
     const orbitAccess = decoded.orbitAccess;
+    const capabilities = parseCapabilities(decoded.capabilities);
+    if (capabilities.length === 0) {
+      res.status(401).json({ error: "Token inválido o expirado" });
+      return;
+    }
+
     const schoolIdRaw = decoded.schoolId;
     const schoolId =
       schoolIdRaw != null && schoolIdRaw !== ""
         ? asNum(schoolIdRaw, NaN)
+        : null;
+
+    const roleIdRaw = decoded.roleId;
+    const roleId =
+      roleIdRaw != null && roleIdRaw !== ""
+        ? asNum(roleIdRaw, NaN)
         : null;
 
     req.orbitUser = {
@@ -107,7 +139,9 @@ export function orbitAuthMiddleware(
         decoded.picture != null ? String(decoded.picture) : undefined,
       sub: String(decoded.sub ?? ""),
       role: decoded.role != null ? String(decoded.role) : null,
+      roleId: Number.isFinite(roleId) ? roleId : null,
       orbitAccess,
+      capabilities,
       schoolId: orbitAccess === "lite" && Number.isFinite(schoolId) ? schoolId : null,
       programIds: orbitAccess === "lite" ? parseProgramIds(decoded.programIds) : [],
     };
@@ -138,6 +172,88 @@ export function liteTeacherScopeFromRequest(
   return { schoolId: u.schoolId, programIds: u.programIds };
 }
 
+/**
+ * Valida capability según el path de la petición (evita que middleware apilados en `/api`
+ * exijan HOME/TEACHERS en rutas de vacantes, catálogo, etc.).
+ */
+export function orbitCapabilityByPathMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  if (req.method === "OPTIONS") {
+    next();
+    return;
+  }
+
+  const u = req.orbitUser;
+  if (!u) {
+    res.status(401).json({ error: "Se requiere autenticación" });
+    return;
+  }
+
+  const path = req.path;
+
+  if (path.startsWith("/catalog")) {
+    next();
+    return;
+  }
+
+  if (path.startsWith("/import")) {
+    if (!hasCapability(u.capabilities, ORBIT_CAPABILITY.TEACHERS)) {
+      res.status(403).json({ error: "No tienes permiso para este recurso" });
+      return;
+    }
+    if (u.orbitAccess === "lite") {
+      res.status(403).json({ error: "No tienes permiso para este recurso" });
+      return;
+    }
+    next();
+    return;
+  }
+
+  let required: OrbitCapability | null = null;
+  if (path.startsWith("/dashboard")) required = ORBIT_CAPABILITY.HOME;
+  else if (path.startsWith("/teachers")) required = ORBIT_CAPABILITY.TEACHERS;
+  else if (path.startsWith("/vacancies")) required = ORBIT_CAPABILITY.VACANCIES;
+  else if (path.startsWith("/coordinators")) required = ORBIT_CAPABILITY.COORDINATORS;
+  else if (path.startsWith("/reinstatements")) required = ORBIT_CAPABILITY.VACANCIES;
+  else if (path.startsWith("/lites")) required = ORBIT_CAPABILITY.LITES;
+  else if (path.startsWith("/academic-load")) required = ORBIT_CAPABILITY.ACADEMIC_LOAD;
+
+  if (required == null) {
+    next();
+    return;
+  }
+
+  if (!hasCapability(u.capabilities, required)) {
+    res.status(403).json({ error: "No tienes permiso para este recurso" });
+    return;
+  }
+
+  next();
+}
+
+export function requireCapability(capability: OrbitCapability) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (req.method === "OPTIONS") {
+      next();
+      return;
+    }
+    const u = req.orbitUser;
+    if (!u) {
+      res.status(401).json({ error: "Se requiere autenticación" });
+      return;
+    }
+    if (!hasCapability(u.capabilities, capability)) {
+      res.status(403).json({ error: "No tienes permiso para este recurso" });
+      return;
+    }
+    next();
+  };
+}
+
+/** Usuario con acceso completo (todas las capabilities operativas). */
 export function requireFullOrbitAccess(
   req: Request,
   res: Response,
