@@ -4,10 +4,12 @@ import { OAuth2Client } from "google-auth-library";
 import { pool } from "../db/connection";
 import { buildLiteProgramIds } from "../lib/orbitRoles";
 import {
+  isRole51StaffRoleId,
   resolveOrbitAccess,
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
+import { resolveLoginSchoolId } from "../lib/resolveLoginSchool";
 
 const router = Router();
 
@@ -84,6 +86,7 @@ type PersonRow = {
   full_name: string;
   email: string | null;
   role_id: number | null;
+  area_id: number | null;
   school_id: number | null;
   program_id: number | null;
   programs_id: number[] | null;
@@ -142,6 +145,7 @@ async function fetchPersonByEmail(emailNorm: string): Promise<PersonRow | null> 
          p.full_name,
          COALESCE(NULLIF(TRIM(p.edu_email), ''), NULLIF(TRIM(p.email), '')) AS email,
          p.role_id,
+         p.area_id,
          p.school_id,
          p.program_id,
          ${programsSelect},
@@ -175,9 +179,10 @@ type OrbitGate =
     }
   | { ok: false; status: number; error: string };
 
-function gateOrbitRoleAndLite(person: PersonRow): OrbitGate {
+async function gateOrbitRoleAndLite(person: PersonRow): Promise<OrbitGate> {
+  const roleId = person.role_id != null ? Number(person.role_id) : null;
   const resolved = resolveOrbitAccess({
-    roleId: person.role_id != null ? Number(person.role_id) : null,
+    roleId,
     roleCode: person.role_code,
     roleName: person.role_name,
   });
@@ -213,13 +218,19 @@ function gateOrbitRoleAndLite(person: PersonRow): OrbitGate {
   }
 
   if (orbitAccess === "school") {
-    schoolId = person.school_id != null ? Number(person.school_id) : null;
+    schoolId = await resolveLoginSchoolId({
+      school_id: person.school_id,
+      area_id: person.area_id,
+      program_id: person.program_id,
+    });
     if (schoolId == null || Number.isNaN(schoolId)) {
+      const isRole51 = roleId != null && isRole51StaffRoleId(roleId);
       return {
         ok: false,
         status: 403,
-        error:
-          "Tu perfil de coordinador de escuela no tiene escuela asignada. Completa los datos en el sistema central antes de usar ORBIT.",
+        error: isRole51
+          ? "Tu perfil no tiene escuela asignada (school_id) ni se pudo inferir desde área o programa en Core. Asigna la escuela en el sistema central antes de usar ORBIT."
+          : "Tu perfil de coordinador de escuela no tiene escuela asignada. Completa los datos en el sistema central antes de usar ORBIT.",
       };
     }
   }
@@ -454,7 +465,7 @@ async function completeGoogleSignInWithIdToken(
       };
     }
 
-    const gate = gateOrbitRoleAndLite(person);
+    const gate = await gateOrbitRoleAndLite(person);
     if (!gate.ok) {
       return { ok: false, status: gate.status, error: gate.error };
     }
@@ -588,7 +599,7 @@ router.post("/auth/local-email", async (req, res) => {
       return;
     }
 
-    const gate = gateOrbitRoleAndLite(person);
+    const gate = await gateOrbitRoleAndLite(person);
     if (!gate.ok) {
       res.status(gate.status).json({ error: gate.error });
       return;

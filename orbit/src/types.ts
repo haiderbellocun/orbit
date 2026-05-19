@@ -12,7 +12,8 @@ export type View =
   | 'academic-load'
   | 'audit' 
   | 'export'
-  | 'programs';
+  | 'programs'
+  | 'personal';
 
 export interface Teacher {
   id: string;
@@ -123,6 +124,19 @@ export interface NewsItem {
   description: string;
 }
 
+export interface StaffMember {
+  id: string;
+  document: string;
+  name: string;
+  email: string;
+  phone: string;
+  school: string;
+  program: string;
+  role_id?: number;
+  role_name?: string;
+  status: 'active' | 'inactive';
+}
+
 export interface Coordinator {
   id: string;
   document: string;
@@ -169,6 +183,7 @@ export const NAV_ITEMS = [
   { id: 'coordinators', label: 'Coordinadores', iconKey: 'coordinators' },
   { id: 'lites', label: 'LITEs', iconKey: 'lites' },
   { id: 'vacancies', label: 'Vacantes', iconKey: 'vacancies' },
+  { id: 'personal', label: 'Personal', iconKey: 'personal' },
   // { id: 'reinstatements', label: 'Reintegros', iconKey: 'reinstatements' },
   // { id: 'news', label: 'Novedades', iconKey: 'news' },
   // { id: 'audit', label: 'Auditoría', iconKey: 'audit' },

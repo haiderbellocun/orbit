@@ -58,4 +58,7 @@ export const APP_ICONS = {
   audit: ShieldCheckIcon,
   export: FolderIcon,
   programs: BookOpenIcon,
+  'academic-load': AcademicCapIcon,
+  personal: UserGroupIcon,
+  lites: UserGroupIcon,
 };

@@ -11,6 +11,7 @@ import importRouter from "./routes/import";
 import dashboardRouter from "./routes/dashboard";
 import authRouter from "./routes/auth";
 import catalogRouter from "./routes/catalog";
+import personalRouter from "./routes/personal";
 import {
   orbitAuthMiddleware,
   orbitCapabilityByPathMiddleware,
@@ -28,6 +29,7 @@ app.use("/api", orbitCapabilityByPathMiddleware);
 app.use("/api", dashboardRouter);
 app.use("/api", teachersRouter);
 app.use("/api", catalogRouter);
+app.use("/api", personalRouter);
 app.use("/api", vacanciesRouter);
 app.use("/api", coordinatorsRouter);
 app.use("/api", reinstatementsRouter);
