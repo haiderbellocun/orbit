@@ -20,11 +20,18 @@ import {
 
 interface HomeViewProps {
   setView: (v: View) => void;
-  /** Usuario LITE: sin acciones de vacantes ni carga masiva. */
+  /** Usuario LITE: mensaje acotado en acciones rápidas. */
   isLiteUser?: boolean;
+  canBulkImport?: boolean;
+  canManageVacancies?: boolean;
 }
 
-export const HomeView: React.FC<HomeViewProps> = ({ setView, isLiteUser }) => {
+export const HomeView: React.FC<HomeViewProps> = ({
+  setView,
+  isLiteUser,
+  canBulkImport = true,
+  canManageVacancies = true,
+}) => {
   type StatCard = {
     label: string;
     value: string;
@@ -215,18 +222,30 @@ export const HomeView: React.FC<HomeViewProps> = ({ setView, isLiteUser }) => {
               <p className="text-sm font-medium text-white/90 leading-relaxed">
                 Consulta a tus docentes desde el menú lateral «Docentes». Las demás funciones no están disponibles para tu perfil.
               </p>
+            ) : !canBulkImport && !canManageVacancies ? (
+              <p className="text-sm font-medium text-white/90 leading-relaxed">
+                Usa el menú lateral para acceder a las secciones disponibles para tu perfil.
+              </p>
             ) : (
               [
-                {
-                  label: 'Cargue Masivo de Docentes',
-                  icon: UserPlusIcon,
-                  action: () => setView('teachers'),
-                },
-                {
-                  label: 'Nueva Vacante',
-                  icon: PlusIcon,
-                  action: () => setView('vacancies'),
-                },
+                ...(canBulkImport
+                  ? [
+                      {
+                        label: 'Cargue Masivo de Docentes',
+                        icon: UserPlusIcon,
+                        action: () => setView('teachers'),
+                      },
+                    ]
+                  : []),
+                ...(canManageVacancies
+                  ? [
+                      {
+                        label: 'Nueva Vacante',
+                        icon: PlusIcon,
+                        action: () => setView('vacancies'),
+                      },
+                    ]
+                  : []),
               ].map((btn, i) => (
                 <motion.button
                   key={btn.label}

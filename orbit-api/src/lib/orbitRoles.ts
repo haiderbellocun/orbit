@@ -1,11 +1,8 @@
 /**
- * ORBIT solo permite ciertos roles de `person` / `role`.
+ * Helpers SQL y configuración LITE. Autorización por rol: `orbitCapabilities.ts`.
  */
 
-export type OrbitAccess = "lite" | "full";
-
-const AUXILIAR_NORM = "AUXILIAR ADMINISTRATIVO DE OPERACIONES";
-const DESARROLLADOR_NORM = "DESARROLLADOR";
+export type { OrbitAccess } from "./orbitCapabilities";
 
 export function getLiteRoleId(): number {
   const n = Number.parseInt(process.env.ORBIT_LITE_ROLE_ID ?? "9", 10);
@@ -13,7 +10,7 @@ export function getLiteRoleId(): number {
 }
 
 /**
- * Coincide con `classifyOrbitRole` (perfil LITE en ORBIT): id configurable o rol LITE/LIDER en catálogo.
+ * Coincide con `resolveOrbitAccess` (perfil LITE en ORBIT): id configurable o rol LITE/LIDER en catálogo.
  * Requiere `LEFT JOIN …role ${roleAlias} ON ${roleAlias}.id = ${personAlias}.role_id`.
  */
 export function sqlPersonIsOrbitLite(
@@ -46,58 +43,6 @@ export function sqlPersonIsOrbitLiteExists(
         )
     )
   )`;
-}
-
-function normalizeRoleLabel(s: string | null | undefined): string {
-  return (s ?? "")
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/\s+/g, " ");
-}
-
-function isCoordinatorLike(name: string | null, code: string | null): boolean {
-  const n = (name ?? "").trim();
-  const c = (code ?? "").trim();
-  if (/^coord/i.test(n) || /^coord/i.test(c)) return true;
-  /** Errata frecuente en catálogo: "COODINADOR…" no coincide con /^coord/. */
-  if (/coodinad/i.test(n) || /coodinad/i.test(c)) return true;
-  return false;
-}
-
-/**
- * Clasifica el acceso ORBIT. `null` = rol no autorizado.
- */
-export function classifyOrbitRole(input: {
-  roleId: number | null;
-  roleCode: string | null;
-  roleName: string | null;
-}): OrbitAccess | null {
-  const roleId = input.roleId;
-  const code = input.roleCode;
-  const name = input.roleName;
-
-  if (roleId != null && roleId === getLiteRoleId()) return "lite";
-
-  const nameNorm = normalizeRoleLabel(name);
-  const codeNorm = normalizeRoleLabel(code);
-  if (nameNorm === "LITE" || codeNorm === "LITE") return "lite";
-  /** En Core el rol suele llamarse "LIDER" (p. ej. id 12), equivalente a perfil LITE en ORBIT. */
-  if (nameNorm === "LIDER" || codeNorm === "LIDER") return "lite";
-
-  if (isCoordinatorLike(name, code)) return "full";
-
-  if (nameNorm === AUXILIAR_NORM || codeNorm === AUXILIAR_NORM) return "full";
-  if (nameNorm === DESARROLLADOR_NORM || codeNorm === DESARROLLADOR_NORM) return "full";
-  if (
-    nameNorm.startsWith(`${DESARROLLADOR_NORM} `) ||
-    codeNorm.startsWith(`${DESARROLLADOR_NORM} `)
-  ) {
-    return "full";
-  }
-
-  return null;
 }
 
 export function buildLiteProgramIds(

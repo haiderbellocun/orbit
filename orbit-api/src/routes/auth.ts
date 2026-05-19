@@ -2,11 +2,12 @@ import express, { Router, type Request, type Response } from "express";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { pool } from "../db/connection";
+import { buildLiteProgramIds } from "../lib/orbitRoles";
 import {
-  buildLiteProgramIds,
-  classifyOrbitRole,
+  resolveOrbitAccess,
   type OrbitAccess,
-} from "../lib/orbitRoles";
+  type OrbitCapability,
+} from "../lib/orbitCapabilities";
 
 const router = Router();
 
@@ -165,17 +166,23 @@ async function fetchPersonByEmail(emailNorm: string): Promise<PersonRow | null> 
 }
 
 type OrbitGate =
-  | { ok: true; orbitAccess: OrbitAccess; schoolId: number | null; programIds: number[] }
+  | {
+      ok: true;
+      orbitAccess: OrbitAccess;
+      capabilities: OrbitCapability[];
+      schoolId: number | null;
+      programIds: number[];
+    }
   | { ok: false; status: number; error: string };
 
 function gateOrbitRoleAndLite(person: PersonRow): OrbitGate {
-  const orbitAccess: OrbitAccess | null = classifyOrbitRole({
+  const resolved = resolveOrbitAccess({
     roleId: person.role_id != null ? Number(person.role_id) : null,
     roleCode: person.role_code,
     roleName: person.role_name,
   });
 
-  if (orbitAccess == null) {
+  if (resolved == null) {
     return {
       ok: false,
       status: 403,
@@ -183,6 +190,8 @@ function gateOrbitRoleAndLite(person: PersonRow): OrbitGate {
         "Tu rol no tiene acceso a ORBIT. Solo pueden ingresar perfiles autorizados.",
     };
   }
+
+  const { orbitAccess, capabilities } = resolved;
 
   let schoolId: number | null = null;
   let programIds: number[] = [];
@@ -203,7 +212,7 @@ function gateOrbitRoleAndLite(person: PersonRow): OrbitGate {
     }
   }
 
-  return { ok: true, orbitAccess, schoolId, programIds };
+  return { ok: true, orbitAccess, capabilities, schoolId, programIds };
 }
 
 async function upsertUserForLogin(params: {
@@ -305,15 +314,18 @@ type AuthSuccessBody = {
     email: string;
     name: string;
     picture?: string;
+    roleId: number | null;
     roleCode: string | null;
     roleName: string | null;
     orbitAccess: OrbitAccess;
+    capabilities: OrbitCapability[];
   };
 };
 
 async function buildTokenResponse(params: {
   person: PersonRow;
   orbitAccess: OrbitAccess;
+  capabilities: OrbitCapability[];
   schoolId: number | null;
   programIds: number[];
   email: string;
@@ -330,6 +342,7 @@ async function buildTokenResponse(params: {
   const {
     person,
     orbitAccess,
+    capabilities,
     schoolId,
     programIds,
     email,
@@ -338,6 +351,11 @@ async function buildTokenResponse(params: {
     sub,
     userId,
   } = params;
+
+  const roleId =
+    person.role_id != null && Number.isFinite(Number(person.role_id))
+      ? Number(person.role_id)
+      : null;
 
   const token = jwt.sign(
     {
@@ -348,7 +366,9 @@ async function buildTokenResponse(params: {
       picture,
       sub,
       role: person.role_code ?? person.role_name ?? null,
+      roleId,
       orbitAccess,
+      capabilities,
       schoolId: orbitAccess === "lite" ? schoolId : null,
       programIds: orbitAccess === "lite" ? programIds : [],
     },
@@ -364,9 +384,11 @@ async function buildTokenResponse(params: {
       email,
       name: person.full_name || displayName,
       picture: picture || undefined,
+      roleId,
       roleCode: person.role_code ?? null,
       roleName: person.role_name ?? null,
       orbitAccess,
+      capabilities,
     },
   };
 }
@@ -436,6 +458,7 @@ async function completeGoogleSignInWithIdToken(
     const bodyOut = await buildTokenResponse({
       person,
       orbitAccess: gate.orbitAccess,
+      capabilities: gate.capabilities,
       schoolId: gate.schoolId,
       programIds: gate.programIds,
       email,
@@ -574,6 +597,7 @@ router.post("/auth/local-email", async (req, res) => {
     const bodyOut = await buildTokenResponse({
       person,
       orbitAccess: gate.orbitAccess,
+      capabilities: gate.capabilities,
       schoolId: gate.schoolId,
       programIds: gate.programIds,
       email: canonicalEmail,

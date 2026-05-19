@@ -145,6 +145,7 @@ function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
 function parseJwtPayload(token: string): {
   exp: number;
   orbitAccess?: string;
+  capabilities?: string[];
 } | null {
   try {
     const parts = token.split(".");
@@ -154,22 +155,54 @@ function parseJwtPayload(token: string): {
     const payload = JSON.parse(atob(b64 + pad)) as {
       exp?: number;
       orbitAccess?: string;
+      capabilities?: unknown;
     };
     if (typeof payload.exp !== "number") return null;
-    return { exp: payload.exp, orbitAccess: payload.orbitAccess };
+    const capabilities = Array.isArray(payload.capabilities)
+      ? payload.capabilities.filter((c): c is string => typeof c === "string")
+      : undefined;
+    return { exp: payload.exp, orbitAccess: payload.orbitAccess, capabilities };
   } catch {
     return null;
   }
 }
 
-/** Sesión local válida (JWT con orbitAccess y no expirado en ~30s). */
+function parseStoredUserCapabilities(): string[] | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(ORBIT_USER_STORAGE_KEY);
+    if (!raw) return null;
+    const u = JSON.parse(raw) as { capabilities?: unknown };
+    if (!Array.isArray(u.capabilities)) return null;
+    const caps = u.capabilities.filter((c): c is string => typeof c === "string");
+    return caps.length > 0 ? caps : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Sesión local válida (JWT con orbitAccess, capabilities y no expirado en ~30s). */
 export function isStoredJwtValid(): boolean {
   const token = getStoredJwt();
   if (!token) return false;
   const p = parseJwtPayload(token);
   if (p == null) return false;
   if (p.orbitAccess !== "lite" && p.orbitAccess !== "full") return false;
+  const caps =
+    (p.capabilities && p.capabilities.length > 0
+      ? p.capabilities
+      : parseStoredUserCapabilities()) ?? [];
+  if (caps.length === 0) return false;
   return p.exp * 1000 > Date.now() + 30_000;
+}
+
+export function getStoredCapabilities(): string[] {
+  const fromUser = parseStoredUserCapabilities();
+  if (fromUser && fromUser.length > 0) return fromUser;
+  const token = getStoredJwt();
+  const p = token ? parseJwtPayload(token) : null;
+  if (p?.capabilities && p.capabilities.length > 0) return p.capabilities;
+  return [];
 }
 
 export function getStoredOrbitAccess(): OrbitAccess | null {
@@ -281,9 +314,11 @@ export type GoogleAuthResponse = {
     email: string;
     name: string;
     picture?: string;
+    roleId?: number | null;
     roleCode?: string | null;
     roleName?: string | null;
     orbitAccess?: OrbitAccess;
+    capabilities?: string[];
   };
 };
 

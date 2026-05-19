@@ -11,7 +11,10 @@ import importRouter from "./routes/import";
 import dashboardRouter from "./routes/dashboard";
 import authRouter from "./routes/auth";
 import catalogRouter from "./routes/catalog";
-import { orbitAuthMiddleware, requireFullOrbitAccess } from "./middleware/orbitAuth";
+import {
+  orbitAuthMiddleware,
+  orbitCapabilityByPathMiddleware,
+} from "./middleware/orbitAuth";
 
 const app = express();
 const port = Number.parseInt(process.env.PORT ?? "4000", 10);
@@ -21,15 +24,16 @@ app.use(express.json());
 
 app.use("/api", authRouter);
 app.use("/api", orbitAuthMiddleware);
-app.use("/api", teachersRouter);
+app.use("/api", orbitCapabilityByPathMiddleware);
 app.use("/api", dashboardRouter);
+app.use("/api", teachersRouter);
 app.use("/api", catalogRouter);
-app.use("/api", requireFullOrbitAccess, vacanciesRouter);
-app.use("/api", requireFullOrbitAccess, coordinatorsRouter);
-app.use("/api", requireFullOrbitAccess, reinstatementsRouter);
-app.use("/api", requireFullOrbitAccess, litesRouter);
-app.use("/api", requireFullOrbitAccess, academicLoadRouter);
-app.use("/api", requireFullOrbitAccess, importRouter);
+app.use("/api", vacanciesRouter);
+app.use("/api", coordinatorsRouter);
+app.use("/api", reinstatementsRouter);
+app.use("/api", litesRouter);
+app.use("/api", academicLoadRouter);
+app.use("/api", importRouter);
 
 app.get("/health", async (_req, res) => {
   try {
