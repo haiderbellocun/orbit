@@ -11,6 +11,7 @@ substitutions:
   # Defaults match proyecto it-fab-contenido-edu-6; override with --substitutions=_VITE_API_URL=...
   _VITE_API_URL: https://orbit-backend-526995286786.us-central1.run.app/api
   _VITE_GOOGLE_CLIENT_ID: "526995286786-c292djsqta9pgassddcrlecocpf2rgfo.apps.googleusercontent.com"
+  _VITE_ALLOW_LOCAL_EMAIL_LOGIN: "true"
 
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -22,6 +23,8 @@ steps:
       - VITE_API_URL=${_VITE_API_URL}
       - --build-arg
       - VITE_GOOGLE_CLIENT_ID=${_VITE_GOOGLE_CLIENT_ID}
+      - --build-arg
+      - VITE_ALLOW_LOCAL_EMAIL_LOGIN=${_VITE_ALLOW_LOCAL_EMAIL_LOGIN}
       - orbit
 
   - name: gcr.io/cloud-builders/docker

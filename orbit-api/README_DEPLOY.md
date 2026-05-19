@@ -71,7 +71,23 @@ Comprueba salud:
 curl http://127.0.0.1:8080/health
 ```
 
-## Despliegue inicial en Cloud Run (`--source`)
+## Despliegue con scripts PowerShell (`--source`)
+
+Desde la **raíz del monorepo** (proyecto `it-fab-contenido-edu-6`):
+
+```powershell
+.\gcp\deploy-orbit-backend.ps1
+.\gcp\deploy-orbit-frontend.ps1
+# o ambos:
+.\gcp\deploy-orbit-all.ps1
+```
+
+URLs de producción:
+
+- Frontend: https://orbit-frontend-526995286786.us-central1.run.app
+- Backend: https://orbit-backend-526995286786.us-central1.run.app
+
+## Despliegue inicial en Cloud Run (`--source`, manual)
 
 Desde el directorio `orbit-api/` (ajusta conexión a Cloud SQL, secretos y CORS según tu entorno):
 

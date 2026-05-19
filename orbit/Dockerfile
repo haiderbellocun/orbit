@@ -9,17 +9,18 @@ RUN npm ci
 
 COPY . .
 
-# Vite inlines `VITE_*` at build time. Pass via Cloud Build `--build-arg` (see `gcp/cloudbuild-orbit-frontend.yaml`).
+# Vite inlines `VITE_*` at build time (.env.production por defecto).
+# Solo exportar cuando el ARG viene definido; un ENV vacío pisa .env.production y rompe Google login.
 ARG VITE_API_URL
 ARG VITE_GOOGLE_CLIENT_ID
 ARG VITE_ALLOW_LOCAL_EMAIL_LOGIN
 ARG VITE_IMPORT_API_URL
-ENV VITE_API_URL=${VITE_API_URL}
-ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
-ENV VITE_ALLOW_LOCAL_EMAIL_LOGIN=${VITE_ALLOW_LOCAL_EMAIL_LOGIN}
-ENV VITE_IMPORT_API_URL=${VITE_IMPORT_API_URL}
-
-RUN npm run build
+RUN set -e; \
+  if [ -n "$VITE_API_URL" ]; then export VITE_API_URL="$VITE_API_URL"; fi; \
+  if [ -n "$VITE_GOOGLE_CLIENT_ID" ]; then export VITE_GOOGLE_CLIENT_ID="$VITE_GOOGLE_CLIENT_ID"; fi; \
+  if [ -n "$VITE_ALLOW_LOCAL_EMAIL_LOGIN" ]; then export VITE_ALLOW_LOCAL_EMAIL_LOGIN="$VITE_ALLOW_LOCAL_EMAIL_LOGIN"; fi; \
+  if [ -n "$VITE_IMPORT_API_URL" ]; then export VITE_IMPORT_API_URL="$VITE_IMPORT_API_URL"; fi; \
+  npm run build
 
 FROM nginx:alpine
 
