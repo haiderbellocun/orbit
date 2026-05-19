@@ -117,6 +117,15 @@ export function orbitAuthMiddleware(
   }
 }
 
+/** `person_id` del usuario autenticado, o null si no aplica. */
+export function orbitPersonIdFromRequest(req: Request): number | null {
+  const u = req.orbitUser;
+  if (u == null || !Number.isFinite(u.personId) || u.personId <= 0) {
+    return null;
+  }
+  return u.personId;
+}
+
 /** Alcance docentes para usuario LITE (misma escuela + intersección de programas). */
 export function liteTeacherScopeFromRequest(
   req: Request

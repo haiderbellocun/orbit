@@ -85,6 +85,10 @@ export type VacancyRequisitionDetail = {
   assignedAt: string;
   sentToCapitalAt: string | null;
   capitalNotes: string | null;
+  shortlistComplied: boolean | null;
+  pdaComplied: boolean | null;
+  contractConditionsComplied: boolean | null;
+  preInterviewCvComplied: boolean | null;
 };
 
 export type VacancyStatusHistoryEntry = {
