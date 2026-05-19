@@ -1,6 +1,10 @@
 import { Router, type Request, type Response } from "express";
 import { pool } from "../db/connection";
-import { liteTeacherScopeFromRequest } from "../middleware/orbitAuth";
+import {
+  liteTeacherScopeFromRequest,
+  personAllowedForSchoolScope,
+  schoolScopeFromRequest,
+} from "../middleware/orbitAuth";
 import { insertAutoVacancyOnDeactivate } from "../lib/createVacancyOnDeactivate";
 import { resolveCoreSchemaMode } from "../lib/coreSchema";
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
@@ -35,8 +39,11 @@ const TEACHER_ROLE_SQL = `r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')`;
 
 type LiteTeacherScope = { schoolId: number; programIds: number[] };
 
-function denyLiteWrite(req: Request, res: Response): boolean {
-  if (liteTeacherScopeFromRequest(req) != null) {
+function denyReadOnlyTeacherScope(req: Request, res: Response): boolean {
+  if (
+    liteTeacherScopeFromRequest(req) != null ||
+    schoolScopeFromRequest(req) != null
+  ) {
     res.status(403).json({ error: "No tienes permiso para modificar docentes" });
     return true;
   }
@@ -60,22 +67,29 @@ function normalizeProgramsIdArray(v: unknown): number[] {
 async function fetchTeacherDetailRow(
   id: number,
   lite: LiteTeacherScope | null,
-  options?: { hasPpa?: boolean }
+  options?: { hasPpa?: boolean; schoolId?: number | null }
 ): Promise<Record<string, unknown> | null> {
   const hasPpa =
     options?.hasPpa ?? (await hasPersonProgramAssignmentsTable());
+  const schoolIdOnly =
+    lite == null && options?.schoolId != null && Number.isFinite(options.schoolId)
+      ? Number(options.schoolId)
+      : null;
 
-  const liteSql =
-    lite != null
-      ? hasPpa
-        ? ` AND p.school_id = $2 AND (
+  let scopeSql = "";
+  let params: unknown[] = [id];
+  if (lite != null) {
+    scopeSql = hasPpa
+      ? ` AND p.school_id = $2 AND (
            p.program_id = ANY($3::integer[])
            OR COALESCE(ppa.programs_id, ARRAY[]::integer[]) && $3::integer[]
          )`
-        : ` AND p.school_id = $2 AND p.program_id = ANY($3::integer[])`
-      : "";
-  const params: unknown[] =
-    lite != null ? [id, lite.schoolId, lite.programIds] : [id];
+      : ` AND p.school_id = $2 AND p.program_id = ANY($3::integer[])`;
+    params = [id, lite.schoolId, lite.programIds];
+  } else if (schoolIdOnly != null) {
+    scopeSql = ` AND p.school_id = $2`;
+    params = [id, schoolIdOnly];
+  }
 
   const ppaJoin = hasPpa
     ? `LEFT JOIN person_program_assignments ppa ON ppa.person_id = p.id`
@@ -130,7 +144,7 @@ async function fetchTeacherDetailRow(
        FROM program pr2
        ${lateralWhere}
      ) pnames ON TRUE
-     WHERE p.id = $1 AND ${TEACHER_ROLE_SQL}${liteSql}`,
+     WHERE p.id = $1 AND ${TEACHER_ROLE_SQL}${scopeSql}`,
     params
   );
   if (result.rows.length === 0) return null;
@@ -216,10 +230,11 @@ router.get("/teachers", async (req, res) => {
 
     const useLegacy = await hasLegacyTeachersTable();
     const lite = liteTeacherScopeFromRequest(req);
+    const schoolScope = schoolScopeFromRequest(req);
     let rows: Record<string, unknown>[] = [];
 
     if (useLegacy) {
-      if (lite != null) {
+      if (lite != null || schoolScope != null) {
         res.json({
           data: [],
           pagination: { total: 0, page, limit, totalPages: 0 },
@@ -279,6 +294,10 @@ router.get("/teachers", async (req, res) => {
           personFilters.push(`p.program_id = ANY($${idx}::integer[])`);
         }
         personValues.push(lite.programIds);
+        idx++;
+      } else if (schoolScope != null) {
+        personFilters.push(`p.school_id = $${idx}`);
+        personValues.push(schoolScope.schoolId);
         idx++;
       }
 
@@ -372,10 +391,11 @@ router.get("/teachers/:id", async (req, res) => {
 
     const useLegacy = await hasLegacyTeachersTable();
     const lite = liteTeacherScopeFromRequest(req);
+    const schoolScope = schoolScopeFromRequest(req);
     let rows: Record<string, unknown>[] = [];
 
     if (useLegacy) {
-      if (lite != null) {
+      if (lite != null || schoolScope != null) {
         res.status(404).json({ error: "Not found" });
         return;
       }
@@ -389,11 +409,20 @@ router.get("/teachers/:id", async (req, res) => {
       rows = result.rows;
     } else {
       const hasPpa = await hasPersonProgramAssignmentsTable();
-      const row = await fetchTeacherDetailRow(id, lite, { hasPpa });
+      const row = await fetchTeacherDetailRow(id, lite, {
+        hasPpa,
+        schoolId: schoolScope?.schoolId ?? null,
+      });
       rows = row ? [row] : [];
     }
 
     if (rows.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const rowSchoolId = (rows[0] as { school_id?: unknown }).school_id;
+    if (!personAllowedForSchoolScope(req, rowSchoolId as number | null)) {
       res.status(404).json({ error: "Not found" });
       return;
     }
@@ -407,7 +436,7 @@ router.get("/teachers/:id", async (req, res) => {
 
 router.post("/teachers", async (req, res) => {
   try {
-    if (denyLiteWrite(req, res)) return;
+    if (denyReadOnlyTeacherScope(req, res)) return;
     const b = req.body as Record<string, unknown>;
     const document =
       typeof b.document === "string" ? b.document.trim() : undefined;
@@ -486,7 +515,7 @@ router.post("/teachers", async (req, res) => {
 
 router.put("/teachers/:id", async (req, res) => {
   try {
-    if (denyLiteWrite(req, res)) return;
+    if (denyReadOnlyTeacherScope(req, res)) return;
     const id = Number.parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
       res.status(400).json({ error: "Invalid id" });
@@ -586,7 +615,7 @@ router.put("/teachers/:id", async (req, res) => {
 
 router.patch("/teachers/:id", async (req, res) => {
   try {
-    if (denyLiteWrite(req, res)) return;
+    if (denyReadOnlyTeacherScope(req, res)) return;
     const id = Number.parseInt(req.params.id, 10);
     if (Number.isNaN(id)) {
       res.status(400).json({ error: "Invalid id" });

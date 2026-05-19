@@ -212,6 +212,18 @@ function gateOrbitRoleAndLite(person: PersonRow): OrbitGate {
     }
   }
 
+  if (orbitAccess === "school") {
+    schoolId = person.school_id != null ? Number(person.school_id) : null;
+    if (schoolId == null || Number.isNaN(schoolId)) {
+      return {
+        ok: false,
+        status: 403,
+        error:
+          "Tu perfil de coordinador de escuela no tiene escuela asignada. Completa los datos en el sistema central antes de usar ORBIT.",
+      };
+    }
+  }
+
   return { ok: true, orbitAccess, capabilities, schoolId, programIds };
 }
 
@@ -369,7 +381,8 @@ async function buildTokenResponse(params: {
       roleId,
       orbitAccess,
       capabilities,
-      schoolId: orbitAccess === "lite" ? schoolId : null,
+      schoolId:
+        orbitAccess === "lite" || orbitAccess === "school" ? schoolId : null,
       programIds: orbitAccess === "lite" ? programIds : [],
     },
     jwtSecret,

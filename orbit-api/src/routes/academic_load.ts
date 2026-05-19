@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/connection";
 import { sqlPersonIsActive } from "../sql/personActive";
+import { schoolScopeFromRequest } from "../middleware/orbitAuth";
 
 const router = Router();
 
@@ -77,6 +78,15 @@ router.get("/academic-load", async (req: Request, res: Response) => {
       }
     }
 
+    const schoolScope = schoolScopeFromRequest(req);
+    if (schoolScope != null) {
+      conditions.push(
+        `(p.school_id = $${i} OR pr.school_id = $${i})`
+      );
+      values.push(schoolScope.schoolId);
+      i++;
+    }
+
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const query = `
@@ -124,9 +134,15 @@ router.get("/academic-load", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/academic-load/summary", async (_req: Request, res: Response) => {
+router.get("/academic-load/summary", async (req: Request, res: Response) => {
   try {
-    const result = await pool.query(`
+    const schoolScope = schoolScopeFromRequest(req);
+    const schoolSql = schoolScope
+      ? ` AND (p.school_id = $1 OR pr.school_id = $1)`
+      : "";
+    const params = schoolScope ? [schoolScope.schoolId] : [];
+    const result = await pool.query(
+      `
       SELECT
         al.period_code AS period,
         'projection'::text AS type,
@@ -134,9 +150,13 @@ router.get("/academic-load/summary", async (_req: Request, res: Response) => {
         COUNT(DISTINCT al.person_id)::int AS total_teachers
       FROM academic_workload.academic_load al
       INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
+      LEFT JOIN program pr ON pr.id = al.program_id
+      WHERE 1=1${schoolSql}
       GROUP BY al.period_code
       ORDER BY al.period_code DESC
-    `);
+    `,
+      params
+    );
     const periods = result.rows.map((row) => row.period).filter(Boolean);
     res.json({
       periods,
@@ -150,6 +170,13 @@ router.get("/academic-load/summary", async (_req: Request, res: Response) => {
 
 router.get("/academic-load/teacher/:document", async (req: Request, res: Response) => {
   try {
+    const schoolScope = schoolScopeFromRequest(req);
+    const schoolSql = schoolScope
+      ? ` AND (p.school_id = $2 OR pr.school_id = $2)`
+      : "";
+    const params: unknown[] = [req.params.document];
+    if (schoolScope) params.push(schoolScope.schoolId);
+
     const result = await pool.query(
       `
       SELECT
@@ -172,10 +199,10 @@ router.get("/academic-load/teacher/:document", async (req: Request, res: Respons
       LEFT JOIN academic_workload.class_group cg
         ON cg.subject_code = al.subject_code
        AND cg.group_code = al.group_code
-      WHERE p.document = $1
+      WHERE p.document = $1${schoolSql}
       ORDER BY al.period_code DESC, s.name ASC
       `,
-      [req.params.document]
+      params
     );
     res.json(result.rows);
   } catch (err) {

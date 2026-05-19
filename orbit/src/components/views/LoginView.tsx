@@ -195,10 +195,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                 </div>
               )}
             </div>
+
             {/* {showLocalEmailLogin && (
               <div className="pt-6 mt-6 border-t border-slate-200/80 space-y-3">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  {import.meta.env.DEV ? "Desarrollo local" : "Acceso por correo"}
+                  Desarrollo local
                 </p>
                 <form onSubmit={(e) => void handleLocalEmailSubmit(e)} className="space-y-3">
                   <input
@@ -215,7 +216,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                     disabled={localLoading || isLoading || !localEmail.trim()}
                     className="w-full py-3 rounded-xl text-sm font-bold bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-40 disabled:pointer-events-none transition-colors"
                   >
-                    {localLoading ? "Entrando…" : import.meta.env.DEV ? "Entrar con correo (local)" : "Entrar con correo"}
+                    {localLoading ? "Entrando…" : "Entrar con correo (local)"}
                   </button>
                 </form>
               </div>

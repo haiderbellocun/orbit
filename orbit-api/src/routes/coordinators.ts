@@ -6,6 +6,10 @@ import {
 } from "../lib/createVacancyOnDeactivate";
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
 import { getLiteRoleId, sqlPersonIsOrbitLiteExists } from "../lib/orbitRoles";
+import {
+  personAllowedForSchoolScope,
+  schoolScopeFromRequest,
+} from "../middleware/orbitAuth";
 
 const router = Router();
 
@@ -92,6 +96,13 @@ router.get("/coordinators", async (req, res) => {
         )`
       );
       conditions.push(sqlPersonIsActive("p"));
+
+      const schoolScope = schoolScopeFromRequest(req);
+      if (schoolScope != null) {
+        conditions.push(`p.school_id = $${p}`);
+        values.push(schoolScope.schoolId);
+        p++;
+      }
 
       const where = `WHERE ${conditions.join(" AND ")}`;
 
@@ -203,6 +214,11 @@ router.get("/coordinators/:id", async (req, res) => {
         [id]
       );
       if (rows.length === 0) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const row = rows[0] as { school_id?: number | null };
+      if (!personAllowedForSchoolScope(req, row.school_id)) {
         res.status(404).json({ error: "Not found" });
         return;
       }

@@ -112,7 +112,7 @@ const DEFAULT_FETCH_TIMEOUT_MS = 120_000;
 /** Solo subida del archivo al POST /import/docentes?async=1; el progreso sigue por SSE */
 const IMPORT_UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
 
-export type OrbitAccess = "lite" | "full";
+export type OrbitAccess = "lite" | "full" | "school";
 
 export const ORBIT_JWT_STORAGE_KEY = "orbit_jwt";
 export const ORBIT_USER_STORAGE_KEY = "orbit_user";
@@ -187,7 +187,13 @@ export function isStoredJwtValid(): boolean {
   if (!token) return false;
   const p = parseJwtPayload(token);
   if (p == null) return false;
-  if (p.orbitAccess !== "lite" && p.orbitAccess !== "full") return false;
+  if (
+    p.orbitAccess !== "lite" &&
+    p.orbitAccess !== "full" &&
+    p.orbitAccess !== "school"
+  ) {
+    return false;
+  }
   const caps =
     (p.capabilities && p.capabilities.length > 0
       ? p.capabilities
@@ -211,7 +217,11 @@ export function getStoredOrbitAccess(): OrbitAccess | null {
       const raw = localStorage.getItem(ORBIT_USER_STORAGE_KEY);
       if (raw) {
         const u = JSON.parse(raw) as { orbitAccess?: string };
-        if (u.orbitAccess === "lite" || u.orbitAccess === "full") {
+        if (
+          u.orbitAccess === "lite" ||
+          u.orbitAccess === "full" ||
+          u.orbitAccess === "school"
+        ) {
           return u.orbitAccess;
         }
       }
@@ -221,7 +231,13 @@ export function getStoredOrbitAccess(): OrbitAccess | null {
   }
   const token = getStoredJwt();
   const p = token ? parseJwtPayload(token) : null;
-  if (p?.orbitAccess === "lite" || p?.orbitAccess === "full") return p.orbitAccess;
+  if (
+    p?.orbitAccess === "lite" ||
+    p?.orbitAccess === "full" ||
+    p?.orbitAccess === "school"
+  ) {
+    return p.orbitAccess;
+  }
   return null;
 }
 

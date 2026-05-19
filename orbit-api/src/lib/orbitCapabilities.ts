@@ -4,7 +4,7 @@
 
 import { getLiteRoleId } from "./orbitRoles";
 
-export type OrbitAccess = "lite" | "full";
+export type OrbitAccess = "lite" | "full" | "school";
 
 export const ORBIT_CAPABILITY = {
   HOME: "view:home",
@@ -32,7 +32,7 @@ const LITE_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.TEACHERS,
 ];
 
-const DEFAULT_FULL_ACCESS_ROLE_IDS = [1, 10, 13, 19, 43, 44, 45, 46];
+const DEFAULT_FULL_ACCESS_ROLE_IDS = [1, 10, 13, 19, 42, 43, 44, 45, 46];
 
 /**
  * Rol 9: todos los paneles ORBIT + datos sin filtro LITE (`orbitAccess: "full"`).
@@ -44,6 +44,13 @@ export const ROLE_9_OPERATIONS_CAPABILITIES: readonly OrbitCapability[] =
 export const VACANCIES_ONLY_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.VACANCIES,
 ];
+
+/** Coordinadores de escuela: todos los paneles, datos filtrados por `person.school_id`. */
+export const SCHOOL_COORDINATOR_ROLE_IDS: readonly number[] = [4, 5, 6, 7, 8, 11];
+
+function isSchoolCoordinatorRoleId(roleId: number): boolean {
+  return SCHOOL_COORDINATOR_ROLE_IDS.includes(roleId);
+}
 
 /** Perfiles parciales: role_id → capabilities (tiene prioridad sobre perfil LITE por id). */
 const ROLE_CAPABILITY_MAP: Readonly<Record<number, readonly OrbitCapability[]>> = {
@@ -106,6 +113,13 @@ export function resolveOrbitAccess(input: {
     if (fullIds.includes(roleId)) {
       return {
         orbitAccess: "full",
+        capabilities: [...ALL_ORBIT_CAPABILITIES],
+      };
+    }
+
+    if (isSchoolCoordinatorRoleId(roleId)) {
+      return {
+        orbitAccess: "school",
         capabilities: [...ALL_ORBIT_CAPABILITIES],
       };
     }

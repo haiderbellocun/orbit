@@ -47,9 +47,10 @@ Solo cuentas **`@cun.edu.co`** verificadas por Google. Si el email no cumple, el
 
 Debe existir una fila activa en `person` cuyo `email` o `edu_email` coincida con el del token, y el rol debe estar explícitamente autorizado:
 
-- **Acceso total** (`orbitAccess: "full"`, todas las capabilities): `role_id` en `ORBIT_FULL_ACCESS_ROLE_IDS` (p. ej. 1, **10**, 13, 19, 43–46).
+- **Acceso total** (`orbitAccess: "full"`, todas las capabilities): `role_id` en `ORBIT_FULL_ACCESS_ROLE_IDS` (p. ej. 1, 10, 13, 19, **42**, 43–46).
 - **Rol 9 (operaciones)**: todos los paneles + datos completos (equivalente a acceso total en módulos actuales).
 - **Roles 37 y 38**: solo panel Vacantes (`view:vacancies`).
+- **Coordinadores de escuela** (`orbitAccess: "school"`, roles **4, 5, 6, 7, 8, 11**): todos los paneles; datos filtrados por `person.school_id` del usuario (docentes, carga, coordinadores académicos, LITEs, vacantes, catálogo y resumen).
 - **LITE** (`orbitAccess: "lite"`): `role_id` = `ORBIT_LITE_ROLE_ID` (si no es 9) o nombre/código `LITE` / `LIDER`, con `school_id` y al menos un programa (`program_id` o `person_program_assignments.programs_id`). El `role_id` 9 en login ORBIT usa el perfil operaciones, no LITE.
 
 Cualquier otro rol (p. ej. coordinador académico no listado) recibe **403** hasta agregarse al mapa de roles en `orbitCapabilities.ts` o en variables de entorno.

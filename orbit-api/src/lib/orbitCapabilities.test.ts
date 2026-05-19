@@ -3,6 +3,7 @@ import {
   ALL_ORBIT_CAPABILITIES,
   ORBIT_CAPABILITY,
   ROLE_9_OPERATIONS_CAPABILITIES,
+  SCHOOL_COORDINATOR_ROLE_IDS,
   VACANCIES_ONLY_CAPABILITIES,
   resolveOrbitAccess,
 } from "./orbitCapabilities";
@@ -17,7 +18,7 @@ function test(name: string, fn: () => void): void {
   }
 }
 
-const fullIds = [1, 10, 13, 19, 43, 44, 45, 46];
+const fullIds = [1, 10, 13, 19, 42, 43, 44, 45, 46];
 
 for (const id of fullIds) {
   test(`full access role ${id}`, () => {
@@ -51,6 +52,19 @@ test("role 9 all panels + full data scope (not LITE login)", () => {
     else process.env.ORBIT_LITE_ROLE_ID = prev;
   }
 });
+
+for (const id of SCHOOL_COORDINATOR_ROLE_IDS) {
+  test(`school coordinator role ${id}`, () => {
+    const r = resolveOrbitAccess({
+      roleId: id,
+      roleCode: null,
+      roleName: null,
+    });
+    assert.ok(r);
+    assert.equal(r.orbitAccess, "school");
+    assert.deepEqual(r.capabilities, [...ALL_ORBIT_CAPABILITIES]);
+  });
+}
 
 for (const id of [37, 38]) {
   test(`role ${id} vacancies only`, () => {
@@ -99,7 +113,7 @@ test("LITE by name", () => {
 
 test("coordinator name without whitelisted id is denied", () => {
   const r = resolveOrbitAccess({
-    roleId: 5,
+    roleId: 20,
     roleCode: "COORDINADOR_ACADEMICO",
     roleName: "COORDINADOR DE PROGRAMA",
   });

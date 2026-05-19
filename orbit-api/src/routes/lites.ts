@@ -7,6 +7,10 @@ import {
   sqlPersonIsOrbitLite,
   sqlPersonIsOrbitLiteExists,
 } from "../lib/orbitRoles";
+import {
+  personAllowedForSchoolScope,
+  schoolScopeFromRequest,
+} from "../middleware/orbitAuth";
 
 const router = Router();
 
@@ -76,7 +80,12 @@ router.get("/lites", async (req: Request, res: Response) => {
         values.push(`%${search}%`);
         i++;
       }
-      if (school) {
+      const schoolScope = schoolScopeFromRequest(req);
+      if (schoolScope != null) {
+        conditions.push(`p.school_id = $${i}`);
+        values.push(schoolScope.schoolId);
+        i++;
+      } else if (school) {
         conditions.push(`s.name ILIKE $${i}`);
         values.push(`%${school}%`);
         i++;
@@ -300,6 +309,11 @@ router.get("/lites/:id", async (req: Request, res: Response) => {
         [id]
       );
       if (result.rows.length === 0) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const liteRow = result.rows[0] as { school_id?: number | null };
+      if (!personAllowedForSchoolScope(req, liteRow.school_id)) {
         res.status(404).json({ error: "Not found" });
         return;
       }
