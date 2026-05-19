@@ -25,10 +25,6 @@ CREATE TABLE IF NOT EXISTS vacancies.vacancy (
   position_name VARCHAR(255) NOT NULL,
   curricular_line VARCHAR(500),
   quantity INTEGER NOT NULL,
-  shortlist_complied BOOLEAN,
-  pda_complied BOOLEAN,
-  contract_conditions_complied BOOLEAN,
-  pre_interview_cv_complied BOOLEAN,
   operation_status VARCHAR(40) NOT NULL DEFAULT 'open',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -56,7 +52,11 @@ CREATE TABLE IF NOT EXISTS vacancies.requisition (
   req_number VARCHAR(100) NOT NULL UNIQUE,
   assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   sent_to_capital_at TIMESTAMPTZ,
-  capital_notes TEXT
+  capital_notes TEXT,
+  shortlist_complied BOOLEAN,
+  pda_complied BOOLEAN,
+  contract_conditions_complied BOOLEAN,
+  pre_interview_cv_complied BOOLEAN
 );
 
 CREATE INDEX IF NOT EXISTS idx_requisition_vacancy ON vacancies.requisition(vacancy_id);
@@ -235,6 +235,58 @@ END $migrate_log_op_status$;
  * vacancy.capital_notes antes del modelo con vacancy_operation_note y
  * requisition.capital_notes.
  */
+/** Cumplimientos (terna, PDA, etc.) viven en requisition, no en vacancy. */
+async function upgradeRequisitionComplianceColumns(): Promise<void> {
+  await pool.query(
+    `ALTER TABLE vacancies.requisition
+       ADD COLUMN IF NOT EXISTS shortlist_complied BOOLEAN,
+       ADD COLUMN IF NOT EXISTS pda_complied BOOLEAN,
+       ADD COLUMN IF NOT EXISTS contract_conditions_complied BOOLEAN,
+       ADD COLUMN IF NOT EXISTS pre_interview_cv_complied BOOLEAN`
+  );
+
+  await pool.query(`
+DO $body$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns c
+    WHERE c.table_schema = 'vacancies'
+      AND c.table_name = 'vacancy'
+      AND c.column_name = 'shortlist_complied'
+  ) THEN
+    UPDATE vacancies.requisition r
+    SET
+      shortlist_complied = COALESCE(r.shortlist_complied, v.shortlist_complied),
+      pda_complied = COALESCE(r.pda_complied, v.pda_complied),
+      contract_conditions_complied = COALESCE(
+        r.contract_conditions_complied, v.contract_conditions_complied
+      ),
+      pre_interview_cv_complied = COALESCE(
+        r.pre_interview_cv_complied, v.pre_interview_cv_complied
+      )
+    FROM vacancies.vacancy v
+    WHERE r.vacancy_id = v.id
+      AND (
+        v.shortlist_complied IS NOT NULL
+        OR v.pda_complied IS NOT NULL
+        OR v.contract_conditions_complied IS NOT NULL
+        OR v.pre_interview_cv_complied IS NOT NULL
+      );
+  END IF;
+END
+$body$;
+`);
+
+  await pool.query(`
+ALTER TABLE vacancies.vacancy
+  DROP COLUMN IF EXISTS shortlist_complied,
+  DROP COLUMN IF EXISTS pda_complied,
+  DROP COLUMN IF EXISTS contract_conditions_complied,
+  DROP COLUMN IF EXISTS pre_interview_cv_complied
+`);
+}
+
 async function upgradeVacanciesLegacyColumns(): Promise<void> {
   await pool.query(
     `ALTER TABLE vacancies.requisition
@@ -350,6 +402,7 @@ export async function migrateVacancies(): Promise<void> {
   }
   await pool.query(buildVacanciesDdl(mode));
   await upgradeVacanciesLegacyColumns();
+  await upgradeRequisitionComplianceColumns();
 
   await pool.query(
     `DROP TRIGGER IF EXISTS trg_vacancy_touch_updated ON vacancies.vacancy`

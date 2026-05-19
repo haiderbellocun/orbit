@@ -172,23 +172,6 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
-            className="glass-panel p-6 space-y-4"
-          >
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-2">
-              Cumplimientos
-            </h3>
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <Row label="Terna" value={tri(v.shortlistComplied)} />
-              <Row label="PDA" value={tri(v.pdaComplied)} />
-              <Row label="Condiciones contractuales" value={tri(v.contractConditionsComplied)} />
-              <Row label="HV pre-entrevista" value={tri(v.preInterviewCvComplied)} />
-            </dl>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
             className="glass-panel p-6 space-y-3"
           >
@@ -251,6 +234,16 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                       : '—'}
                   </dd>
                 </div>
+                <Row label="Terna" value={tri(v.requisition.shortlistComplied)} />
+                <Row label="PDA" value={tri(v.requisition.pdaComplied)} />
+                <Row
+                  label="Condiciones contractuales"
+                  value={tri(v.requisition.contractConditionsComplied)}
+                />
+                <Row
+                  label="HV pre-entrevista"
+                  value={tri(v.requisition.preInterviewCvComplied)}
+                />
               </dl>
             )}
           </motion.div>

@@ -464,10 +464,6 @@ export type CreateVacancyPayload = {
   quantity: number;
   /** Primer comentario de operación (opcional). */
   operationNotes?: string | null;
-  shortlistComplied?: boolean | null;
-  pdaComplied?: boolean | null;
-  contractConditionsComplied?: boolean | null;
-  preInterviewCvComplied?: boolean | null;
 };
 
 export type PatchVacancyPayload = Partial<{
@@ -477,10 +473,6 @@ export type PatchVacancyPayload = Partial<{
   positionName: string;
   curricularLine: string | null;
   quantity: number;
-  shortlistComplied: boolean | null;
-  pdaComplied: boolean | null;
-  contractConditionsComplied: boolean | null;
-  preInterviewCvComplied: boolean | null;
   operationStatus: VacancyOperationStatus;
   closedAt: string | null;
 }>;
@@ -549,6 +541,10 @@ export async function createVacancyRequisition(
     reqNumber: string;
     sentToCapitalAt?: string | null;
     capitalNotes?: string | null;
+    shortlistComplied?: boolean | null;
+    pdaComplied?: boolean | null;
+    contractConditionsComplied?: boolean | null;
+    preInterviewCvComplied?: boolean | null;
   }
 ): Promise<Vacancy> {
   const response = await authFetch(
@@ -567,6 +563,10 @@ export async function patchVacancyRequisition(
   body: {
     capitalNotes?: string | null;
     sentToCapitalAt?: string | null;
+    shortlistComplied?: boolean | null;
+    pdaComplied?: boolean | null;
+    contractConditionsComplied?: boolean | null;
+    preInterviewCvComplied?: boolean | null;
   }
 ): Promise<Vacancy> {
   const response = await authFetch(

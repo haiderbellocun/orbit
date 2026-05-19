@@ -169,14 +169,10 @@ export async function insertAutoVacancyOnDeactivate(
     `INSERT INTO vacancies.vacancy (
       area_id, school_id, program_id,
       position_name, curricular_line, quantity,
-      shortlist_complied, pda_complied,
-      contract_conditions_complied, pre_interview_cv_complied,
       operation_status
     ) VALUES (
       $1, $2, $3,
       $4, $5, 1,
-      NULL, NULL,
-      NULL, NULL,
       'open'
     ) RETURNING id`,
     [

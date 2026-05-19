@@ -1,5 +1,6 @@
-import { Router, type Request } from "express";
+import { Router } from "express";
 import { pool } from "../db/connection";
+import { orbitPersonIdFromRequest } from "../middleware/orbitAuth";
 import {
   qualifiedCoreTable,
   resolveCoreSchemaMode,
@@ -19,14 +20,14 @@ const OPERATION_STATUSES = new Set([
 ]);
 
 const CLOSE_STATUSES = new Set(["hired", "closed", "cancelled"]);
+const FULLY_LOCKED_STATUSES = new Set(["hired", "closed", "cancelled"]);
 
-const TERMINAL_VACANCY_BLOCKED_MESSAGE =
-  "Esta vacante está cerrada, cancelada o contratada y no puede modificarse.";
+const VACANCY_FULLY_LOCKED_MESSAGE =
+  "Esta vacante está contratada, cerrada o cancelada y no puede modificarse.";
 
-/** Vacancies in a terminal state must not be edited further (PATCH body, requisition, or close). */
-async function vacancyEditableGate(
-  id: string
-): Promise<"missing" | "terminal" | null> {
+type VacancyEditGate = "missing" | "blocked" | null;
+
+async function vacancyEditGate(id: string): Promise<VacancyEditGate> {
   const r = await pool.query(
     `SELECT operation_status FROM vacancies.vacancy WHERE id = $1`,
     [id]
@@ -35,7 +36,7 @@ async function vacancyEditableGate(
   const op = String(
     (r.rows[0] as { operation_status?: unknown }).operation_status ?? ""
   );
-  if (CLOSE_STATUSES.has(op)) return "terminal";
+  if (FULLY_LOCKED_STATUSES.has(op)) return "blocked";
   return null;
 }
 
@@ -60,6 +61,36 @@ function numOrUndef(v: unknown): number | undefined {
 }
 
 const CHANGE_LOG_ENTITY_NAME = "vacancy";
+
+/** Cumplimientos almacenados en vacancies.requisition (LEFT JOIN en listados). */
+const SQL_REQUISITION_COMPLIANCE = `
+         r.shortlist_complied,
+         r.pda_complied,
+         r.contract_conditions_complied,
+         r.pre_interview_cv_complied`;
+
+function mapComplianceFields(row: Record<string, unknown>) {
+  return {
+    shortlistComplied:
+      row.shortlist_complied === null || row.shortlist_complied === undefined
+        ? null
+        : Boolean(row.shortlist_complied),
+    pdaComplied:
+      row.pda_complied === null || row.pda_complied === undefined
+        ? null
+        : Boolean(row.pda_complied),
+    contractConditionsComplied:
+      row.contract_conditions_complied === null ||
+      row.contract_conditions_complied === undefined
+        ? null
+        : Boolean(row.contract_conditions_complied),
+    preInterviewCvComplied:
+      row.pre_interview_cv_complied === null ||
+      row.pre_interview_cv_complied === undefined
+        ? null
+        : Boolean(row.pre_interview_cv_complied),
+  };
+}
 
 /**
  * DB constraint chk_vacancy_change_log_action only accepts uppercase SQL-style actions:
@@ -350,24 +381,7 @@ function mapVacancyRow(
       row.curricular_line == null ? null : String(row.curricular_line),
     quantity: Number(row.quantity ?? 0),
     operationNotes,
-    shortlistComplied:
-      row.shortlist_complied === null || row.shortlist_complied === undefined
-        ? null
-        : Boolean(row.shortlist_complied),
-    pdaComplied:
-      row.pda_complied === null || row.pda_complied === undefined
-        ? null
-        : Boolean(row.pda_complied),
-    contractConditionsComplied:
-      row.contract_conditions_complied === null ||
-      row.contract_conditions_complied === undefined
-        ? null
-        : Boolean(row.contract_conditions_complied),
-    preInterviewCvComplied:
-      row.pre_interview_cv_complied === null ||
-      row.pre_interview_cv_complied === undefined
-        ? null
-        : Boolean(row.pre_interview_cv_complied),
+    ...mapComplianceFields(row),
     operationStatus: String(row.operation_status ?? "open"),
     createdAt:
       row.created_at != null
@@ -438,10 +452,7 @@ router.get("/vacancies", async (_req, res) => {
          v.quantity,
          v.operation_status,
          ${opNotesSql} AS operation_notes_json,
-         v.shortlist_complied,
-         v.pda_complied,
-         v.contract_conditions_complied,
-         v.pre_interview_cv_complied,
+         ${SQL_REQUISITION_COMPLIANCE},
          v.created_at,
          v.updated_at,
          v.closed_at,
@@ -465,7 +476,7 @@ router.get("/vacancies", async (_req, res) => {
 });
 
 /** POST /vacancies */
-router.post("/vacancies", async (req: Request, res) => {
+router.post("/vacancies", async (req, res) => {
   try {
     const mode = await resolveCoreSchemaMode();
     if (mode == null) {
@@ -505,13 +516,6 @@ router.post("/vacancies", async (req: Request, res) => {
         ? toUpperAscii(b.operationNotes)
         : null;
 
-    const shortlistComplied = parseOptionalBool(b.shortlistComplied);
-    const pdaComplied = parseOptionalBool(b.pdaComplied);
-    const contractConditionsComplied = parseOptionalBool(
-      b.contractConditionsComplied
-    );
-    const preInterviewCvComplied = parseOptionalBool(b.preInterviewCvComplied);
-
     if (areaId == null || Number.isNaN(areaId)) {
       res.status(400).json({ error: "areaId is required" });
       return;
@@ -547,14 +551,10 @@ router.post("/vacancies", async (req: Request, res) => {
       `INSERT INTO vacancies.vacancy (
         area_id, school_id, program_id,
         position_name, curricular_line, quantity,
-        shortlist_complied, pda_complied,
-        contract_conditions_complied, pre_interview_cv_complied,
         operation_status
       ) VALUES (
         $1, $2, $3,
         $4, $5, $6,
-        $7, $8,
-        $9, $10,
         'open'
       ) RETURNING *`,
       [
@@ -564,21 +564,12 @@ router.post("/vacancies", async (req: Request, res) => {
         positionName,
         curricularLine,
         quantity,
-        shortlistComplied,
-        pdaComplied,
-        contractConditionsComplied,
-        preInterviewCvComplied,
       ]
     );
 
     const row = rows[0] as Record<string, unknown>;
     const vacancyId = String(row.id);
-    const personId =
-      req.orbitUser != null &&
-      Number.isFinite(req.orbitUser.personId) &&
-      req.orbitUser.personId > 0
-        ? req.orbitUser.personId
-        : null;
+    const personId = orbitPersonIdFromRequest(req);
 
     if (initialOperationNote != null) {
       await pool.query(
@@ -623,13 +614,13 @@ router.patch("/vacancies/:id/close", async (req, res) => {
       return;
     }
 
-    const gate = await vacancyEditableGate(id);
+    const gate = await vacancyEditGate(id);
     if (gate === "missing") {
       res.status(404).json({ error: "Vacancy not found" });
       return;
     }
-    if (gate === "terminal") {
-      res.status(409).json({ error: TERMINAL_VACANCY_BLOCKED_MESSAGE });
+    if (gate === "blocked") {
+      res.status(409).json({ error: VACANCY_FULLY_LOCKED_MESSAGE });
       return;
     }
 
@@ -666,7 +657,7 @@ router.patch("/vacancies/:id/close", async (req, res) => {
 });
 
 /** POST /vacancies/:id/operation-notes */
-router.post("/vacancies/:id/operation-notes", async (req: Request, res) => {
+router.post("/vacancies/:id/operation-notes", async (req, res) => {
   try {
     const id = req.params.id;
     if (!isUuid(id)) {
@@ -674,13 +665,13 @@ router.post("/vacancies/:id/operation-notes", async (req: Request, res) => {
       return;
     }
 
-    const gate = await vacancyEditableGate(id);
+    const gate = await vacancyEditGate(id);
     if (gate === "missing") {
       res.status(404).json({ error: "Vacancy not found" });
       return;
     }
-    if (gate === "terminal") {
-      res.status(409).json({ error: TERMINAL_VACANCY_BLOCKED_MESSAGE });
+    if (gate === "blocked") {
+      res.status(409).json({ error: VACANCY_FULLY_LOCKED_MESSAGE });
       return;
     }
 
@@ -705,12 +696,7 @@ router.post("/vacancies/:id/operation-notes", async (req: Request, res) => {
       return;
     }
 
-    const personId =
-      req.orbitUser != null &&
-      Number.isFinite(req.orbitUser.personId) &&
-      req.orbitUser.personId > 0
-        ? req.orbitUser.personId
-        : null;
+    const personId = orbitPersonIdFromRequest(req);
 
     const ins = await pool.query(
       `INSERT INTO vacancies.vacancy_operation_note
@@ -793,6 +779,13 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
       ? toUpperAscii(b.capitalNotes)
       : null;
 
+  const shortlistComplied = parseOptionalBool(b.shortlistComplied);
+  const pdaComplied = parseOptionalBool(b.pdaComplied);
+  const contractConditionsComplied = parseOptionalBool(
+    b.contractConditionsComplied
+  );
+  const preInterviewCvComplied = parseOptionalBool(b.preInterviewCvComplied);
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -821,17 +814,30 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
     const vacOp = String(
       (vac.rows[0] as { operation_status?: unknown }).operation_status ?? ""
     );
-    if (CLOSE_STATUSES.has(vacOp)) {
+    if (FULLY_LOCKED_STATUSES.has(vacOp)) {
       await client.query("ROLLBACK");
-      res.status(409).json({ error: TERMINAL_VACANCY_BLOCKED_MESSAGE });
+      res.status(409).json({ error: VACANCY_FULLY_LOCKED_MESSAGE });
       return;
     }
 
     try {
       await client.query(
-        `INSERT INTO vacancies.requisition (vacancy_id, req_number, sent_to_capital_at, capital_notes)
-         VALUES ($1, $2, $3, $4)`,
-        [id, reqNumber, sentToCapitalAt, capitalNotes]
+        `INSERT INTO vacancies.requisition (
+           vacancy_id, req_number, sent_to_capital_at, capital_notes,
+           shortlist_complied, pda_complied,
+           contract_conditions_complied, pre_interview_cv_complied
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          id,
+          reqNumber,
+          sentToCapitalAt,
+          capitalNotes,
+          shortlistComplied,
+          pdaComplied,
+          contractConditionsComplied,
+          preInterviewCvComplied,
+        ]
       );
     } catch (insErr) {
       await client.query("ROLLBACK");
@@ -857,6 +863,10 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
       reqNumber,
       sentToCapitalAt,
       capitalNotes,
+      shortlistComplied,
+      pdaComplied,
+      contractConditionsComplied,
+      preInterviewCvComplied,
     });
 
     await client.query("COMMIT");
@@ -886,10 +896,7 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
          v.quantity,
          v.operation_status,
          ${opNotesSql} AS operation_notes_json,
-         v.shortlist_complied,
-         v.pda_complied,
-         v.contract_conditions_complied,
-         v.pre_interview_cv_complied,
+         ${SQL_REQUISITION_COMPLIANCE},
          v.created_at,
          v.updated_at,
          v.closed_at,
@@ -953,10 +960,7 @@ router.get("/vacancies/:id", async (req, res) => {
          v.quantity,
          v.operation_status,
          ${opNotesSql} AS operation_notes_json,
-         v.shortlist_complied,
-         v.pda_complied,
-         v.contract_conditions_complied,
-         v.pre_interview_cv_complied,
+         ${SQL_REQUISITION_COMPLIANCE},
          v.created_at,
          v.updated_at,
          v.closed_at,
@@ -1003,6 +1007,7 @@ router.get("/vacancies/:id", async (req, res) => {
               String(raw.requisition_capital_notes).trim() === ""
                 ? null
                 : String(raw.requisition_capital_notes),
+            ...mapComplianceFields(raw),
           };
 
     let statusHistory: Array<{
@@ -1064,7 +1069,7 @@ router.get("/vacancies/:id", async (req, res) => {
 });
 
 /** PATCH /vacancies/:id/requisition */
-router.patch("/vacancies/:id/requisition", async (req: Request, res) => {
+router.patch("/vacancies/:id/requisition", async (req, res) => {
   try {
     const id = req.params.id;
     if (!isUuid(id)) {
@@ -1072,13 +1077,13 @@ router.patch("/vacancies/:id/requisition", async (req: Request, res) => {
       return;
     }
 
-    const gate = await vacancyEditableGate(id);
+    const gate = await vacancyEditGate(id);
     if (gate === "missing") {
       res.status(404).json({ error: "Vacancy not found" });
       return;
     }
-    if (gate === "terminal") {
-      res.status(409).json({ error: TERMINAL_VACANCY_BLOCKED_MESSAGE });
+    if (gate === "blocked") {
+      res.status(409).json({ error: VACANCY_FULLY_LOCKED_MESSAGE });
       return;
     }
 
@@ -1112,6 +1117,18 @@ router.patch("/vacancies/:id/requisition", async (req: Request, res) => {
       }
       p++;
     }
+
+    const setReqBool = (col: string, key: string) => {
+      if (b[key] !== undefined) {
+        updates.push(`${col} = $${p}`);
+        values.push(parseOptionalBool(b[key]));
+        p++;
+      }
+    };
+    setReqBool("shortlist_complied", "shortlistComplied");
+    setReqBool("pda_complied", "pdaComplied");
+    setReqBool("contract_conditions_complied", "contractConditionsComplied");
+    setReqBool("pre_interview_cv_complied", "preInterviewCvComplied");
 
     if (updates.length === 0) {
       res.status(400).json({ error: "No fields to update" });
@@ -1162,10 +1179,7 @@ router.patch("/vacancies/:id/requisition", async (req: Request, res) => {
          v.quantity,
          v.operation_status,
          ${opNotesSql} AS operation_notes_json,
-         v.shortlist_complied,
-         v.pda_complied,
-         v.contract_conditions_complied,
-         v.pre_interview_cv_complied,
+         ${SQL_REQUISITION_COMPLIANCE},
          v.created_at,
          v.updated_at,
          v.closed_at,
@@ -1198,13 +1212,13 @@ router.patch("/vacancies/:id", async (req, res) => {
       return;
     }
 
-    const gate = await vacancyEditableGate(id);
+    const gate = await vacancyEditGate(id);
     if (gate === "missing") {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    if (gate === "terminal") {
-      res.status(409).json({ error: TERMINAL_VACANCY_BLOCKED_MESSAGE });
+    if (gate === "blocked") {
+      res.status(409).json({ error: VACANCY_FULLY_LOCKED_MESSAGE });
       return;
     }
 
@@ -1298,24 +1312,6 @@ router.patch("/vacancies/:id", async (req, res) => {
         return;
       }
       setCol("quantity", n);
-    }
-    if (b.shortlistComplied !== undefined) {
-      setCol("shortlist_complied", parseOptionalBool(b.shortlistComplied));
-    }
-    if (b.pdaComplied !== undefined) {
-      setCol("pda_complied", parseOptionalBool(b.pdaComplied));
-    }
-    if (b.contractConditionsComplied !== undefined) {
-      setCol(
-        "contract_conditions_complied",
-        parseOptionalBool(b.contractConditionsComplied)
-      );
-    }
-    if (b.preInterviewCvComplied !== undefined) {
-      setCol(
-        "pre_interview_cv_complied",
-        parseOptionalBool(b.preInterviewCvComplied)
-      );
     }
     if (b.operationStatus !== undefined) {
       const s = String(b.operationStatus).trim();

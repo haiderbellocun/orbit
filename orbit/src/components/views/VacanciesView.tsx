@@ -42,8 +42,14 @@ const STATUS_LABEL: Record<VacancyOperationStatus, string> = {
   cancelled: 'Cancelada',
 };
 
-function isVacancyActionLocked(status: VacancyOperationStatus): boolean {
-  return status === 'closed' || status === 'cancelled' || status === 'requisition_sent';
+/** Contratada, cerrada o cancelada: sin edición ni cierre. */
+function isVacancyFullyLocked(status: VacancyOperationStatus): boolean {
+  return status === 'hired' || status === 'closed' || status === 'cancelled';
+}
+
+/** Con REQ: solo estado operación y comentarios nuevos (datos base bloqueados). */
+function isVacancyCoreFieldsLocked(v: Vacancy): boolean {
+  return Boolean(v.reqNumber?.trim());
 }
 
 function formatDt(iso: string | null | undefined): string {
@@ -244,10 +250,6 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
       curricularLine: toUpperAsciiOrNull(createLine),
       quantity: qty,
       operationNotes: createOpNotes.trim() ? toUpperAscii(createOpNotes) : null,
-      shortlistComplied: triToBool(createTerna),
-      pdaComplied: triToBool(createPda),
-      contractConditionsComplied: triToBool(createContract),
-      preInterviewCvComplied: triToBool(createCv),
     };
     try {
       await createVacancy(payload);
@@ -264,45 +266,55 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     e.preventDefault();
     if (!editRow) return;
     setFormError(null);
-    const qty = Number(createQty);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      setFormError('La cantidad debe ser mayor a 0.');
-      return;
+    const coreLocked = isVacancyCoreFieldsLocked(editRow);
+
+    if (!coreLocked) {
+      const qty = Number(createQty);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        setFormError('La cantidad debe ser mayor a 0.');
+        return;
+      }
+      if (!createPosition.trim()) {
+        setFormError('El cargo es obligatorio.');
+        return;
+      }
     }
-    if (!createPosition.trim()) {
-      setFormError('El cargo es obligatorio.');
-      return;
-    }
-    const patch: PatchVacancyPayload = {
-      areaId: createAreaId === '' ? undefined : Number(createAreaId),
-      schoolId: createSchoolId === '' ? null : Number(createSchoolId),
-      programId:
-        createProgramId === 'none'
-          ? null
-          : createProgramId === ''
-            ? undefined
-            : Number(createProgramId),
-      positionName: toUpperAscii(createPosition),
-      curricularLine: toUpperAsciiOrNull(createLine),
-      quantity: qty,
-      shortlistComplied: triToBool(createTerna),
-      pdaComplied: triToBool(createPda),
-      contractConditionsComplied: triToBool(createContract),
-      preInterviewCvComplied: triToBool(createCv),
-      operationStatus: editRow.operationStatus,
-    };
+
+    const patch: PatchVacancyPayload = coreLocked
+      ? { operationStatus: editRow.operationStatus }
+      : {
+          areaId: createAreaId === '' ? undefined : Number(createAreaId),
+          schoolId: createSchoolId === '' ? null : Number(createSchoolId),
+          programId:
+            createProgramId === 'none'
+              ? null
+              : createProgramId === ''
+                ? undefined
+                : Number(createProgramId),
+          positionName: toUpperAscii(createPosition),
+          curricularLine: toUpperAsciiOrNull(createLine),
+          quantity: Number(createQty),
+          operationStatus: editRow.operationStatus,
+        };
     try {
       const apiRow = (await patchVacancy(editRow.id, patch)) as Vacancy;
-      const normCap = (s: string | null | undefined) => {
-        const t = (s ?? '').trim();
-        return t === '' ? null : toUpperAscii(t);
-      };
-      if (editRow.reqNumber != null && editRow.reqNumber !== '') {
+      if (!coreLocked && editRow.reqNumber != null && editRow.reqNumber !== '') {
+        const normCap = (s: string | null | undefined) => {
+          const t = (s ?? '').trim();
+          return t === '' ? null : toUpperAscii(t);
+        };
         const nextCap = normCap(editReqCapitalNotes);
         const prevCap = normCap(editRow.capitalNotes ?? null);
+        const reqPatch: Parameters<typeof patchVacancyRequisition>[1] = {
+          shortlistComplied: triToBool(createTerna),
+          pdaComplied: triToBool(createPda),
+          contractConditionsComplied: triToBool(createContract),
+          preInterviewCvComplied: triToBool(createCv),
+        };
         if (nextCap !== prevCap) {
-          await patchVacancyRequisition(editRow.id, { capitalNotes: nextCap });
+          reqPatch.capitalNotes = nextCap;
         }
+        await patchVacancyRequisition(editRow.id, reqPatch);
       }
       const list = await refresh();
       const fresh = list.find((x) => x.id === editRow.id) ?? editRow;
@@ -321,7 +333,9 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
       setEditRow(null);
       resetCreateForm();
       setSaveBanner(
-        'Cambios guardados (cumplimientos, estado y demás campos).'
+        coreLocked
+          ? 'Estado operación actualizado.'
+          : 'Cambios guardados (cumplimientos, estado y demás campos).'
       );
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Error al guardar');
@@ -366,11 +380,19 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
           ? new Date(reqSentAt).toISOString()
           : null,
         capitalNotes: reqCapNotes.trim() ? toUpperAscii(reqCapNotes) : null,
+        shortlistComplied: triToBool(createTerna),
+        pdaComplied: triToBool(createPda),
+        contractConditionsComplied: triToBool(createContract),
+        preInterviewCvComplied: triToBool(createCv),
       });
       setReqRow(null);
       setReqNumber('');
       setReqSentAt('');
       setReqCapNotes('');
+      setCreateTerna('');
+      setCreatePda('');
+      setCreateContract('');
+      setCreateCv('');
       await refresh();
       setSaveBanner('Requisición registrada.');
     } catch (err) {
@@ -570,9 +592,9 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                         <button
                           type="button"
                           title="Editar"
-                          disabled={isVacancyActionLocked(v.operationStatus)}
+                          disabled={isVacancyFullyLocked(v.operationStatus)}
                           onClick={() => {
-                            if (isVacancyActionLocked(v.operationStatus)) return;
+                            if (isVacancyFullyLocked(v.operationStatus)) return;
                             openEdit(v);
                           }}
                           className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:text-slate-600 disabled:hover:border-slate-200"
@@ -588,6 +610,11 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                             setReqRow(v);
                             setReqNumber('');
                             setReqSentAt('');
+                            setReqCapNotes('');
+                            setCreateTerna('');
+                            setCreatePda('');
+                            setCreateContract('');
+                            setCreateCv('');
                           }}
                           className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 disabled:opacity-35"
                         >
@@ -596,9 +623,9 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                         <button
                           type="button"
                           title="Cerrar vacante"
-                          disabled={isVacancyActionLocked(v.operationStatus)}
+                          disabled={isVacancyFullyLocked(v.operationStatus)}
                           onClick={() => {
-                            if (isVacancyActionLocked(v.operationStatus)) return;
+                            if (isVacancyFullyLocked(v.operationStatus)) return;
                             setFormError(null);
                             setCloseRow(v);
                             setCloseStatus('closed');
@@ -631,6 +658,13 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
             {formError && (
               <p className="text-sm text-rose-600 mb-4">{formError}</p>
             )}
+            {editRow && isVacancyCoreFieldsLocked(editRow) && (
+              <p className="text-sm text-violet-900 bg-violet-50/95 border border-violet-200/80 rounded-xl px-4 py-3 mb-4">
+                Esta vacante ya tiene requisición (<strong>{editRow.reqNumber}</strong>). Solo
+                puede cambiar el <strong>estado de operación</strong> y{' '}
+                <strong>añadir comentarios</strong>; el resto de los datos queda bloqueado.
+              </p>
+            )}
             <form
               onSubmit={editRow ? handleEditSubmit : handleCreate}
               className="space-y-4 max-h-[min(82vh,calc(90vh-7rem))] overflow-y-auto overflow-x-visible pr-1 min-w-0"
@@ -639,7 +673,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 <Field label="Área *">
                   <select
                     required
-                    className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full"
+                    disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
+                    className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full disabled:opacity-60 disabled:cursor-not-allowed"
                     value={createAreaId === '' ? '' : String(createAreaId)}
                     onChange={(e) =>
                       onAreaChange(e.target.value ? Number(e.target.value) : '')
@@ -655,7 +690,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 </Field>
                 <Field label="Escuela (opcional)">
                   <select
-                    className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full"
+                    disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
+                    className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full disabled:opacity-60 disabled:cursor-not-allowed"
                     value={createSchoolId === '' ? '' : String(createSchoolId)}
                     onChange={(e) =>
                       onSchoolChange(e.target.value ? Number(e.target.value) : '')
@@ -674,7 +710,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
               </div>
               <Field label="Programa (opcional)">
                 <select
-                  className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full"
+                  disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
+                  className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full disabled:opacity-60 disabled:cursor-not-allowed"
                   value={
                     createProgramId === 'none' || createProgramId === ''
                       ? 'none'
@@ -696,8 +733,9 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
               <Field label="Cargo *">
                 <input
                   required
+                  disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
                   list="role-names"
-                  className="glass-input py-2.5 text-sm w-full"
+                  className="glass-input py-2.5 text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
                   value={createPosition}
                   onChange={(e) => setCreatePosition(e.target.value)}
                   placeholder="Nombre del cargo o elija de lista"
@@ -710,7 +748,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
               </Field>
               <Field label="Línea curricular / área">
                 <input
-                  className="glass-input py-2.5 text-sm w-full"
+                  disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
+                  className="glass-input py-2.5 text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
                   value={createLine}
                   onChange={(e) => setCreateLine(e.target.value)}
                 />
@@ -720,7 +759,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   required
                   type="number"
                   min={1}
-                  className="glass-input py-2.5 text-sm w-full"
+                  disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
+                  className="glass-input py-2.5 text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
                   value={createQty}
                   onChange={(e) => setCreateQty(e.target.value)}
                 />
@@ -772,14 +812,35 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                       </button>
                     </div>
                   </div>
-                  {editRow.reqNumber != null && editRow.reqNumber !== '' && (
-                    <Field label="Notas capital humano (requisición)">
-                      <textarea
-                        className="glass-input py-2.5 text-sm w-full min-h-[56px]"
-                        value={editReqCapitalNotes}
-                        onChange={(e) => setEditReqCapitalNotes(e.target.value)}
-                      />
-                    </Field>
+                  {editRow.reqNumber != null &&
+                    editRow.reqNumber !== '' &&
+                    !isVacancyCoreFieldsLocked(editRow) && (
+                    <>
+                      <Field label="Notas capital humano (requisición)">
+                        <textarea
+                          className="glass-input py-2.5 text-sm w-full min-h-[56px]"
+                          value={editReqCapitalNotes}
+                          onChange={(e) => setEditReqCapitalNotes(e.target.value)}
+                        />
+                      </Field>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                        Cumplimientos (requisición)
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
+                        <TriField label="Terna" value={createTerna} onChange={setCreateTerna} />
+                        <TriField label="PDA" value={createPda} onChange={setCreatePda} />
+                        <TriField
+                          label="Condiciones contractuales"
+                          value={createContract}
+                          onChange={setCreateContract}
+                        />
+                        <TriField
+                          label="Hojas de vida pre-entrevista"
+                          value={createCv}
+                          onChange={setCreateCv}
+                        />
+                      </div>
+                    </>
                   )}
                 </>
               )}
@@ -816,20 +877,6 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   Use &quot;Guardar cambios&quot; para aplicar el estado operación seleccionado.
                 </p>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
-                <TriField label="Terna" value={createTerna} onChange={setCreateTerna} />
-                <TriField label="PDA" value={createPda} onChange={setCreatePda} />
-                <TriField
-                  label="Condiciones contractuales"
-                  value={createContract}
-                  onChange={setCreateContract}
-                />
-                <TriField
-                  label="Hojas de vida pre-entrevista"
-                  value={createCv}
-                  onChange={setCreateCv}
-                />
-              </div>
               <div className="flex gap-3 pt-2">
                 <button type="submit" className="flex-1 glass-button-primary py-3 text-xs font-bold uppercase tracking-widest">
                   {editRow ? 'Guardar cambios' : 'Crear vacante'}
@@ -860,6 +907,10 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
               setReqNumber('');
               setReqSentAt('');
               setReqCapNotes('');
+              setCreateTerna('');
+              setCreatePda('');
+              setCreateContract('');
+              setCreateCv('');
               setFormError(null);
             }}
           >
@@ -895,6 +946,23 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   placeholder="Observaciones para capital humano…"
                 />
               </Field>
+              <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                Cumplimientos
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
+                <TriField label="Terna" value={createTerna} onChange={setCreateTerna} />
+                <TriField label="PDA" value={createPda} onChange={setCreatePda} />
+                <TriField
+                  label="Condiciones contractuales"
+                  value={createContract}
+                  onChange={setCreateContract}
+                />
+                <TriField
+                  label="Hojas de vida pre-entrevista"
+                  value={createCv}
+                  onChange={setCreateCv}
+                />
+              </div>
               <div className="flex gap-3">
                 <button type="submit" className="flex-1 glass-button-primary py-3 text-xs font-bold uppercase tracking-widest">
                   Registrar requisición
@@ -906,6 +974,10 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     setReqNumber('');
                     setReqSentAt('');
                     setReqCapNotes('');
+                    setCreateTerna('');
+                    setCreatePda('');
+                    setCreateContract('');
+                    setCreateCv('');
                     setFormError(null);
                   }}
                   className="flex-1 glass-button-secondary py-3 text-xs font-bold uppercase tracking-widest"
