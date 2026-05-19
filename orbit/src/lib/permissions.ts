@@ -7,6 +7,7 @@ export const ORBIT_CAPABILITY = {
   COORDINATORS: "view:coordinators",
   LITES: "view:lites",
   VACANCIES: "view:vacancies",
+  PERSONAL: "view:personal",
 } as const;
 
 export type OrbitCapability =
@@ -19,6 +20,7 @@ const NAV_ID_TO_CAPABILITY: Record<string, OrbitCapability> = {
   coordinators: ORBIT_CAPABILITY.COORDINATORS,
   lites: ORBIT_CAPABILITY.LITES,
   vacancies: ORBIT_CAPABILITY.VACANCIES,
+  personal: ORBIT_CAPABILITY.PERSONAL,
 };
 
 const VIEW_TO_CAPABILITY: Partial<Record<View, OrbitCapability>> = {
@@ -34,6 +36,7 @@ const VIEW_TO_CAPABILITY: Partial<Record<View, OrbitCapability>> = {
   news: ORBIT_CAPABILITY.HOME,
   audit: ORBIT_CAPABILITY.HOME,
   programs: ORBIT_CAPABILITY.HOME,
+  personal: ORBIT_CAPABILITY.PERSONAL,
   login: ORBIT_CAPABILITY.HOME,
   export: ORBIT_CAPABILITY.HOME,
 };
@@ -80,6 +83,7 @@ export function canManageVacancies(capabilities: readonly string[]): boolean {
 }
 
 const LANDING_VIEW_ORDER: View[] = [
+  "personal",
   "home",
   "teachers",
   "academic-load",

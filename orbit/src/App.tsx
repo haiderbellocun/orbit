@@ -18,6 +18,7 @@ import { LitesView } from './components/views/LitesView';
 import { AcademicLoadView } from './components/views/AcademicLoadView';
 import { AuditView } from './components/views/AuditView';
 import { ProgramsView } from './components/views/ProgramsView';
+import { PersonalView } from './components/views/PersonalView';
 import { View, Teacher, Vacancy, NAV_ITEMS } from './types';
 import { VacancyDetailView } from './components/views/VacancyDetailView';
 import { MOCK_TEACHERS, MOCK_VACANCIES, MOCK_COORDINATORS } from './data/mockData';
@@ -216,6 +217,8 @@ export default function App() {
         return <AuditView {...commonProps} />;
       case 'programs':
         return <ProgramsView setView={setView} {...commonProps} />;
+      case 'personal':
+        return <PersonalView {...commonProps} />;
       default:
         return <HomeView setView={setView} {...commonProps} />;
     }

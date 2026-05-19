@@ -665,6 +665,39 @@ export async function getCoordinator(id: number): Promise<unknown> {
   return handleJson(response);
 }
 
+export type CreatePersonalPayload = {
+  document: string;
+  full_name: string;
+  email?: string | null;
+  phone?: string | null;
+  role_id: number;
+  program_id?: number | null;
+};
+
+export async function getPersonal(params?: {
+  search?: string;
+  page?: number;
+  limit?: number;
+}): Promise<PaginatedResponse> {
+  const url = new URL(`${BASE_URL}/personal`);
+  if (params?.search) url.searchParams.set("search", params.search);
+  if (params?.page != null) url.searchParams.set("page", String(params.page));
+  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
+  return handleJson(response);
+}
+
+export async function createPersonal(
+  payload: CreatePersonalPayload
+): Promise<unknown> {
+  const response = await authFetch(`${BASE_URL}/personal`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(payload),
+  });
+  return handleJson(response);
+}
+
 export async function updateCoordinatorProfile(
   id: number,
   data: {

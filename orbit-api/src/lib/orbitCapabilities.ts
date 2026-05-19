@@ -13,6 +13,7 @@ export const ORBIT_CAPABILITY = {
   COORDINATORS: "view:coordinators",
   LITES: "view:lites",
   VACANCIES: "view:vacancies",
+  PERSONAL: "view:personal",
 } as const;
 
 export type OrbitCapability =
@@ -50,6 +51,18 @@ export const SCHOOL_COORDINATOR_ROLE_IDS: readonly number[] = [4, 5, 6, 7, 8, 11
 
 function isSchoolCoordinatorRoleId(roleId: number): boolean {
   return SCHOOL_COORDINATOR_ROLE_IDS.includes(roleId);
+}
+
+/** Rol 51: panel Personal + Vacantes (alcance escuela). */
+export const ROLE_51_STAFF_CAPABILITIES: readonly OrbitCapability[] = [
+  ORBIT_CAPABILITY.PERSONAL,
+  ORBIT_CAPABILITY.VACANCIES,
+];
+
+export const ROLE_51_STAFF_ROLE_ID = 51;
+
+export function isRole51StaffRoleId(roleId: number): boolean {
+  return roleId === ROLE_51_STAFF_ROLE_ID;
 }
 
 /** Perfiles parciales: role_id → capabilities (tiene prioridad sobre perfil LITE por id). */
@@ -121,6 +134,13 @@ export function resolveOrbitAccess(input: {
       return {
         orbitAccess: "school",
         capabilities: [...ALL_ORBIT_CAPABILITIES],
+      };
+    }
+
+    if (isRole51StaffRoleId(roleId)) {
+      return {
+        orbitAccess: "school",
+        capabilities: [...ROLE_51_STAFF_CAPABILITIES],
       };
     }
 

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import {
   ALL_ORBIT_CAPABILITIES,
   ORBIT_CAPABILITY,
+  ROLE_51_STAFF_CAPABILITIES,
+  ROLE_51_STAFF_ROLE_ID,
   ROLE_9_OPERATIONS_CAPABILITIES,
   SCHOOL_COORDINATOR_ROLE_IDS,
   VACANCIES_ONLY_CAPABILITIES,
@@ -51,6 +53,20 @@ test("role 9 all panels + full data scope (not LITE login)", () => {
     if (prev === undefined) delete process.env.ORBIT_LITE_ROLE_ID;
     else process.env.ORBIT_LITE_ROLE_ID = prev;
   }
+});
+
+test("role 51 personal + vacancies school scope", () => {
+  const r = resolveOrbitAccess({
+    roleId: ROLE_51_STAFF_ROLE_ID,
+    roleCode: null,
+    roleName: null,
+  });
+  assert.ok(r);
+  assert.equal(r.orbitAccess, "school");
+  assert.deepEqual(r.capabilities, [...ROLE_51_STAFF_CAPABILITIES]);
+  assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.PERSONAL), true);
+  assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.VACANCIES), true);
+  assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.HOME), false);
 });
 
 for (const id of SCHOOL_COORDINATOR_ROLE_IDS) {
