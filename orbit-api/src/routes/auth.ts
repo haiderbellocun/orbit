@@ -4,11 +4,13 @@ import { OAuth2Client } from "google-auth-library";
 import { pool } from "../db/connection";
 import { buildLiteProgramIds } from "../lib/orbitRoles";
 import {
+  finalizeOrbitCapabilities,
   isRole51StaffRoleId,
   resolveOrbitAccess,
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
+import { isNewsAreaRoleId } from "../lib/newsScope";
 import { resolveLoginSchoolId } from "../lib/resolveLoginSchool";
 
 const router = Router();
@@ -175,6 +177,7 @@ type OrbitGate =
       orbitAccess: OrbitAccess;
       capabilities: OrbitCapability[];
       schoolId: number | null;
+      areaId: number | null;
       programIds: number[];
     }
   | { ok: false; status: number; error: string };
@@ -196,7 +199,8 @@ async function gateOrbitRoleAndLite(person: PersonRow): Promise<OrbitGate> {
     };
   }
 
-  const { orbitAccess, capabilities } = resolved;
+  const finalized = finalizeOrbitCapabilities(resolved, roleId);
+  const { orbitAccess, capabilities } = finalized;
 
   let schoolId: number | null = null;
   let programIds: number[] = [];
@@ -235,7 +239,13 @@ async function gateOrbitRoleAndLite(person: PersonRow): Promise<OrbitGate> {
     }
   }
 
-  return { ok: true, orbitAccess, capabilities, schoolId, programIds };
+  let areaId: number | null = null;
+  if (roleId != null && isNewsAreaRoleId(roleId) && person.area_id != null) {
+    const aid = Number(person.area_id);
+    if (Number.isFinite(aid) && aid > 0) areaId = aid;
+  }
+
+  return { ok: true, orbitAccess, capabilities, schoolId, areaId, programIds };
 }
 
 async function upsertUserForLogin(params: {
@@ -350,6 +360,7 @@ async function buildTokenResponse(params: {
   orbitAccess: OrbitAccess;
   capabilities: OrbitCapability[];
   schoolId: number | null;
+  areaId: number | null;
   programIds: number[];
   email: string;
   displayName: string;
@@ -367,6 +378,7 @@ async function buildTokenResponse(params: {
     orbitAccess,
     capabilities,
     schoolId,
+    areaId,
     programIds,
     email,
     displayName,
@@ -394,6 +406,7 @@ async function buildTokenResponse(params: {
       capabilities,
       schoolId:
         orbitAccess === "lite" || orbitAccess === "school" ? schoolId : null,
+      areaId: areaId != null && Number.isFinite(areaId) ? areaId : null,
       programIds: orbitAccess === "lite" ? programIds : [],
     },
     jwtSecret,
@@ -484,6 +497,7 @@ async function completeGoogleSignInWithIdToken(
       orbitAccess: gate.orbitAccess,
       capabilities: gate.capabilities,
       schoolId: gate.schoolId,
+      areaId: gate.areaId,
       programIds: gate.programIds,
       email,
       displayName: name,
@@ -623,6 +637,7 @@ router.post("/auth/local-email", async (req, res) => {
       orbitAccess: gate.orbitAccess,
       capabilities: gate.capabilities,
       schoolId: gate.schoolId,
+      areaId: gate.areaId,
       programIds: gate.programIds,
       email: canonicalEmail,
       displayName: person.full_name || canonicalEmail,

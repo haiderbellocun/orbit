@@ -21,9 +21,21 @@ import {
   updateLiteProfile,
   updatePersonalProfile,
   updateTeacherProfile,
+  createWorkforceEvent,
+  getWorkforceEventTypes,
+  getWorkforceEvents,
+  patchWorkforceEvent,
   type CatalogProgram,
   type CatalogSchool,
+  type WorkforceEvent,
+  type WorkforceEventStatus,
+  type WorkforceEventType,
 } from '@/src/lib/api';
+import {
+  WORKFORCE_EVENT_STATUS_LABELS,
+  formatWorkforceEventSchedule,
+  workforceStatusBadgeClass,
+} from '@/src/lib/workforceEventLabels';
 
 export type PersonProfile = {
   id: string;
@@ -48,15 +60,6 @@ export type PersonProfile = {
   }>;
   coordinatorName?: string;
   status?: 'active' | 'inactive' | 'on-leave';
-};
-
-type NewsTypeOption = { id: string; label: string };
-
-type PersonNewsItem = {
-  id: string;
-  type: string;
-  text: string;
-  createdAt: string;
 };
 
 export interface PersonProfileModalProps {
@@ -238,15 +241,17 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
 
   const effectivePerson = loadedPerson ?? person;
 
-  const [newsTypeOptions, setNewsTypeOptions] = useState<NewsTypeOption[]>([
-    { id: 'license', label: 'LICENCIA' },
-    { id: 'sanction', label: 'SANCION' },
-    { id: 'custom', label: 'Agregar más…' },
-  ]);
-  const [newsType, setNewsType] = useState<string>('license');
-  const [customNewsType, setCustomNewsType] = useState<string>('');
+  const [eventTypes, setEventTypes] = useState<WorkforceEventType[]>([]);
+  const [newsEventTypeId, setNewsEventTypeId] = useState<string>('');
   const [newsText, setNewsText] = useState<string>('');
-  const [newsItems, setNewsItems] = useState<PersonNewsItem[]>([]);
+  const [newsStartDate, setNewsStartDate] = useState('');
+  const [newsEndDate, setNewsEndDate] = useState('');
+  const [newsStartTime, setNewsStartTime] = useState('');
+  const [newsEndTime, setNewsEndTime] = useState('');
+  const [newsItems, setNewsItems] = useState<WorkforceEvent[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsSaving, setNewsSaving] = useState(false);
+  const [newsError, setNewsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -748,54 +753,112 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
     });
   };
 
-  const addCustomTypeIfNeeded = (label: string) => {
-    const normalized = label.trim().toUpperCase();
-
-    if (!normalized) return null;
-
-    const exists = newsTypeOptions.some((o) => o.label === normalized);
-    if (exists) return normalized;
-
-    const id = `custom-${normalized.toLowerCase().replace(/\s+/g, '-')}`;
-
-    setNewsTypeOptions((prev) => [
-      { id, label: normalized },
-      ...prev.filter((p) => p.id !== 'custom'),
-      { id: 'custom', label: 'Agregar más…' },
-    ]);
-
-    return normalized;
+  const loadPersonNews = async (personId: number) => {
+    setNewsLoading(true);
+    setNewsError(null);
+    try {
+      const res = await getWorkforceEvents({
+        person_id: personId,
+        limit: 100,
+      });
+      setNewsItems(res.data);
+    } catch (e) {
+      setNewsError(e instanceof Error ? e.message : 'No se pudieron cargar las novedades');
+      setNewsItems([]);
+    } finally {
+      setNewsLoading(false);
+    }
   };
 
-  const handleAddNews = () => {
+  useEffect(() => {
+    if (!open || tab !== 'news') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const types = await getWorkforceEventTypes();
+        if (!cancelled) {
+          setEventTypes(types);
+          if (types.length > 0 && !newsEventTypeId) {
+            setNewsEventTypeId(String(types[0].id));
+          }
+        }
+      } catch {
+        if (!cancelled) setEventTypes([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, tab]);
+
+  useEffect(() => {
+    if (!open || tab !== 'news' || !effectivePerson?.id) return;
+    const pid = Number.parseInt(String(effectivePerson.id), 10);
+    if (!Number.isFinite(pid)) return;
+    void loadPersonNews(pid);
+  }, [open, tab, effectivePerson?.id]);
+
+  const handleAddNews = async () => {
     const text = newsText.trim();
+    const personId = Number.parseInt(String(effectivePerson?.id ?? ''), 10);
+    const typeId = Number.parseInt(newsEventTypeId, 10);
+    const hasSchedule =
+      newsStartDate.trim() !== '' ||
+      newsEndDate.trim() !== '' ||
+      newsStartTime.trim() !== '' ||
+      newsEndTime.trim() !== '';
 
-    if (!text) return;
-
-    let typeLabel =
-      newsTypeOptions.find((o) => o.id === newsType)?.label ?? 'OTRA';
-
-    if (newsType === 'custom') {
-      const added = addCustomTypeIfNeeded(customNewsType);
-      typeLabel = added ?? 'OTRA';
+    if (!Number.isFinite(personId)) {
+      setNewsError('No se pudo identificar a la persona del perfil.');
+      return;
+    }
+    if (!Number.isFinite(typeId)) {
+      setNewsError('Seleccione un tipo de novedad.');
+      return;
+    }
+    if (!text && !hasSchedule) {
+      setNewsError('Indique la novedad o al menos una fecha u hora.');
+      return;
     }
 
-    const now = new Date();
+    setNewsSaving(true);
+    setNewsError(null);
+    try {
+      await createWorkforceEvent({
+        event_type_id: typeId,
+        person_id: personId,
+        observation: text || null,
+        start_date: newsStartDate.trim() || null,
+        end_date: newsEndDate.trim() || null,
+        start_time: newsStartTime.trim() || null,
+        end_time: newsEndTime.trim() || null,
+      });
+      setNewsText('');
+      setNewsStartDate('');
+      setNewsEndDate('');
+      setNewsStartTime('');
+      setNewsEndTime('');
+      await loadPersonNews(personId);
+    } catch (e) {
+      setNewsError(e instanceof Error ? e.message : 'No se pudo registrar la novedad');
+    } finally {
+      setNewsSaving(false);
+    }
+  };
 
-    setNewsItems((prev) => [
-      {
-        id: `${now.getTime()}-${Math.random().toString(16).slice(2)}`,
-        type: typeLabel,
-        text,
-        createdAt: now.toISOString(),
-      },
-      ...prev,
-    ]);
-
-    setNewsText('');
-    setCustomNewsType('');
-
-    if (newsType === 'custom') setNewsType('license');
+  const handleNewsStatusChange = async (
+    eventId: string,
+    status: WorkforceEventStatus
+  ) => {
+    setNewsError(null);
+    try {
+      const updated = await patchWorkforceEvent(eventId, { status });
+      setNewsItems((prev) =>
+        prev.map((n) => (n.id === eventId ? updated : n))
+      );
+    } catch (e) {
+      setNewsError(e instanceof Error ? e.message : 'No se pudo actualizar el estado');
+    }
   };
 
   return (
@@ -919,36 +982,32 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                 </div>
               ) : tab === 'news' ? (
                 <div className="space-y-5">
+                  {newsError ? (
+                    <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                      {newsError}
+                    </p>
+                  ) : null}
+
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-                    <div className="md:col-span-4">
+                    <div className="md:col-span-3">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                         Tipo
                       </label>
 
                       <select
                         className="glass-input mt-1 w-full py-3 text-sm"
-                        value={newsType}
-                        onChange={(e) => setNewsType(e.target.value)}
+                        value={newsEventTypeId}
+                        onChange={(e) => setNewsEventTypeId(e.target.value)}
                       >
-                        {newsTypeOptions.map((opt) => (
-                          <option key={opt.id} value={opt.id}>
-                            {opt.label}
+                        {eventTypes.map((opt) => (
+                          <option key={opt.id} value={String(opt.id)}>
+                            {opt.name}
                           </option>
                         ))}
                       </select>
-
-                      {newsType === 'custom' ? (
-                        <input
-                          type="text"
-                          className="glass-input mt-2 w-full py-3 text-sm"
-                          placeholder="Escribe el nuevo tipo (ej: PERMISO)"
-                          value={customNewsType}
-                          onChange={(e) => setCustomNewsType(e.target.value)}
-                        />
-                      ) : null}
                     </div>
 
-                    <div className="md:col-span-6">
+                    <div className="md:col-span-5">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                         Novedad
                       </label>
@@ -960,26 +1019,86 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                         value={newsText}
                         onChange={(e) => setNewsText(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleAddNews();
+                          if (e.key === 'Enter' && !newsSaving) void handleAddNews();
                         }}
                       />
                     </div>
 
-                    <div className="flex items-end md:col-span-2">
-                      <button
-                        type="button"
-                        onClick={handleAddNews}
-                        className="glass-button-primary w-full py-3 text-xs font-bold uppercase tracking-widest"
-                      >
-                        Agregar
-                      </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <div>
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Fecha inicio
+                      </label>
+                      <input
+                        type="date"
+                        className="glass-input mt-1 w-full py-3 text-sm"
+                        value={newsStartDate}
+                        onChange={(e) => setNewsStartDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Fecha fin
+                      </label>
+                      <input
+                        type="date"
+                        className="glass-input mt-1 w-full py-3 text-sm"
+                        value={newsEndDate}
+                        onChange={(e) => setNewsEndDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Hora inicio
+                      </label>
+                      <input
+                        type="time"
+                        className="glass-input mt-1 w-full py-3 text-sm"
+                        value={newsStartTime}
+                        onChange={(e) => setNewsStartTime(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Hora fin
+                      </label>
+                      <input
+                        type="time"
+                        className="glass-input mt-1 w-full py-3 text-sm"
+                        value={newsEndTime}
+                        onChange={(e) => setNewsEndTime(e.target.value)}
+                      />
                     </div>
                   </div>
 
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      disabled={
+                        newsSaving ||
+                        (!newsText.trim() &&
+                          !newsStartDate &&
+                          !newsEndDate &&
+                          !newsStartTime &&
+                          !newsEndTime)
+                      }
+                      onClick={() => void handleAddNews()}
+                      className="glass-button-primary px-8 py-3 text-xs font-bold uppercase tracking-widest disabled:opacity-50"
+                    >
+                      {newsSaving ? 'Guardando…' : 'Agregar'}
+                    </button>
+                  </div>
+
                   <div className="max-h-[320px] space-y-3 overflow-y-auto pr-2 custom-scrollbar">
-                    {newsItems.length === 0 ? (
+                    {newsLoading ? (
                       <div className="rounded-2xl border border-white/30 bg-white/40 p-8 text-sm text-slate-500">
-                        En desarrollo...
+                        Cargando novedades…
+                      </div>
+                    ) : newsItems.length === 0 ? (
+                      <div className="rounded-2xl border border-white/30 bg-white/40 p-8 text-sm text-slate-500">
+                        Sin novedades registradas para esta persona.
                       </div>
                     ) : (
                       newsItems.map((n) => (
@@ -989,17 +1108,54 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                         >
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <span className="text-[10px] font-bold uppercase tracking-widest text-violet-600">
-                              {n.type}
+                              {n.event_type_name}
                             </span>
 
                             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                              {formatDateTime(new Date(n.createdAt))}
+                              {formatDateTime(new Date(n.created_at))}
                             </span>
                           </div>
 
                           <p className="mt-2 text-sm text-slate-700">
-                            {n.text}
+                            {n.observation ?? '—'}
                           </p>
+
+                          {formatWorkforceEventSchedule(n) ? (
+                            <p className="mt-1 text-xs text-slate-500">
+                              {formatWorkforceEventSchedule(n)}
+                            </p>
+                          ) : null}
+
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <span
+                              className={cn(
+                                'rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest',
+                                workforceStatusBadgeClass(n.status)
+                              )}
+                            >
+                              {WORKFORCE_EVENT_STATUS_LABELS[n.status]}
+                            </span>
+                            <select
+                              className="glass-input max-w-[160px] py-1.5 text-xs"
+                              value={n.status}
+                              onChange={(e) =>
+                                void handleNewsStatusChange(
+                                  n.id,
+                                  e.target.value as WorkforceEventStatus
+                                )
+                              }
+                            >
+                              {(
+                                Object.keys(
+                                  WORKFORCE_EVENT_STATUS_LABELS
+                                ) as WorkforceEventStatus[]
+                              ).map((st) => (
+                                <option key={st} value={st}>
+                                  {WORKFORCE_EVENT_STATUS_LABELS[st]}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                       ))
                     )}

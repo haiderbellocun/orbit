@@ -91,7 +91,9 @@ for (const id of [37, 38]) {
     });
     assert.ok(r);
     assert.equal(r.orbitAccess, "full");
-    assert.deepEqual(r.capabilities, [...VACANCIES_ONLY_CAPABILITIES]);
+    assert.deepEqual(r.capabilities, [
+    ...VACANCIES_ONLY_CAPABILITIES,
+  ]);
     assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.HOME), false);
   });
 }
@@ -110,6 +112,7 @@ test("LITE by configured role id (not 9)", () => {
     assert.deepEqual(r.capabilities, [
       ORBIT_CAPABILITY.HOME,
       ORBIT_CAPABILITY.TEACHERS,
+      ORBIT_CAPABILITY.NEWS,
     ]);
   } finally {
     if (prev === undefined) delete process.env.ORBIT_LITE_ROLE_ID;

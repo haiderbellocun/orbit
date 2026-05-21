@@ -3,6 +3,7 @@
  */
 
 import { getLiteRoleId } from "./orbitRoles";
+import { isNewsAreaRoleId } from "./newsScope";
 
 export type OrbitAccess = "lite" | "full" | "school";
 
@@ -14,6 +15,7 @@ export const ORBIT_CAPABILITY = {
   LITES: "view:lites",
   VACANCIES: "view:vacancies",
   PERSONAL: "view:personal",
+  NEWS: "view:news",
 } as const;
 
 export type OrbitCapability =
@@ -26,6 +28,7 @@ export const ALL_ORBIT_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.COORDINATORS,
   ORBIT_CAPABILITY.LITES,
   ORBIT_CAPABILITY.VACANCIES,
+  ORBIT_CAPABILITY.NEWS,
 ];
 
 const LITE_CAPABILITIES: readonly OrbitCapability[] = [
@@ -57,6 +60,7 @@ function isSchoolCoordinatorRoleId(roleId: number): boolean {
 export const ROLE_51_STAFF_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.PERSONAL,
   ORBIT_CAPABILITY.VACANCIES,
+  ORBIT_CAPABILITY.NEWS,
 ];
 
 export const ROLE_51_STAFF_ROLE_ID = 51;
@@ -161,6 +165,25 @@ export function resolveOrbitAccess(input: {
   }
 
   return null;
+}
+
+function ensureNewsCapability(
+  capabilities: OrbitCapability[],
+  roleId: number | null
+): OrbitCapability[] {
+  if (roleId == null || !isNewsAreaRoleId(roleId)) return capabilities;
+  if (capabilities.includes(ORBIT_CAPABILITY.NEWS)) return capabilities;
+  return [...capabilities, ORBIT_CAPABILITY.NEWS];
+}
+
+export function finalizeOrbitCapabilities(
+  resolved: ResolvedOrbitAccess,
+  roleId: number | null
+): ResolvedOrbitAccess {
+  return {
+    ...resolved,
+    capabilities: ensureNewsCapability(resolved.capabilities, roleId),
+  };
 }
 
 export function hasCapability(

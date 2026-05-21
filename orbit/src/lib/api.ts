@@ -1084,3 +1084,127 @@ export async function importTeachersExcel(
 
   return data as ImportTeachersResponse;
 }
+
+export type WorkforceEventStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "TAKEN"
+  | "NOT_TAKEN"
+  | "CANCELLED";
+
+export type WorkforceEventType = {
+  id: number;
+  name: string;
+  description: string | null;
+};
+
+export type WorkforceEventPersonRef = {
+  id: number;
+  name: string;
+  document: string | null;
+  school_id: number | null;
+  school_name: string | null;
+  area_name: string | null;
+};
+
+export type WorkforceEvent = {
+  id: string;
+  event_type_id: number;
+  event_type_name: string;
+  observation: string | null;
+  status: WorkforceEventStatus;
+  start_date: string | null;
+  end_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  created_at: string;
+  updated_at: string;
+  person: WorkforceEventPersonRef;
+  created_by_person: { id: number; name: string };
+};
+
+export async function getWorkforceEventTypes(): Promise<WorkforceEventType[]> {
+  const res = await authFetch(`${BASE_URL}/workforce-events/event-types`, {
+    headers: jsonHeaders,
+  });
+  const json = (await handleJson(res)) as { data?: WorkforceEventType[] };
+  return json.data ?? [];
+}
+
+export async function getWorkforceEvents(params?: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: WorkforceEventStatus;
+  event_type_id?: number;
+  person_id?: number;
+  school_id?: number;
+  area_id?: number;
+}): Promise<PaginatedResponse<WorkforceEvent>> {
+  const q = new URLSearchParams();
+  if (params?.page != null) q.set("page", String(params.page));
+  if (params?.limit != null) q.set("limit", String(params.limit));
+  if (params?.search?.trim()) q.set("search", params.search.trim());
+  if (params?.status) q.set("status", params.status);
+  if (params?.event_type_id != null)
+    q.set("event_type_id", String(params.event_type_id));
+  if (params?.person_id != null)
+    q.set("person_id", String(params.person_id));
+  if (params?.school_id != null) q.set("school_id", String(params.school_id));
+  if (params?.area_id != null) q.set("area_id", String(params.area_id));
+  const qs = q.toString();
+  const res = await authFetch(
+    `${BASE_URL}/workforce-events/events${qs ? `?${qs}` : ""}`,
+    { headers: jsonHeaders }
+  );
+  return handleJson(res) as Promise<PaginatedResponse<WorkforceEvent>>;
+}
+
+export async function getWorkforceEvent(id: string): Promise<WorkforceEvent> {
+  const res = await authFetch(
+    `${BASE_URL}/workforce-events/events/${encodeURIComponent(id)}`,
+    { headers: jsonHeaders }
+  );
+  return handleJson(res) as Promise<WorkforceEvent>;
+}
+
+export async function createWorkforceEvent(body: {
+  event_type_id: number;
+  person_id: number;
+  observation?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  status?: WorkforceEventStatus;
+}): Promise<WorkforceEvent> {
+  const res = await authFetch(`${BASE_URL}/workforce-events/events`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(body),
+  });
+  return handleJson(res) as Promise<WorkforceEvent>;
+}
+
+export async function patchWorkforceEvent(
+  id: string,
+  body: {
+    status?: WorkforceEventStatus;
+    observation?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    start_time?: string | null;
+    end_time?: string | null;
+  }
+): Promise<WorkforceEvent> {
+  const res = await authFetch(
+    `${BASE_URL}/workforce-events/events/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: jsonHeaders,
+      body: JSON.stringify(body),
+    }
+  );
+  return handleJson(res) as Promise<WorkforceEvent>;
+}

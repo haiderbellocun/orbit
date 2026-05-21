@@ -24,6 +24,7 @@ export type OrbitJwtUser = {
   orbitAccess: OrbitAccess;
   capabilities: OrbitCapability[];
   schoolId: number | null;
+  areaId: number | null;
   programIds: number[];
 };
 
@@ -155,6 +156,13 @@ export function orbitAuthMiddleware(
         (orbitAccess === "lite" || orbitAccess === "school") && Number.isFinite(schoolId)
           ? schoolId
           : null,
+      areaId: (() => {
+        const aid =
+          typeof decoded.areaId === "number"
+            ? decoded.areaId
+            : Number.parseInt(String(decoded.areaId ?? ""), 10);
+        return Number.isFinite(aid) && aid > 0 ? aid : null;
+      })(),
       programIds: orbitAccess === "lite" ? parseProgramIds(decoded.programIds) : [],
     };
     next();
@@ -233,6 +241,7 @@ export function orbitCapabilityByPathMiddleware(
   else if (path.startsWith("/reinstatements")) required = ORBIT_CAPABILITY.VACANCIES;
   else if (path.startsWith("/lites")) required = ORBIT_CAPABILITY.LITES;
   else if (path.startsWith("/academic-load")) required = ORBIT_CAPABILITY.ACADEMIC_LOAD;
+  else if (path.startsWith("/workforce-events")) required = ORBIT_CAPABILITY.NEWS;
 
   if (required == null) {
     next();
