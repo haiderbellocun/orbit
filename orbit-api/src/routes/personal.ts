@@ -9,6 +9,10 @@ import {
   sqlPersonIsOrbitLite,
 } from "../lib/orbitRoles";
 import {
+  hasCapability,
+  ORBIT_CAPABILITY,
+} from "../lib/orbitCapabilities";
+import {
   personAllowedForSchoolScope,
   schoolScopeFromRequest,
 } from "../middleware/orbitAuth";
@@ -47,10 +51,31 @@ function requirePersonalSchoolScope(
   return scope;
 }
 
+/** Listado de personal de escuela: panel Personal o selector de novedades. */
+function requireSchoolStaffListAccess(
+  req: Request,
+  res: Response
+): { schoolId: number } | null {
+  const scope = schoolScopeFromRequest(req);
+  if (scope == null) {
+    res.status(403).json({ error: "No tienes permiso para este recurso" });
+    return null;
+  }
+  const caps = req.orbitUser?.capabilities;
+  if (
+    !hasCapability(caps, ORBIT_CAPABILITY.PERSONAL) &&
+    !hasCapability(caps, ORBIT_CAPABILITY.NEWS)
+  ) {
+    res.status(403).json({ error: "No tienes permiso para este recurso" });
+    return null;
+  }
+  return scope;
+}
+
 /** GET /personal */
 router.get("/personal", async (req: Request, res: Response) => {
   try {
-    const scope = requirePersonalSchoolScope(req, res);
+    const scope = requireSchoolStaffListAccess(req, res);
     if (scope == null) return;
 
     const mode = await resolveCoreSchemaMode();
