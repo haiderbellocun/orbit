@@ -698,6 +698,35 @@ export async function createPersonal(
   return handleJson(response);
 }
 
+export async function getPersonalById(id: number): Promise<unknown> {
+  const response = await authFetch(`${BASE_URL}/personal/${id}`, {
+    headers: jsonHeaders,
+  });
+  return handleJson(response);
+}
+
+export type UpdatePersonalPayload = {
+  full_name?: string;
+  /** Solo si la persona aún no tiene cédula registrada. */
+  document?: string;
+  /** Correo personal (columna email); no modifica edu_email. */
+  personal_email?: string | null;
+  phone?: string | null;
+  is_active?: boolean;
+};
+
+export async function updatePersonalProfile(
+  id: number,
+  data: UpdatePersonalPayload
+): Promise<unknown> {
+  const response = await authFetch(`${BASE_URL}/personal/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(data),
+  });
+  return handleJson(response);
+}
+
 export async function updateCoordinatorProfile(
   id: number,
   data: {

@@ -128,10 +128,14 @@ export interface StaffMember {
   id: string;
   document: string;
   name: string;
+  /** Correo personal (columna email en CORE). */
   email: string;
+  /** Correo institucional; solo lectura en UI. */
+  edu_email?: string;
   phone: string;
   school: string;
   program: string;
+  program_id?: number | null;
   role_id?: number;
   role_name?: string;
   status: 'active' | 'inactive';
