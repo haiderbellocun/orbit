@@ -53,6 +53,31 @@ CREATE INDEX IF NOT EXISTS idx_event_status ON workforce_events.event(status);
 CREATE INDEX IF NOT EXISTS idx_event_type ON workforce_events.event(event_type_id);
 CREATE INDEX IF NOT EXISTS idx_event_created ON workforce_events.event(created_at DESC);
 
+CREATE TABLE IF NOT EXISTS workforce_events.event_status_log (
+  id BIGSERIAL PRIMARY KEY,
+  event_id UUID NOT NULL REFERENCES workforce_events.event(id) ON DELETE CASCADE,
+  previous_status VARCHAR(20),
+  new_status VARCHAR(20) NOT NULL,
+  changed_by_person_id BIGINT NOT NULL,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT event_status_log_previous_check CHECK (
+    previous_status IS NULL OR previous_status IN (
+      'PENDING', 'APPROVED', 'REJECTED', 'TAKEN', 'NOT_TAKEN', 'CANCELLED'
+    )
+  ),
+  CONSTRAINT event_status_log_new_check CHECK (
+    new_status IN (
+      'PENDING', 'APPROVED', 'REJECTED', 'TAKEN', 'NOT_TAKEN', 'CANCELLED'
+    )
+  ),
+  CONSTRAINT fk_event_status_log_changed_by
+    FOREIGN KEY (changed_by_person_id) REFERENCES ${personT}(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_status_log_event
+  ON workforce_events.event_status_log(event_id, changed_at DESC);
+
 CREATE OR REPLACE FUNCTION workforce_events.touch_event_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -177,6 +202,40 @@ async function upgradeQuantityToScheduleColumns(): Promise<void> {
   ).catch(() => undefined);
 }
 
+async function upgradeEventStatusLogTable(coreSchema: CoreSchemaMode): Promise<void> {
+  const personT = coreSchema === "core" ? "core.person" : "public.person";
+  const reg = await pool.query(
+    `SELECT to_regclass('workforce_events.event_status_log') AS table_name`
+  );
+  if (reg.rows[0]?.table_name != null) return;
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS workforce_events.event_status_log (
+      id BIGSERIAL PRIMARY KEY,
+      event_id UUID NOT NULL REFERENCES workforce_events.event(id) ON DELETE CASCADE,
+      previous_status VARCHAR(20),
+      new_status VARCHAR(20) NOT NULL,
+      changed_by_person_id BIGINT NOT NULL,
+      changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CONSTRAINT event_status_log_previous_check CHECK (
+        previous_status IS NULL OR previous_status IN (
+          'PENDING', 'APPROVED', 'REJECTED', 'TAKEN', 'NOT_TAKEN', 'CANCELLED'
+        )
+      ),
+      CONSTRAINT event_status_log_new_check CHECK (
+        new_status IN (
+          'PENDING', 'APPROVED', 'REJECTED', 'TAKEN', 'NOT_TAKEN', 'CANCELLED'
+        )
+      ),
+      CONSTRAINT fk_event_status_log_changed_by
+        FOREIGN KEY (changed_by_person_id) REFERENCES ${personT}(id)
+        ON DELETE RESTRICT ON UPDATE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_status_log_event
+      ON workforce_events.event_status_log(event_id, changed_at DESC);
+  `);
+}
+
 export async function migrateWorkforceEvents(): Promise<void> {
   const mode = await resolveCoreSchemaMode();
   if (mode == null) {
@@ -188,6 +247,7 @@ export async function migrateWorkforceEvents(): Promise<void> {
   await pool.query(buildWorkforceEventsDdl(mode));
   await upgradeRenameAffectedPersonColumn();
   await upgradeQuantityToScheduleColumns();
+  await upgradeEventStatusLogTable(mode);
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_event_person_created
        ON workforce_events.event(person_id, created_at DESC)`

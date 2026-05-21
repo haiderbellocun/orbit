@@ -1,5 +1,15 @@
 import type { WorkforceEventStatus } from "@/src/lib/api";
 
+/** Orden sugerido en formularios de creación. */
+export const WORKFORCE_EVENT_STATUS_OPTIONS: readonly WorkforceEventStatus[] = [
+  "NOT_TAKEN",
+  "PENDING",
+  "APPROVED",
+  "TAKEN",
+  "REJECTED",
+  "CANCELLED",
+] as const;
+
 export const WORKFORCE_EVENT_STATUS_LABELS: Record<
   WorkforceEventStatus,
   string

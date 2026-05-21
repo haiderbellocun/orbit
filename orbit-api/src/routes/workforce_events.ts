@@ -229,6 +229,40 @@ function mapEventRow(row: Record<string, unknown>) {
   };
 }
 
+async function insertEventStatusLog(params: {
+  eventId: string;
+  previousStatus: string | null;
+  newStatus: string;
+  changedByPersonId: number;
+}): Promise<void> {
+  await pool.query(
+    `INSERT INTO workforce_events.event_status_log (
+       event_id, previous_status, new_status, changed_by_person_id
+     ) VALUES ($1::uuid, $2, $3, $4)`,
+    [
+      params.eventId,
+      params.previousStatus,
+      params.newStatus,
+      params.changedByPersonId,
+    ]
+  );
+}
+
+function mapStatusLogRow(row: Record<string, unknown>) {
+  return {
+    id: Number(row.id),
+    event_id: String(row.event_id),
+    previous_status:
+      row.previous_status == null ? null : String(row.previous_status),
+    new_status: String(row.new_status),
+    changed_at: new Date(row.changed_at as string | Date).toISOString(),
+    changed_by_person: {
+      id: Number(row.changed_by_person_id),
+      name: String(row.changed_by_name ?? ""),
+    },
+  };
+}
+
 async function fetchPersonInScope(
   personId: number,
   scope: NewsScope,
@@ -576,6 +610,13 @@ router.post("/workforce-events/events", async (req, res) => {
 
     const newId = String(rows[0]?.id);
 
+    await insertEventStatusLog({
+      eventId: newId,
+      previousStatus: null,
+      newStatus: status,
+      changedByPersonId: createdBy,
+    });
+
     const personT = qualifiedCoreTable(mode, "person");
     const schoolT = qualifiedCoreTable(mode, "school");
     const areaT = qualifiedCoreTable(mode, "area");
@@ -615,11 +656,72 @@ router.post("/workforce-events/events", async (req, res) => {
   }
 });
 
-/** PATCH /workforce-events/events/:id */
+/** GET /workforce-events/events/:id/status-log */
+router.get("/workforce-events/events/:id/status-log", async (req, res) => {
+  try {
+    const scope = requireNewsScope(req, res);
+    if (scope == null) return;
+
+    const mode = await resolveCoreSchemaMode();
+    if (mode == null) {
+      res.json({ data: [] });
+      return;
+    }
+
+    const eventId = String(req.params.id).trim();
+    const personT = qualifiedCoreTable(mode, "person");
+    const schoolT = qualifiedCoreTable(mode, "school");
+    const scopePart = scopeSql(scope, "ap", "sch", 2);
+
+    const allowed = await pool.query(
+      `SELECT e.id
+       FROM workforce_events.event e
+       JOIN ${personT} ap ON ap.id = e.person_id
+       LEFT JOIN ${schoolT} sch ON sch.id = ap.school_id
+       WHERE e.id = $1::uuid AND (${scopePart.clause})`,
+      [eventId, ...scopePart.values]
+    );
+    if (allowed.rows.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const { rows } = await pool.query(
+      `SELECT
+         l.id,
+         l.event_id,
+         l.previous_status,
+         l.new_status,
+         l.changed_at,
+         l.changed_by_person_id,
+         p.full_name AS changed_by_name
+       FROM workforce_events.event_status_log l
+       JOIN ${personT} p ON p.id = l.changed_by_person_id
+       WHERE l.event_id = $1::uuid
+       ORDER BY l.changed_at DESC, l.id DESC`,
+      [eventId]
+    );
+
+    res.json({
+      data: rows.map((r) => mapStatusLogRow(r as Record<string, unknown>)),
+    });
+  } catch (e) {
+    console.error("GET /workforce-events/events/:id/status-log failed:", e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** PATCH /workforce-events/events/:id — solo actualiza `status` y registra log. */
 router.patch("/workforce-events/events/:id", async (req, res) => {
   try {
     const scope = requireNewsScope(req, res);
     if (scope == null) return;
+
+    const changedBy = orbitPersonIdFromRequest(req);
+    if (changedBy == null) {
+      res.status(401).json({ error: "Se requiere autenticación" });
+      return;
+    }
 
     const mode = await resolveCoreSchemaMode();
     if (mode == null) {
@@ -632,8 +734,52 @@ router.patch("/workforce-events/events/:id", async (req, res) => {
     const schoolT = qualifiedCoreTable(mode, "school");
     const scopePart = scopeSql(scope, "ap", "sch", 2);
 
+    const b = req.body as Record<string, unknown>;
+    const disallowedKeys = [
+      "observation",
+      "event_type_id",
+      "eventTypeId",
+      "person_id",
+      "personId",
+      "start_date",
+      "startDate",
+      "end_date",
+      "endDate",
+      "start_time",
+      "startTime",
+      "end_time",
+      "endTime",
+      "fecha_inicio",
+      "fecha_fin",
+      "hora_inicio",
+      "hora_fin",
+      "quantity",
+      "quantity_unit",
+      "quantityUnit",
+    ];
+    for (const key of disallowedKeys) {
+      if (b[key] !== undefined) {
+        res.status(400).json({
+          error: "Solo se puede editar el estado de la novedad",
+        });
+        return;
+      }
+    }
+
+    if (b.status === undefined) {
+      res.status(400).json({ error: "El campo status es obligatorio" });
+      return;
+    }
+
+    const newStatus =
+      typeof b.status === "string" ? b.status.trim().toUpperCase() : "";
+    if (!EVENT_STATUSES.has(newStatus)) {
+      res.status(400).json({ error: "status inválido" });
+      return;
+    }
+
     const existing = await pool.query(
-      `SELECT e.id
+      `SELECT e.id, e.status
        FROM workforce_events.event e
        JOIN ${personT} ap ON ap.id = e.person_id
        LEFT JOIN ${schoolT} sch ON sch.id = ap.school_id
@@ -645,63 +791,30 @@ router.patch("/workforce-events/events/:id", async (req, res) => {
       return;
     }
 
-    const b = req.body as Record<string, unknown>;
-    const sets: string[] = [];
-    const values: unknown[] = [];
-    let idx = 1;
+    const previousStatus = String(existing.rows[0].status);
 
-    if (b.status !== undefined) {
-      const status =
-        typeof b.status === "string" ? b.status.trim().toUpperCase() : "";
-      if (!EVENT_STATUSES.has(status)) {
-        res.status(400).json({ error: "status inválido" });
-        return;
+    if (previousStatus !== newStatus) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `UPDATE workforce_events.event SET status = $1 WHERE id = $2::uuid`,
+          [newStatus, eventId]
+        );
+        await client.query(
+          `INSERT INTO workforce_events.event_status_log (
+             event_id, previous_status, new_status, changed_by_person_id
+           ) VALUES ($1::uuid, $2, $3, $4)`,
+          [eventId, previousStatus, newStatus, changedBy]
+        );
+        await client.query("COMMIT");
+      } catch (txErr) {
+        await client.query("ROLLBACK");
+        throw txErr;
+      } finally {
+        client.release();
       }
-      sets.push(`status = $${idx}`);
-      values.push(status);
-      idx++;
     }
-
-    if (b.observation !== undefined) {
-      const observation =
-        typeof b.observation === "string" && b.observation.trim() !== ""
-          ? b.observation.trim()
-          : null;
-      sets.push(`observation = $${idx}`);
-      values.push(observation);
-      idx++;
-    }
-
-    if (hasScheduleFieldsInBody(b)) {
-      const schedule = normalizeSchedulePayload(b);
-      if ("error" in schedule) {
-        res.status(400).json({ error: schedule.error });
-        return;
-      }
-      sets.push(`start_date = $${idx}`);
-      values.push(schedule.start_date);
-      idx++;
-      sets.push(`end_date = $${idx}`);
-      values.push(schedule.end_date);
-      idx++;
-      sets.push(`start_time = $${idx}`);
-      values.push(schedule.start_time);
-      idx++;
-      sets.push(`end_time = $${idx}`);
-      values.push(schedule.end_time);
-      idx++;
-    }
-
-    if (sets.length === 0) {
-      res.status(400).json({ error: "No hay campos para actualizar" });
-      return;
-    }
-
-    values.push(eventId);
-    await pool.query(
-      `UPDATE workforce_events.event SET ${sets.join(", ")} WHERE id = $${idx}::uuid`,
-      values
-    );
 
     const areaT = qualifiedCoreTable(mode, "area");
     const detail = await pool.query(

@@ -24,7 +24,7 @@ import {
   createWorkforceEvent,
   getWorkforceEventTypes,
   getWorkforceEvents,
-  patchWorkforceEvent,
+  patchWorkforceEventStatus,
   type CatalogProgram,
   type CatalogSchool,
   type WorkforceEvent,
@@ -33,9 +33,11 @@ import {
 } from '@/src/lib/api';
 import {
   WORKFORCE_EVENT_STATUS_LABELS,
+  WORKFORCE_EVENT_STATUS_OPTIONS,
   formatWorkforceEventSchedule,
   workforceStatusBadgeClass,
 } from '@/src/lib/workforceEventLabels';
+import { WorkforceEventStatusHistory } from '@/src/components/common/WorkforceEventStatusHistory';
 
 export type PersonProfile = {
   id: string;
@@ -243,6 +245,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
 
   const [eventTypes, setEventTypes] = useState<WorkforceEventType[]>([]);
   const [newsEventTypeId, setNewsEventTypeId] = useState<string>('');
+  const [newsStatus, setNewsStatus] = useState<WorkforceEventStatus>('NOT_TAKEN');
   const [newsText, setNewsText] = useState<string>('');
   const [newsStartDate, setNewsStartDate] = useState('');
   const [newsEndDate, setNewsEndDate] = useState('');
@@ -832,8 +835,10 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
         end_date: newsEndDate.trim() || null,
         start_time: newsStartTime.trim() || null,
         end_time: newsEndTime.trim() || null,
+        status: newsStatus,
       });
       setNewsText('');
+      setNewsStatus('NOT_TAKEN');
       setNewsStartDate('');
       setNewsEndDate('');
       setNewsStartTime('');
@@ -852,7 +857,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   ) => {
     setNewsError(null);
     try {
-      const updated = await patchWorkforceEvent(eventId, { status });
+      const updated = await patchWorkforceEventStatus(eventId, status);
       setNewsItems((prev) =>
         prev.map((n) => (n.id === eventId ? updated : n))
       );
@@ -1007,7 +1012,27 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                       </select>
                     </div>
 
-                    <div className="md:col-span-5">
+                    <div className="md:col-span-3">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Estado
+                      </label>
+
+                      <select
+                        className="glass-input mt-1 w-full py-3 text-sm"
+                        value={newsStatus}
+                        onChange={(e) =>
+                          setNewsStatus(e.target.value as WorkforceEventStatus)
+                        }
+                      >
+                        {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
+                          <option key={st} value={st}>
+                            {WORKFORCE_EVENT_STATUS_LABELS[st]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="md:col-span-6">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                         Novedad
                       </label>
@@ -1145,17 +1170,14 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                                 )
                               }
                             >
-                              {(
-                                Object.keys(
-                                  WORKFORCE_EVENT_STATUS_LABELS
-                                ) as WorkforceEventStatus[]
-                              ).map((st) => (
+                              {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
                                 <option key={st} value={st}>
                                   {WORKFORCE_EVENT_STATUS_LABELS[st]}
                                 </option>
                               ))}
                             </select>
                           </div>
+                          <WorkforceEventStatusHistory eventId={n.id} />
                         </div>
                       ))
                     )}
