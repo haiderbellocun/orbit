@@ -9,13 +9,14 @@ import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
 import { Teacher, Vacancy, Coordinator } from '@/src/types';
 import { PersonSearchCombobox } from '@/src/components/common/PersonSearchCombobox';
+import { WorkforceEventStatusHistory } from '@/src/components/common/WorkforceEventStatusHistory';
 import {
   createWorkforceEvent,
   getCatalogAreas,
   getCatalogSchools,
   getWorkforceEventTypes,
   getWorkforceEvents,
-  patchWorkforceEvent,
+  patchWorkforceEventStatus,
   type WorkforceEvent,
   type WorkforceEventStatus,
   type WorkforceEventType,
@@ -23,6 +24,7 @@ import {
 import type { PersonPick } from '@/src/components/common/PersonSearchCombobox';
 import {
   WORKFORCE_EVENT_STATUS_LABELS,
+  WORKFORCE_EVENT_STATUS_OPTIONS,
   formatWorkforceEventSchedule,
   workforceStatusBadgeClass,
 } from '@/src/lib/workforceEventLabels';
@@ -64,6 +66,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
 
   const [selectedPerson, setSelectedPerson] = useState<PersonPick | null>(null);
   const [formTypeId, setFormTypeId] = useState('');
+  const [formStatus, setFormStatus] = useState<WorkforceEventStatus>('NOT_TAKEN');
   const [formDescription, setFormDescription] = useState('');
   const [formStartDate, setFormStartDate] = useState('');
   const [formEndDate, setFormEndDate] = useState('');
@@ -165,8 +168,10 @@ export const NewsView: React.FC<NewsViewProps> = ({
         end_date: formEndDate.trim() || null,
         start_time: formStartTime.trim() || null,
         end_time: formEndTime.trim() || null,
+        status: formStatus,
       });
       setFormDescription('');
+      setFormStatus('NOT_TAKEN');
       setFormStartDate('');
       setFormEndDate('');
       setFormStartTime('');
@@ -183,7 +188,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
 
   const handleStatusChange = async (id: string, status: WorkforceEventStatus) => {
     try {
-      const updated = await patchWorkforceEvent(id, { status });
+      const updated = await patchWorkforceEventStatus(id, status);
       setEvents((prev) => prev.map((e) => (e.id === id ? updated : e)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo actualizar');
@@ -229,13 +234,11 @@ export const NewsView: React.FC<NewsViewProps> = ({
                   }
                 >
                   <option value="">Estado</option>
-                  {(Object.keys(WORKFORCE_EVENT_STATUS_LABELS) as WorkforceEventStatus[]).map(
-                    (st) => (
-                      <option key={st} value={st}>
-                        {WORKFORCE_EVENT_STATUS_LABELS[st]}
-                      </option>
-                    )
-                  )}
+                  {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
+                    <option key={st} value={st}>
+                      {WORKFORCE_EVENT_STATUS_LABELS[st]}
+                    </option>
+                  ))}
                 </select>
                 <select
                   className="glass-input py-1.5 text-xs max-w-[120px]"
@@ -370,9 +373,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
                           )
                         }
                       >
-                        {(Object.keys(
-                          WORKFORCE_EVENT_STATUS_LABELS
-                        ) as WorkforceEventStatus[]).map((st) => (
+                        {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
                           <option key={st} value={st}>
                             {WORKFORCE_EVENT_STATUS_LABELS[st]}
                           </option>
@@ -387,6 +388,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
                         {formatWorkforceEventSchedule(news)}
                       </p>
                     ) : null}
+                    <WorkforceEventStatusHistory eventId={news.id} />
                   </motion.div>
                 ))
               )}
@@ -426,6 +428,24 @@ export const NewsView: React.FC<NewsViewProps> = ({
                     {eventTypes.map((t) => (
                       <option key={t.id} value={String(t.id)}>
                         {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">
+                    Estado
+                  </label>
+                  <select
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                    value={formStatus}
+                    onChange={(e) =>
+                      setFormStatus(e.target.value as WorkforceEventStatus)
+                    }
+                  >
+                    {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
+                      <option key={st} value={st}>
+                        {WORKFORCE_EVENT_STATUS_LABELS[st]}
                       </option>
                     ))}
                   </select>
