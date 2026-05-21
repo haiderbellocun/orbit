@@ -100,10 +100,12 @@ router.get("/personal", async (req: Request, res: Response) => {
          p.id,
          p.document,
          p.full_name AS name,
-         COALESCE(NULLIF(TRIM(p.edu_email), ''), NULLIF(TRIM(p.email), '')) AS email,
+         NULLIF(TRIM(p.email), '') AS email,
+         NULLIF(TRIM(p.edu_email), '') AS edu_email,
          p.phone,
          p.school_id,
          COALESCE(s.name, '') AS school,
+         p.program_id,
          COALESCE(pr.name, '') AS program,
          r.id AS role_id,
          COALESCE(r.name, '') AS role_name,
@@ -304,10 +306,12 @@ router.get("/personal/:id", async (req: Request, res: Response) => {
          p.id,
          p.document,
          p.full_name AS name,
-         COALESCE(NULLIF(TRIM(p.edu_email), ''), NULLIF(TRIM(p.email), '')) AS email,
+         NULLIF(TRIM(p.email), '') AS email,
+         NULLIF(TRIM(p.edu_email), '') AS edu_email,
          p.phone,
          p.school_id,
          COALESCE(s.name, '') AS school,
+         p.program_id,
          COALESCE(pr.name, '') AS program,
          r.id AS role_id,
          COALESCE(r.name, '') AS role_name,
@@ -341,6 +345,194 @@ router.get("/personal/:id", async (req: Request, res: Response) => {
     res.json(result.rows[0]);
   } catch (e) {
     console.error("GET /personal/:id failed:", e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** PATCH /personal/:id */
+router.patch("/personal/:id", async (req: Request, res: Response) => {
+  try {
+    const scope = requirePersonalSchoolScope(req, res);
+    if (scope == null) return;
+
+    const id = Number.parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const mode = await resolveCoreSchemaMode();
+    if (mode == null) {
+      res.status(503).json({ error: "CORE catalog is not available" });
+      return;
+    }
+
+    const prefix = mode === "core" ? "core." : "";
+    const liteRoleId = getLiteRoleId();
+    const b = (req.body ?? {}) as Record<string, unknown>;
+
+    const fullName =
+      typeof b.full_name === "string"
+        ? b.full_name.trim()
+        : typeof b.fullName === "string"
+          ? b.fullName.trim()
+          : null;
+    const personalEmail =
+      typeof b.personal_email === "string"
+        ? b.personal_email.trim().toLowerCase()
+        : typeof b.email === "string"
+          ? b.email.trim().toLowerCase()
+          : null;
+    const phone = typeof b.phone === "string" ? b.phone.trim() : null;
+    const isActivePatch =
+      typeof b.is_active === "boolean"
+        ? b.is_active
+        : typeof b.isActive === "boolean"
+          ? b.isActive
+          : undefined;
+
+    if (
+      Object.prototype.hasOwnProperty.call(b, "edu_email") ||
+      Object.prototype.hasOwnProperty.call(b, "eduEmail")
+    ) {
+      res.status(400).json({ error: "edu_email no es editable desde este módulo" });
+      return;
+    }
+
+    const documentPatch =
+      typeof b.document === "string" ? b.document.trim() : null;
+
+    const exists = await pool.query(
+      `SELECT
+         p.id,
+         p.school_id,
+         COALESCE(NULLIF(TRIM(p.document), ''), '') AS document
+       FROM ${prefix}person p
+       LEFT JOIN ${prefix}role r ON r.id = p.role_id
+       LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, (SELECT area_id FROM ${prefix}school WHERE id = p.school_id))
+       LEFT JOIN ${prefix}hierarchy h ON h.id = p.hierarchy_id
+       WHERE p.id = $1
+         AND p.school_id = $2
+         AND (r.name IS NULL OR r.name NOT IN ('DOCENTES', 'DOCENTES PENSIONADOS'))
+         AND NOT (${sqlPersonIsOrbitLite("p", "r", liteRoleId)})
+         AND NOT (${coordinatorAcademicSql("a", "h", "r")})`,
+      [id, scope.schoolId]
+    );
+    if (exists.rows.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const row = exists.rows[0] as {
+      school_id?: number | null;
+      document?: string;
+    };
+    if (!personAllowedForSchoolScope(req, row.school_id)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const currentDocument = String(row.document ?? "").trim();
+    if (
+      documentPatch !== null &&
+      Object.prototype.hasOwnProperty.call(b, "document")
+    ) {
+      if (currentDocument) {
+        res.status(400).json({
+          error: "La cédula no se puede modificar una vez registrada",
+        });
+        return;
+      }
+      if (!documentPatch) {
+        res.status(400).json({ error: "La cédula no puede quedar vacía" });
+        return;
+      }
+    }
+
+    const personT = qualifiedCoreTable(mode, "person");
+
+    const setParts: string[] = [];
+    const params: unknown[] = [id];
+    let pIdx = 2;
+
+    if (
+      documentPatch !== null &&
+      Object.prototype.hasOwnProperty.call(b, "document") &&
+      !currentDocument
+    ) {
+      setParts.push(`document = $${pIdx}`);
+      params.push(documentPatch);
+      pIdx++;
+    }
+
+    if (fullName != null && fullName.length > 0) {
+      setParts.push(`full_name = $${pIdx}`);
+      params.push(fullName);
+      pIdx++;
+    }
+    if (personalEmail !== null) {
+      setParts.push(`email = $${pIdx}`);
+      params.push(personalEmail.length > 0 ? personalEmail : null);
+      pIdx++;
+    }
+    if (phone !== null) {
+      setParts.push(`phone = $${pIdx}`);
+      params.push(phone.length > 0 ? phone : null);
+      pIdx++;
+    }
+    if (isActivePatch !== undefined) {
+      setParts.push(`is_active = $${pIdx}`);
+      params.push(isActivePatch);
+      pIdx++;
+    }
+
+    if (setParts.length === 0) {
+      res.status(400).json({ error: "No hay campos para actualizar" });
+      return;
+    }
+
+    setParts.push("updated_at = NOW()");
+
+    const updated = await pool.query(
+      `UPDATE ${personT} SET ${setParts.join(", ")} WHERE id = $1 RETURNING id`,
+      params
+    );
+    if (updated.rows.length === 0) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const refreshed = await pool.query(
+      `SELECT
+         p.id,
+         p.document,
+         p.full_name AS name,
+         NULLIF(TRIM(p.email), '') AS email,
+         NULLIF(TRIM(p.edu_email), '') AS edu_email,
+         p.phone,
+         p.school_id,
+         COALESCE(s.name, '') AS school,
+         p.program_id,
+         COALESCE(pr.name, '') AS program,
+         r.id AS role_id,
+         COALESCE(r.name, '') AS role_name,
+         ${sqlPersonStatusText("p")} AS status
+       FROM ${prefix}person p
+       LEFT JOIN ${prefix}role r ON r.id = p.role_id
+       LEFT JOIN ${prefix}school s ON s.id = p.school_id
+       LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
+       WHERE p.id = $1`,
+      [id]
+    );
+
+    res.json(refreshed.rows[0]);
+  } catch (e: unknown) {
+    const err = e as { code?: string };
+    if (err.code === "23505") {
+      res.status(409).json({ error: "Ya existe una persona con ese documento" });
+      return;
+    }
+    console.error("PATCH /personal/:id failed:", e);
     res.status(500).json({ error: "Internal server error" });
   }
 });

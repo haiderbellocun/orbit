@@ -1,7 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { XMarkIcon, UserPlusIcon } from '@heroicons/react/24/solid';
+import {
+  XMarkIcon,
+  UserPlusIcon,
+  UserCircleIcon,
+  EnvelopeIcon,
+  PhoneIcon,
+  IdentificationIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon,
+  PencilSquareIcon,
+} from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
+import {
+  PersonProfile,
+  PersonProfileModal,
+} from '@/src/components/common/PersonProfileModal';
 import { cn } from '@/src/lib/utils';
 import type { StaffMember, Vacancy, Teacher, Coordinator } from '@/src/types';
 import {
@@ -15,14 +29,20 @@ import {
 
 function mapStaffFromApi(row: Record<string, unknown>): StaffMember {
   const st = String(row.status ?? 'active');
+  const programIdRaw = row.program_id;
   return {
     id: String(row.id ?? ''),
     document: String(row.document ?? ''),
     name: String(row.name ?? ''),
     email: String(row.email ?? ''),
+    edu_email: row.edu_email ? String(row.edu_email) : '',
     phone: String(row.phone ?? ''),
     school: String(row.school ?? ''),
     program: String(row.program ?? ''),
+    program_id:
+      programIdRaw != null && Number.isFinite(Number(programIdRaw))
+        ? Number(programIdRaw)
+        : null,
     role_id:
       row.role_id != null && Number.isFinite(Number(row.role_id))
         ? Number(row.role_id)
@@ -50,6 +70,7 @@ export const PersonalView: React.FC<PersonalViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [profilePerson, setProfilePerson] = useState<PersonProfile | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [roles, setRoles] = useState<CatalogRole[]>([]);
@@ -57,7 +78,7 @@ export const PersonalView: React.FC<PersonalViewProps> = ({
 
   const [document, setDocument] = useState('');
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+  const [personalEmail, setPersonalEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [roleId, setRoleId] = useState('');
   const [programId, setProgramId] = useState('');
@@ -113,18 +134,47 @@ export const PersonalView: React.FC<PersonalViewProps> = ({
         r.name.toLowerCase().includes(q) ||
         r.document.toLowerCase().includes(q) ||
         r.email.toLowerCase().includes(q) ||
-        r.role_name?.toLowerCase().includes(q)
+        r.role_name?.toLowerCase().includes(q) ||
+        r.program?.toLowerCase().includes(q)
     );
   }, [rows, searchQuery]);
+
+  const selectableRoles = useMemo(
+    () =>
+      roles.filter((r) => {
+        const n = (r.name ?? '').toUpperCase();
+        return n !== 'DOCENTES' && n !== 'DOCENTES PENSIONADOS';
+      }),
+    [roles]
+  );
 
   const resetForm = () => {
     setDocument('');
     setFullName('');
-    setEmail('');
+    setPersonalEmail('');
     setPhone('');
     setRoleId('');
     setProgramId('');
     setFormError(null);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setShowCreate(true);
+  };
+
+  const openProfile = (row: StaffMember) => {
+    setProfilePerson({
+      id: row.id,
+      name: row.name,
+      document: row.document,
+      role: 'staff',
+    });
+  };
+
+  const closeCreate = () => {
+    setShowCreate(false);
+    resetForm();
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -144,16 +194,13 @@ export const PersonalView: React.FC<PersonalViewProps> = ({
       await createPersonal({
         document: document.trim(),
         full_name: fullName.trim(),
-        email: email.trim() || null,
+        email: personalEmail.trim() || null,
         phone: phone.trim() || null,
         role_id: rid,
         program_id:
-          programId.trim() !== ''
-            ? Number.parseInt(programId, 10)
-            : null,
+          programId.trim() !== '' ? Number.parseInt(programId, 10) : null,
       });
-      setShowCreate(false);
-      resetForm();
+      closeCreate();
       await loadList();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'No se pudo crear');
@@ -162,21 +209,15 @@ export const PersonalView: React.FC<PersonalViewProps> = ({
     }
   };
 
-  const selectableRoles = useMemo(
-    () =>
-      roles.filter((r) => {
-        const n = (r.name ?? '').toUpperCase();
-        return n !== 'DOCENTES' && n !== 'DOCENTES PENSIONADOS';
-      }),
-    [roles]
-  );
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-8"
+      className="space-y-8 relative"
     >
+      <div className="absolute -top-20 -right-20 w-64 h-64 bg-violet-200/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 rounded-full blur-3xl pointer-events-none" />
+
       <Header
         title="Personal"
         subtitle="Colaboradores de tu escuela"
@@ -184,100 +225,171 @@ export const PersonalView: React.FC<PersonalViewProps> = ({
         setSearchQuery={setSearchQuery}
       />
 
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-wrap items-center justify-between gap-4"
-      >
-        <p className="text-sm text-slate-500">
-          {loading
-            ? 'Cargando…'
-            : `${filtered.length} persona${filtered.length === 1 ? '' : 's'}`}
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+        <div className="glass-panel p-4 flex flex-col md:flex-row gap-4 items-center flex-1">
+          <div className="relative flex-1 w-full">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar colaborador..."
+              className="glass-input w-full pl-10 pr-4 py-3 text-sm"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery?.(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <button
+              type="button"
+              className="glass-button-secondary flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-3 text-sm"
+            >
+              <FunnelIcon className="h-4.5 w-4.5" />
+              <span>Filtros</span>
+            </button>
+          </div>
+        </div>
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           type="button"
-          onClick={() => {
-            resetForm();
-            setShowCreate(true);
-          }}
-          className="glass-button-primary flex items-center gap-2 px-5 py-2.5 text-sm font-bold"
+          onClick={openCreate}
+          className="glass-button-primary flex items-center gap-2 px-5 py-3 h-fit text-sm font-bold"
         >
           <UserPlusIcon className="h-5 w-5" />
           Crear personal
         </motion.button>
-      </motion.div>
+      </div>
+
+      <p className="text-sm text-slate-500 relative z-10">
+        {loading
+          ? 'Cargando…'
+          : `${filtered.length} persona${filtered.length === 1 ? '' : 's'}`}
+      </p>
 
       {loadError && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 relative z-10">
           {loadError}
         </div>
       )}
 
-      <div className="glass-panel overflow-hidden">
-        <motion.div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                <th className="px-6 py-4">Nombre</th>
-                <th className="px-6 py-4">Documento</th>
-                <th className="px-6 py-4">Rol</th>
-                <th className="px-6 py-4">Programa</th>
-                <th className="px-6 py-4">Contacto</th>
-                <th className="px-6 py-4">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
-                    Cargando personal…
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
-                    No hay personal registrado en tu escuela
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="border-b border-slate-50/80 hover:bg-violet-50/30 transition-colors"
-                  >
-                    <td className="px-6 py-4 font-semibold text-slate-900">{row.name}</td>
-                    <td className="px-6 py-4 text-slate-600">{row.document}</td>
-                    <td className="px-6 py-4 text-slate-600">{row.role_name || '—'}</td>
-                    <td className="px-6 py-4 text-slate-600">{row.program || '—'}</td>
-                    <td className="px-6 py-4 text-slate-600">
-                      <motion.div className="flex flex-col gap-0.5">
-                        <span>{row.email || '—'}</span>
-                        {row.phone ? (
-                          <span className="text-xs text-slate-400">{row.phone}</span>
-                        ) : null}
-                      </motion.div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={cn(
-                          'inline-flex rounded-lg px-2 py-1 text-[10px] font-bold uppercase',
-                          row.status === 'active'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-slate-100 text-slate-500'
-                        )}
-                      >
-                        {row.status === 'active' ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </td>
-                  </tr>
-                ))
+      {loading ? (
+        <div className="glass-panel p-20 flex flex-col items-center justify-center text-center space-y-4 relative z-10">
+          <div className="h-10 w-10 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+          <p className="text-sm font-medium text-slate-600">Cargando personal…</p>
+        </div>
+      ) : filtered.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10">
+          {filtered.map((row, i) => (
+            <motion.div
+              key={row.id}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className={cn(
+                'glass-card p-6 flex flex-col items-center text-center group transition-all duration-300 border-t-4',
+                i % 2 === 0 ? 'border-t-violet-500/50' : 'border-t-cyan-500/50'
               )}
-            </tbody>
-          </table>
+            >
+              <div className="relative mb-4">
+                <button
+                  type="button"
+                  onClick={() => openProfile(row)}
+                  className="w-20 h-20 rounded-3xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-slate-300 group-hover:from-violet-50 group-hover:to-fuchsia-50 group-hover:text-violet-500 transition-all shadow-inner focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                  title="Ver información personal"
+                  aria-label="Ver información personal"
+                >
+                  <UserCircleIcon className="h-12 w-12" />
+                </button>
+                <div
+                  className={cn(
+                    'absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-4 border-white shadow-sm',
+                    row.status === 'active' ? 'bg-emerald-500' : 'bg-slate-300'
+                  )}
+                />
+              </div>
+
+              <h3 className="text-lg font-bold text-slate-900 font-display group-hover:text-violet-600 transition-colors line-clamp-2">
+                {row.name}
+              </h3>
+              <p className="text-[10px] font-bold text-violet-500 uppercase tracking-[0.2em] mt-1 line-clamp-2">
+                {row.role_name || 'Sin rol'}
+              </p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em] mt-1 line-clamp-2">
+                {row.program || row.school || '—'}
+              </p>
+
+              <div className="mt-6 w-full space-y-3">
+                {row.document ? (
+                  <div className="flex items-center gap-3 text-xs text-slate-500 bg-white/40 p-2 rounded-lg border border-white/20">
+                    <IdentificationIcon className="h-3.5 w-3.5 shrink-0 text-fuchsia-400" />
+                    <span className="truncate">{row.document}</span>
+                  </div>
+                ) : null}
+                <div className="flex items-center gap-3 text-xs text-slate-500 bg-white/40 p-2 rounded-lg border border-white/20">
+                  <EnvelopeIcon className="h-3.5 w-3.5 shrink-0 text-violet-400" />
+                  <span className="truncate">{row.email || '—'}</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-slate-500 bg-white/40 p-2 rounded-lg border border-white/20">
+                  <PhoneIcon className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+                  <span>{row.phone || '—'}</span>
+                </div>
+              </div>
+
+              <span
+                className={cn(
+                  'mt-4 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-xl border',
+                  row.status === 'active'
+                    ? 'text-emerald-600 bg-emerald-50 border-emerald-100'
+                    : 'text-slate-500 bg-slate-100 border-slate-200'
+                )}
+              >
+                {row.status === 'active' ? 'Activo' : 'Inactivo'}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => openProfile(row)}
+                className="w-full mt-6 py-3 glass-button-secondary text-xs flex items-center justify-center gap-2 group/btn"
+              >
+                <PencilSquareIcon className="h-3.5 w-3.5" />
+                <span>Ver perfil</span>
+              </button>
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-panel p-20 flex flex-col items-center justify-center text-center relative z-10"
+        >
+          <div className="w-24 h-24 rounded-full bg-slate-50 flex items-center justify-center text-slate-200 mb-6">
+            <MagnifyingGlassIcon className="h-12 w-12" />
+          </div>
+          <h3 className="text-xl font-bold text-slate-900 mb-2 font-display">
+            No hay personal registrado
+          </h3>
+          <p className="text-slate-500 max-w-md">
+            {searchQuery.trim()
+              ? 'Intenta ajustar los criterios de búsqueda.'
+              : 'Crea el primer colaborador de tu escuela con el botón Crear personal.'}
+          </p>
+          {searchQuery.trim() ? (
+            <button
+              type="button"
+              onClick={() => setSearchQuery?.('')}
+              className="text-violet-600 font-bold text-xs uppercase tracking-widest hover:underline pt-4"
+            >
+              Limpiar búsqueda
+            </button>
+          ) : null}
         </motion.div>
-      </div>
+      )}
+
+      <PersonProfileModal
+        open={!!profilePerson}
+        person={profilePerson}
+        onClose={() => setProfilePerson(null)}
+        onProfileUpdated={() => void loadList()}
+      />
 
       <AnimatePresence>
         {showCreate && (
@@ -286,13 +398,13 @@ export const PersonalView: React.FC<PersonalViewProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
-            onClick={() => setShowCreate(false)}
+            onClick={closeCreate}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="glass-panel w-full max-w-lg p-8"
+              className="glass-panel w-full max-w-lg p-8 max-h-[90vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="mb-6 flex items-center justify-between">
@@ -301,7 +413,7 @@ export const PersonalView: React.FC<PersonalViewProps> = ({
                 </h2>
                 <button
                   type="button"
-                  onClick={() => setShowCreate(false)}
+                  onClick={closeCreate}
                   className="p-2 text-slate-400 hover:text-slate-600"
                 >
                   <XMarkIcon className="h-5 w-5" />
@@ -368,13 +480,13 @@ export const PersonalView: React.FC<PersonalViewProps> = ({
                 </label>
                 <label className="block">
                   <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                    Correo
+                    Correo personal
                   </span>
                   <input
                     type="email"
                     className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={personalEmail}
+                    onChange={(e) => setPersonalEmail(e.target.value)}
                   />
                 </label>
                 <label className="block">
@@ -388,14 +500,12 @@ export const PersonalView: React.FC<PersonalViewProps> = ({
                   />
                 </label>
 
-                {formError && (
-                  <p className="text-sm text-rose-600">{formError}</p>
-                )}
+                {formError && <p className="text-sm text-rose-600">{formError}</p>}
 
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowCreate(false)}
+                    onClick={closeCreate}
                     className="glass-button-secondary flex-1 py-2.5 text-sm font-bold"
                   >
                     Cancelar

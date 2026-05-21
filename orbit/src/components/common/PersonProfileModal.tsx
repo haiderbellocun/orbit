@@ -15,9 +15,11 @@ import {
   getCatalogSchools,
   getCoordinator,
   getLite,
+  getPersonalById,
   getTeacher,
   updateCoordinatorProfile,
   updateLiteProfile,
+  updatePersonalProfile,
   updateTeacherProfile,
   type CatalogProgram,
   type CatalogSchool,
@@ -26,7 +28,8 @@ import {
 export type PersonProfile = {
   id: string;
   name: string;
-  role?: 'lite' | 'coordinator' | 'teacher';
+  role?: 'lite' | 'coordinator' | 'teacher' | 'staff';
+  role_name?: string;
   document?: string;
   edu_email?: string;
   personal_email?: string;
@@ -95,6 +98,8 @@ function fieldLabel(key: keyof PersonProfile): string {
       return 'Programas';
     case 'program':
       return 'Programa';
+    case 'role_name':
+      return 'Rol';
     case 'academicLine':
       return 'Área académica';
     case 'coordinatorName':
@@ -114,10 +119,26 @@ function statusLabel(st?: PersonProfile['status']): string {
 }
 
 function toPersonProfileFromApi(
-  role: 'lite' | 'coordinator' | 'teacher',
+  role: 'lite' | 'coordinator' | 'teacher' | 'staff',
   row: any
 ): PersonProfile {
   if (!row) return { id: '', name: '', role };
+
+  if (role === 'staff') {
+    return {
+      id: String(row.id ?? ''),
+      role: 'staff',
+      name: String(row.name ?? ''),
+      document: row.document ? String(row.document) : '',
+      edu_email: row.edu_email ? String(row.edu_email) : '',
+      personal_email: row.email ? String(row.email) : '',
+      phone: row.phone ? String(row.phone) : '',
+      school: row.school ? String(row.school) : '',
+      role_name: row.role_name ? String(row.role_name) : '',
+      program: row.program ? String(row.program) : '',
+      status: row.status === 'inactive' ? 'inactive' : 'active',
+    };
+  }
 
   if (role === 'lite') {
     return {
@@ -343,7 +364,9 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
             ? await getLite(idNum)
             : person.role === 'teacher'
               ? await getTeacher(idNum)
-              : await getCoordinator(idNum);
+              : person.role === 'staff'
+                ? await getPersonalById(idNum)
+                : await getCoordinator(idNum);
 
         if (!cancelled) {
           const next = toPersonProfileFromApi(person.role, row as any);
@@ -386,20 +409,32 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   const visibleFields = useMemo(() => {
     if (!effectivePerson) return [];
 
-    const ordered: (keyof PersonProfile)[] = [
-      'document',
-      'edu_email',
-      'personal_email',
-      'phone',
-      'address',
-      'campus',
-      'school',
-      'programs',
-      'program',
-      'academicLine',
-      'coordinatorName',
-      'status',
-    ];
+    const ordered: (keyof PersonProfile)[] =
+      effectivePerson.role === 'staff'
+        ? [
+            'document',
+            'edu_email',
+            'personal_email',
+            'phone',
+            'role_name',
+            'program',
+            'school',
+            'status',
+          ]
+        : [
+            'document',
+            'edu_email',
+            'personal_email',
+            'phone',
+            'address',
+            'campus',
+            'school',
+            'programs',
+            'program',
+            'academicLine',
+            'coordinatorName',
+            'status',
+          ];
 
     return ordered
       .map((k) => ({ key: k, value: effectivePerson[k] }))
@@ -420,6 +455,9 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
 
   const isLite = effectivePerson?.role === 'lite';
   const isTeacher = effectivePerson?.role === 'teacher';
+  const isStaff = effectivePerson?.role === 'staff';
+  const documentLocked = Boolean((effectivePerson?.document ?? '').trim());
+  const canEditDocument = isStaff && !documentLocked;
 
   const mergedAcademicLineSuggestions = useMemo(() => {
     const s = new Set<string>();
@@ -547,6 +585,21 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
           ...(prev ?? effectivePerson),
           ...toPersonProfileFromApi('teacher', updated),
         }));
+      } else if (effectivePerson.role === 'staff') {
+        const payload: Parameters<typeof updatePersonalProfile>[1] = {
+          full_name: (draft.name ?? '').trim() || undefined,
+          personal_email: draft.personal_email ?? null,
+          phone: draft.phone ?? null,
+        };
+        if (canEditDocument && (draft.document ?? '').trim()) {
+          payload.document = (draft.document ?? '').trim();
+        }
+        const updated = (await updatePersonalProfile(idNum, payload)) as any;
+
+        setLoadedPerson((prev) => ({
+          ...(prev ?? effectivePerson),
+          ...toPersonProfileFromApi('staff', updated),
+        }));
       } else {
         const updated = (await updateCoordinatorProfile(idNum, {
           school_id: draft.school_id ?? null,
@@ -609,6 +662,15 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
           ...(prev ?? effectivePerson),
           ...toPersonProfileFromApi('teacher', updated),
         }));
+      } else if (effectivePerson.role === 'staff') {
+        const updated = (await updatePersonalProfile(idNum, {
+          is_active: makeActive,
+        })) as any;
+
+        setLoadedPerson((prev) => ({
+          ...(prev ?? effectivePerson),
+          ...toPersonProfileFromApi('staff', updated),
+        }));
       } else {
         const updated = (await updateCoordinatorProfile(idNum, {
           is_active: makeActive,
@@ -638,6 +700,30 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
       setTogglingActive(false);
     }
   };
+
+  const adminEditableFields = useMemo(() => {
+    if (isStaff) {
+      return [
+        { k: 'name' as const, label: 'Nombre completo', type: 'text' as const },
+        { k: 'phone' as const, label: 'Teléfono', type: 'text' as const },
+        {
+          k: 'personal_email' as const,
+          label: 'Correo personal',
+          type: 'text' as const,
+        },
+      ];
+    }
+    return [
+      { k: 'school' as const, label: 'Escuela', type: 'school' as const },
+      { k: 'phone' as const, label: 'Teléfono', type: 'text' as const },
+      {
+        k: 'personal_email' as const,
+        label: 'Correo personal',
+        type: 'text' as const,
+      },
+      { k: 'address' as const, label: 'Dirección', type: 'text' as const },
+    ];
+  }, [isStaff]);
 
   const toggleProgramId = (programId: number) => {
     setDraft((prev) => {
@@ -928,8 +1014,11 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                       </p>
 
                       <p className="text-xs text-slate-500">
-                        Puedes editar la información personal excepto la cédula y
-                        el correo institucional.
+                        {isStaff
+                          ? documentLocked
+                            ? 'Puedes editar nombre, teléfono y correo personal. Cédula, rol, programa y correo institucional no son editables.'
+                            : 'Puedes editar nombre, teléfono, correo personal y registrar la cédula si aún no existe. Rol, programa y correo institucional no son editables.'
+                          : 'Puedes editar la información personal excepto la cédula y el correo institucional.'}
                       </p>
                     </div>
 
@@ -1015,12 +1104,30 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="rounded-2xl border border-white/30 bg-white/40 p-4">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                        Cédula (no editable)
+                        {canEditDocument && editing
+                          ? 'Cédula'
+                          : documentLocked
+                            ? 'Cédula (no editable)'
+                            : 'Cédula'}
                       </p>
 
-                      <p className="mt-1 break-words text-sm font-semibold text-slate-800">
-                        {effectivePerson.document || '—'}
-                      </p>
+                      {editing && canEditDocument ? (
+                        <input
+                          type="text"
+                          className="glass-input mt-2 w-full py-3 text-sm"
+                          value={draft?.document ?? ''}
+                          placeholder="Ingresa el número de documento"
+                          onChange={(e) =>
+                            setDraft((prev) =>
+                              prev ? { ...prev, document: e.target.value } : prev
+                            )
+                          }
+                        />
+                      ) : (
+                        <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+                          {effectivePerson.document || '—'}
+                        </p>
+                      )}
                     </div>
 
                     <div className="rounded-2xl border border-white/30 bg-white/40 p-4">
@@ -1033,18 +1140,7 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                       </p>
                     </div>
 
-                    {(
-                      [
-                        { k: 'school', label: 'Escuela', type: 'school' as const },
-                        { k: 'phone', label: 'Teléfono', type: 'text' as const },
-                        {
-                          k: 'personal_email',
-                          label: 'Correo personal',
-                          type: 'text' as const,
-                        },
-                        { k: 'address', label: 'Dirección', type: 'text' as const },
-                      ] as const
-                    ).map(({ k, label, type }) => (
+                    {adminEditableFields.map(({ k, label, type }) => (
                       <div
                         key={k}
                         className="rounded-2xl border border-white/30 bg-white/40 p-4"
@@ -1116,6 +1212,27 @@ export const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
                       </div>
                     ))}
                   </div>
+
+                  {isStaff ? (
+                    <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-white/30 bg-white/40 p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Rol (no editable)
+                        </p>
+                        <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+                          {effectivePerson.role_name || '—'}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-white/30 bg-white/40 p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Programa (no editable)
+                        </p>
+                        <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+                          {effectivePerson.program || '—'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {isTeacher ? (
                     <div className="mt-2 space-y-4 rounded-2xl border border-white/30 bg-white/40 p-4 sm:p-5">
