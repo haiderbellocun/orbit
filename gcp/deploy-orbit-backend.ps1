@@ -24,7 +24,7 @@ gcloud run deploy $SERVICE `
   --platform managed `
   --allow-unauthenticated `
   --port 8080 `
-  --update-env-vars "CORS_ORIGIN=$FRONTEND_URL,ALLOW_LOCAL_EMAIL_AUTH=1,ORBIT_FRONTEND_URL=$FRONTEND_URL,SMTP_SERVICE=gmail,SMTP_HOST=smtp.gmail.com,SMTP_PORT=587,VACANCY_NOTIFY_EMAILS=camilo_quintero@cun.edu.co"
+  --update-env-vars "CORS_ORIGIN=$FRONTEND_URL,ALLOW_LOCAL_EMAIL_AUTH=1,ORBIT_FRONTEND_URL=$FRONTEND_URL,SMTP_SERVICE=gmail,SMTP_HOST=smtp.gmail.com,SMTP_PORT=587,VACANCY_NOTIFY_EMAILS=camilo_quintero@cun.edu.co,laura_garcias@cun.edu.co,angie_ruizm@cun.edu.co"
 
 Write-Host ""
 Write-Host "Backend: https://orbit-backend-526995286786.us-central1.run.app"
