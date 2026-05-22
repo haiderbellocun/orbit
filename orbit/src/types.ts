@@ -36,7 +36,8 @@ export type VacancyOperationStatus =
   | 'requisition_sent'
   | 'hired'
   | 'closed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'cancelled_by_capital';
 
 /** One append-only operation comment on a vacancy (from vacancy_operation_note). */
 export interface VacancyOperationNoteEntry {
@@ -82,7 +83,7 @@ export interface Vacancy {
 
 export type VacancyRequisitionDetail = {
   id: string;
-  reqNumber: string;
+  reqNumber: string | null;
   assignedAt: string;
   sentToCapitalAt: string | null;
   capitalNotes: string | null;
@@ -103,6 +104,21 @@ export type VacancyStatusHistoryEntry = {
 export type VacancyDetail = Vacancy & {
   requisition: VacancyRequisitionDetail | null;
   statusHistory: VacancyStatusHistoryEntry[];
+};
+
+export type OrbitNotification = {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  payload: {
+    vacancyId?: string;
+    positionName?: string;
+    schoolName?: string | null;
+    programName?: string | null;
+  } | null;
+  createdAt: string;
+  readAt: string | null;
 };
 
 export interface Reinstatement {

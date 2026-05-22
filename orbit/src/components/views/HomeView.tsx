@@ -24,6 +24,7 @@ interface HomeViewProps {
   isLiteUser?: boolean;
   canBulkImport?: boolean;
   canManageVacancies?: boolean;
+  onOpenVacancyFromNotification?: (vacancyId: string) => void;
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -31,6 +32,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   isLiteUser,
   canBulkImport = true,
   canManageVacancies = true,
+  onOpenVacancyFromNotification,
 }) => {
   type StatCard = {
     label: string;
@@ -170,7 +172,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   return (
     <div className="space-y-10">
-      <Header title="Command Center" subtitle="Resumen operativo de la jornada" />
+      <Header
+        title="Command Center"
+        subtitle="Resumen operativo de la jornada"
+        onOpenVacancyFromNotification={onOpenVacancyFromNotification}
+      />
       
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
         <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-6">

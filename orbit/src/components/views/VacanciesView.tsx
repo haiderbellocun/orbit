@@ -32,6 +32,14 @@ import {
   type CreateVacancyPayload,
   type PatchVacancyPayload,
 } from '@/src/lib/api';
+import {
+  computeVacancyActiveDays,
+  dateInputToIso,
+  formatVacancyActiveDaysLabel,
+  formatVacancyDateOnly,
+  isoToDateInputValue,
+  vacancyActiveDaysTooltip,
+} from '@/src/lib/vacancyActiveDays';
 
 const STATUS_LABEL: Record<VacancyOperationStatus, string> = {
   open: 'Abierta',
@@ -40,16 +48,22 @@ const STATUS_LABEL: Record<VacancyOperationStatus, string> = {
   hired: 'Contratado',
   closed: 'Cerrada',
   cancelled: 'Cancelada',
+  cancelled_by_capital: 'Cancelada por capital',
 };
 
 /** Contratada, cerrada o cancelada: sin edición ni cierre. */
 function isVacancyFullyLocked(status: VacancyOperationStatus): boolean {
-  return status === 'hired' || status === 'closed' || status === 'cancelled';
+  return (
+    status === 'hired' ||
+    status === 'closed' ||
+    status === 'cancelled' ||
+    status === 'cancelled_by_capital'
+  );
 }
 
-/** Con REQ: solo estado operación y comentarios nuevos (datos base bloqueados). */
+/** Con requisición: datos base bloqueados; requisición sigue editable. */
 function isVacancyCoreFieldsLocked(v: Vacancy): boolean {
-  return Boolean(v.reqNumber?.trim());
+  return Boolean(v.reqAssignedAt);
 }
 
 function formatDt(iso: string | null | undefined): string {
@@ -84,6 +98,7 @@ interface VacanciesViewProps {
     vacancies: Vacancy[];
     coordinators: Coordinator[];
   } | null;
+  onOpenVacancyFromNotification?: (vacancyId: string) => void;
 }
 
 export const VacanciesView: React.FC<VacanciesViewProps> = ({
@@ -92,6 +107,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   searchQuery = '',
   setSearchQuery,
   searchResults,
+  onOpenVacancyFromNotification,
 }) => {
   const [rows, setRows] = useState<Vacancy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,6 +135,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const [newOpNoteDraft, setNewOpNoteDraft] = useState('');
   const [opNoteSaving, setOpNoteSaving] = useState(false);
   const [editReqCapitalNotes, setEditReqCapitalNotes] = useState('');
+  const [editReqNumber, setEditReqNumber] = useState('');
+  const [editReqSentAt, setEditReqSentAt] = useState('');
   const [createTerna, setCreateTerna] = useState<TriSelectValue>('');
   const [createPda, setCreatePda] = useState<TriSelectValue>('');
   const [createContract, setCreateContract] = useState<TriSelectValue>('');
@@ -128,7 +146,9 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const [reqSentAt, setReqSentAt] = useState('');
   const [reqCapNotes, setReqCapNotes] = useState('');
 
-  const [closeStatus, setCloseStatus] = useState<'hired' | 'closed' | 'cancelled'>('closed');
+  const [closeStatus, setCloseStatus] = useState<
+    'hired' | 'closed' | 'cancelled' | 'cancelled_by_capital'
+  >('closed');
 
   const refresh = useCallback(async (): Promise<Vacancy[]> => {
     setLoading(true);
@@ -217,6 +237,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     setCreateOpNotes('');
     setNewOpNoteDraft('');
     setEditReqCapitalNotes('');
+    setEditReqNumber('');
+    setEditReqSentAt('');
     setCreateTerna('');
     setCreatePda('');
     setCreateContract('');
@@ -298,22 +320,31 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         };
     try {
       const apiRow = (await patchVacancy(editRow.id, patch)) as Vacancy;
-      if (!coreLocked && editRow.reqNumber != null && editRow.reqNumber !== '') {
+      if (editRow.reqAssignedAt) {
         const normCap = (s: string | null | undefined) => {
           const t = (s ?? '').trim();
           return t === '' ? null : toUpperAscii(t);
         };
         const nextCap = normCap(editReqCapitalNotes);
         const prevCap = normCap(editRow.capitalNotes ?? null);
+        const nextReq = editReqNumber.trim()
+          ? toUpperAscii(editReqNumber)
+          : null;
+        const prevReq =
+          editRow.reqNumber != null && editRow.reqNumber !== ''
+            ? editRow.reqNumber
+            : null;
+        const nextSent = dateInputToIso(editReqSentAt);
+        const prevSent = editRow.sentToCapitalAt ?? null;
         const reqPatch: Parameters<typeof patchVacancyRequisition>[1] = {
           shortlistComplied: triToBool(createTerna),
           pdaComplied: triToBool(createPda),
           contractConditionsComplied: triToBool(createContract),
           preInterviewCvComplied: triToBool(createCv),
         };
-        if (nextCap !== prevCap) {
-          reqPatch.capitalNotes = nextCap;
-        }
+        if (nextReq !== prevReq) reqPatch.reqNumber = nextReq;
+        if (nextCap !== prevCap) reqPatch.capitalNotes = nextCap;
+        if (nextSent !== prevSent) reqPatch.sentToCapitalAt = nextSent;
         await patchVacancyRequisition(editRow.id, reqPatch);
       }
       const list = await refresh();
@@ -369,16 +400,10 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     e.preventDefault();
     if (!reqRow) return;
     setFormError(null);
-    if (!reqNumber.trim()) {
-      setFormError('El número REQ es obligatorio.');
-      return;
-    }
     try {
       await createVacancyRequisition(reqRow.id, {
-        reqNumber: toUpperAscii(reqNumber),
-        sentToCapitalAt: reqSentAt.trim()
-          ? new Date(reqSentAt).toISOString()
-          : null,
+        reqNumber: reqNumber.trim() ? toUpperAscii(reqNumber) : null,
+        sentToCapitalAt: dateInputToIso(reqSentAt),
         capitalNotes: reqCapNotes.trim() ? toUpperAscii(reqCapNotes) : null,
         shortlistComplied: triToBool(createTerna),
         pdaComplied: triToBool(createPda),
@@ -427,6 +452,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     setCreateOpNotes('');
     setNewOpNoteDraft('');
     setEditReqCapitalNotes(v.capitalNotes ?? '');
+    setEditReqNumber(v.reqNumber ?? '');
+    setEditReqSentAt(isoToDateInputValue(v.sentToCapitalAt));
     setCreateTerna(boolToTri(v.shortlistComplied));
     setCreatePda(boolToTri(v.pdaComplied));
     setCreateContract(boolToTri(v.contractConditionsComplied));
@@ -448,6 +475,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         searchResults={searchResults}
+        onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
@@ -498,9 +526,10 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         </div>
       ) : (
         <div className="glass-panel p-0 sm:p-1 relative z-10 overflow-x-auto rounded-2xl">
-          <table className="w-full min-w-[720px] text-left text-sm table-fixed">
+          <table className="w-full min-w-[800px] text-left text-sm table-fixed">
             <colgroup>
-              <col className="w-[140px]" />
+              <col className="w-[120px]" />
+              <col className="w-[100px]" />
               <col />
               <col />
               <col />
@@ -511,7 +540,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
             </colgroup>
             <thead>
               <tr className="border-b border-slate-200/80 bg-slate-50/80 text-[10px] uppercase tracking-widest text-slate-500">
-                <th className="py-3 px-3 font-bold whitespace-nowrap text-left">Fecha</th>
+                <th className="py-3 px-3 font-bold whitespace-nowrap text-left">Creada</th>
+                <th className="py-3 px-3 font-bold whitespace-nowrap text-left">Tiempo activo</th>
                 <th className="py-3 px-3 font-bold">Área</th>
                 <th className="py-3 px-3 font-bold">Escuela</th>
                 <th className="py-3 px-3 font-bold">Programa</th>
@@ -524,7 +554,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center text-slate-500 text-sm">
+                  <td colSpan={9} className="py-16 text-center text-slate-500 text-sm">
                     No hay vacantes para mostrar.
                   </td>
                 </tr>
@@ -535,7 +565,15 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     className="border-b border-slate-100/80 hover:bg-violet-50/30 transition-colors"
                   >
                     <td className="py-3 px-3 text-slate-600 text-xs whitespace-nowrap align-top">
-                      {formatDt(v.createdAt)}
+                      {formatVacancyDateOnly(v.createdAt)}
+                    </td>
+                    <td
+                      className="py-3 px-3 text-slate-700 text-xs whitespace-nowrap align-top"
+                      title={vacancyActiveDaysTooltip(v)}
+                    >
+                      <span className="font-semibold text-violet-700">
+                        {formatVacancyActiveDaysLabel(computeVacancyActiveDays(v))}
+                      </span>
                     </td>
                     <td className="py-3 px-3 text-slate-800 align-top">
                       <span className="line-clamp-2" title={v.areaName ?? ''}>
@@ -572,7 +610,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                           v.operationStatus === 'hired' &&
                             'bg-emerald-50 text-emerald-800 border-emerald-100',
                           (v.operationStatus === 'closed' ||
-                            v.operationStatus === 'cancelled') &&
+                            v.operationStatus === 'cancelled' ||
+                            v.operationStatus === 'cancelled_by_capital') &&
                             'bg-slate-100 text-slate-600 border-slate-200'
                         )}
                       >
@@ -603,8 +642,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                         </button>
                         <button
                           type="button"
-                          title="Convertir en requisición"
-                          disabled={Boolean(v.reqNumber)}
+                          title="Agregar informacion requisición"
+                          disabled={Boolean(v.reqAssignedAt)}
                           onClick={() => {
                             setFormError(null);
                             setReqRow(v);
@@ -812,10 +851,27 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                       </button>
                     </div>
                   </div>
-                  {editRow.reqNumber != null &&
-                    editRow.reqNumber !== '' &&
-                    !isVacancyCoreFieldsLocked(editRow) && (
+                  {editRow.reqAssignedAt && (
                     <>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                        Requisición (editable)
+                      </p>
+                      <Field label="Número REQ (opcional)">
+                        <input
+                          className="glass-input py-2.5 text-sm w-full font-mono"
+                          value={editReqNumber}
+                          onChange={(e) => setEditReqNumber(e.target.value)}
+                          placeholder="REQ-2026-001"
+                        />
+                      </Field>
+                      <Field label="Enviado a capital (opcional)">
+                        <input
+                          type="date"
+                          className="glass-input py-2.5 text-sm w-full"
+                          value={editReqSentAt}
+                          onChange={(e) => setEditReqSentAt(e.target.value)}
+                        />
+                      </Field>
                       <Field label="Notas capital humano (requisición)">
                         <textarea
                           className="glass-input py-2.5 text-sm w-full min-h-[56px]"
@@ -921,18 +977,17 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
               Vacante: <strong>{reqRow.positionName}</strong> ({reqRow.schoolName})
             </p>
             <form onSubmit={handleRequisitionSubmit} className="space-y-4">
-              <Field label="Número REQ *">
+              <Field label="Número REQ (opcional)">
                 <input
-                  required
                   className="glass-input py-2.5 text-sm w-full font-mono"
                   value={reqNumber}
                   onChange={(e) => setReqNumber(e.target.value)}
                   placeholder="REQ-2026-001"
                 />
               </Field>
-              <Field label="Enviado a capital (opcional, ISO)">
+              <Field label="Enviado a capital (opcional)">
                 <input
-                  type="datetime-local"
+                  type="date"
                   className="glass-input py-2.5 text-sm w-full"
                   value={reqSentAt}
                   onChange={(e) => setReqSentAt(e.target.value)}
@@ -1018,6 +1073,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   <option value="hired">Contratado</option>
                   <option value="closed">Cerrada</option>
                   <option value="cancelled">Cancelada</option>
+                  <option value="cancelled_by_capital">Cancelada por capital</option>
                 </select>
               </Field>
               <div className="flex gap-3">

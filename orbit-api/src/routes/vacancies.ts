@@ -11,6 +11,7 @@ import {
   type CoreSchemaMode,
 } from "../lib/coreSchema";
 import { toUpperAscii, toUpperAsciiOrNull } from "../lib/textNormalize";
+import { notifyVacancyCreated } from "../services/vacancyNotifyService";
 
 const router = Router();
 
@@ -21,13 +22,24 @@ const OPERATION_STATUSES = new Set([
   "hired",
   "closed",
   "cancelled",
+  "cancelled_by_capital",
 ]);
 
-const CLOSE_STATUSES = new Set(["hired", "closed", "cancelled"]);
-const FULLY_LOCKED_STATUSES = new Set(["hired", "closed", "cancelled"]);
+const CLOSE_STATUSES = new Set([
+  "hired",
+  "closed",
+  "cancelled",
+  "cancelled_by_capital",
+]);
+const FULLY_LOCKED_STATUSES = new Set([
+  "hired",
+  "closed",
+  "cancelled",
+  "cancelled_by_capital",
+]);
 
 const VACANCY_FULLY_LOCKED_MESSAGE =
-  "Esta vacante está contratada, cerrada o cancelada y no puede modificarse.";
+  "Esta vacante está contratada, cerrada, cancelada o cancelada por capital y no puede modificarse.";
 
 type VacancyEditGate = "missing" | "blocked" | null;
 
@@ -440,6 +452,52 @@ function mapVacancyRow(
   };
 }
 
+async function notifyVacancyCreatedFromId(vacancyId: string): Promise<void> {
+  const mode = await resolveCoreSchemaMode();
+  if (mode == null) return;
+
+  const areaT = qualifiedCoreTable(mode, "area");
+  const schoolT = qualifiedCoreTable(mode, "school");
+  const programT = qualifiedCoreTable(mode, "program");
+  const personT = qualifiedCoreTable(mode, "person");
+  const opNotesSql = sqlOperationNotesAgg(personT);
+
+  const { rows } = await pool.query(
+    `SELECT
+       v.id,
+       v.position_name,
+       v.quantity,
+       v.created_at,
+       a.name AS area_name,
+       s.name AS school_name,
+       p.name AS program_name,
+       ${opNotesSql} AS operation_notes_json
+     FROM vacancies.vacancy v
+     JOIN ${areaT} a ON a.id = v.area_id
+     LEFT JOIN ${schoolT} s ON s.id = v.school_id
+     LEFT JOIN ${programT} p ON p.id = v.program_id
+     WHERE v.id = $1`,
+    [vacancyId]
+  );
+  if (rows.length === 0) return;
+  const raw = rows[0] as Record<string, unknown>;
+  const createdAt =
+    raw.created_at != null
+      ? new Date(raw.created_at as string | Date).toISOString()
+      : new Date().toISOString();
+  await notifyVacancyCreated({
+    vacancyId,
+    positionName: String(raw.position_name ?? ""),
+    areaName: String(raw.area_name ?? ""),
+    schoolName:
+      raw.school_name == null ? null : String(raw.school_name),
+    programName:
+      raw.program_name == null ? null : String(raw.program_name),
+    quantity: Number(raw.quantity ?? 1),
+    createdAt,
+  });
+}
+
 function mapListRow(row: Record<string, unknown>) {
   const notes = mapNotesFromJsonRaw(row.operation_notes_json);
   const base = mapVacancyRow(row, notes);
@@ -661,6 +719,9 @@ router.post("/vacancies", async (req, res) => {
       mode
     );
     res.status(201).json(mapVacancyRow(row, operationNotes));
+    void notifyVacancyCreatedFromId(vacancyId).catch((err) => {
+      console.error("POST /vacancies notify failed:", err);
+    });
   } catch (e) {
     console.error("POST /vacancies failed:", e);
     res.status(500).json({ error: "Internal server error" });
@@ -686,7 +747,7 @@ router.patch("/vacancies/:id/close", async (req, res) => {
     if (!CLOSE_STATUSES.has(statusIn)) {
       res.status(400).json({
         error:
-          "Estado final no válido: operationStatus debe ser hired, closed o cancelled (contratado, cerrada o cancelada).",
+          "Estado final no válido: operationStatus debe ser hired, closed, cancelled o cancelled_by_capital.",
       });
       return;
     }
@@ -836,12 +897,9 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
   if (await denyIfVacancyOutOfSchoolScope(req, res, id)) return;
 
   const b = req.body as Record<string, unknown>;
-  const reqNumber =
+  const reqNumberRaw =
     typeof b.reqNumber === "string" ? toUpperAscii(b.reqNumber) : "";
-  if (reqNumber === "") {
-    res.status(400).json({ error: "reqNumber is required" });
-    return;
-  }
+  const reqNumber = reqNumberRaw === "" ? null : reqNumberRaw;
 
   let sentToCapitalAt: Date | null = null;
   if (b.sentToCapitalAt != null && String(b.sentToCapitalAt).trim() !== "") {
@@ -1067,11 +1125,12 @@ router.get("/vacancies/:id", async (req, res) => {
     const base = mapListRow(raw);
 
     const requisition =
-      raw.req_number == null
+      raw.requisition_id == null
         ? null
         : {
             id: String(raw.requisition_id),
-            reqNumber: String(raw.req_number),
+            reqNumber:
+              raw.req_number == null ? null : String(raw.req_number),
             assignedAt:
               raw.req_assigned_at != null
                 ? new Date(raw.req_assigned_at as string | Date).toISOString()
@@ -1173,6 +1232,16 @@ router.patch("/vacancies/:id/requisition", async (req, res) => {
     const values: unknown[] = [];
     let p = 1;
 
+    if (b.reqNumber !== undefined) {
+      const rn =
+        b.reqNumber === null || String(b.reqNumber).trim() === ""
+          ? null
+          : toUpperAscii(String(b.reqNumber));
+      updates.push(`req_number = $${p}`);
+      values.push(rn);
+      p++;
+    }
+
     if (b.capitalNotes !== undefined) {
       updates.push(`capital_notes = $${p}`);
       values.push(
@@ -1217,13 +1286,26 @@ router.patch("/vacancies/:id/requisition", async (req, res) => {
     }
 
     values.push(id);
-    const result = await pool.query(
-      `UPDATE vacancies.requisition
-       SET ${updates.join(", ")}
-       WHERE vacancy_id = $${p}
-       RETURNING id`,
-      values
-    );
+    let result;
+    try {
+      result = await pool.query(
+        `UPDATE vacancies.requisition
+         SET ${updates.join(", ")}
+         WHERE vacancy_id = $${p}
+         RETURNING id`,
+        values
+      );
+    } catch (updErr) {
+      const err = updErr as { code?: string };
+      if (err.code === "23505") {
+        res.status(409).json({
+          error:
+            "El número REQ ya está en uso; cada requisición debe tener un número único.",
+        });
+        return;
+      }
+      throw updErr;
+    }
 
     if (result.rowCount === 0) {
       res.status(404).json({ error: "Requisition not found for this vacancy" });
@@ -1402,6 +1484,9 @@ router.patch("/vacancies/:id", async (req, res) => {
         return;
       }
       setCol("operation_status", s);
+      if (FULLY_LOCKED_STATUSES.has(s)) {
+        updates.push(`closed_at = COALESCE(closed_at, now())`);
+      }
     }
     if (b.closedAt !== undefined) {
       if (b.closedAt === null) {

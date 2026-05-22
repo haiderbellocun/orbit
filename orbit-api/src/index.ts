@@ -13,6 +13,7 @@ import authRouter from "./routes/auth";
 import catalogRouter from "./routes/catalog";
 import personalRouter from "./routes/personal";
 import workforceEventsRouter from "./routes/workforce_events";
+import notificationsRouter from "./routes/notifications";
 import {
   orbitAuthMiddleware,
   orbitCapabilityByPathMiddleware,
@@ -32,6 +33,7 @@ app.use("/api", teachersRouter);
 app.use("/api", catalogRouter);
 app.use("/api", personalRouter);
 app.use("/api", workforceEventsRouter);
+app.use("/api", notificationsRouter);
 app.use("/api", vacanciesRouter);
 app.use("/api", coordinatorsRouter);
 app.use("/api", reinstatementsRouter);

@@ -2,11 +2,11 @@ import React, { useMemo } from "react";
 import { motion } from "motion/react";
 import {
   MagnifyingGlassIcon,
-  BellIcon,
   UserIcon,
   BriefcaseIcon,
   UserCircleIcon,
 } from "@heroicons/react/24/solid";
+import { NotificationBell } from "@/src/components/layout/NotificationBell";
 import { Teacher, Vacancy, Coordinator } from "@/src/types";
 
 interface HeaderProps {
@@ -19,6 +19,7 @@ interface HeaderProps {
     vacancies: Vacancy[];
     coordinators: Coordinator[];
   } | null;
+  onOpenVacancyFromNotification?: (vacancyId: string) => void;
 }
 
 type StoredUser = {
@@ -63,6 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
   searchQuery = "",
   setSearchQuery,
   searchResults,
+  onOpenVacancyFromNotification,
 }) => {
   const currentUser = useMemo(() => getStoredUser(), []);
 
@@ -219,10 +221,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        <button className="glass-button-secondary p-3 relative group">
-          <BellIcon className="h-5 w-5 group-hover:rotate-12 transition-transform" />
-          <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-gradient-to-tr from-rose-500 to-pink-500 rounded-full border-2 border-white shadow-sm"></span>
-        </button>
+        <NotificationBell onOpenVacancy={onOpenVacancyFromNotification} />
 
         <div className="flex items-center gap-4 pl-4 border-l border-white/40">
           <div className="text-right hidden sm:block">

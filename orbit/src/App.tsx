@@ -29,6 +29,7 @@ import {
   clearOrbitSession,
   getStoredCapabilities,
   getStoredOrbitAccess,
+  getVacancy,
   isStoredJwtValid,
   type GoogleAuthResponse,
   type OrbitAccess,
@@ -111,6 +112,19 @@ export default function App() {
     );
   }, []);
 
+  const handleOpenVacancyFromNotification = useCallback(
+    async (vacancyId: string) => {
+      try {
+        const v = await getVacancy(vacancyId);
+        setSelectedVacancy(v);
+        setView("vacancy-detail");
+      } catch {
+        setView("vacancies");
+      }
+    },
+    []
+  );
+
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return null;
     const query = searchQuery.toLowerCase();
@@ -154,7 +168,12 @@ export default function App() {
   const canVacancies = canManageVacancies(capabilities);
 
   const renderView = () => {
-    const commonProps = { searchQuery, setSearchQuery, searchResults };
+    const commonProps = {
+      searchQuery,
+      setSearchQuery,
+      searchResults,
+      onOpenVacancyFromNotification: handleOpenVacancyFromNotification,
+    };
     
     switch (view) {
       case 'home':
