@@ -8,22 +8,21 @@ import {
   formatSmtpError,
   readSmtpConfigFromEnv,
 } from "../lib/smtpTransport";
+import {
+  buildVacancyEmailHtml,
+  buildVacancyEmailSubject,
+  buildVacancyEmailText,
+  type VacancyNotifyPayload,
+} from "./vacancyEmailTemplate";
 
-export type VacancyNotifyPayload = {
-  vacancyId: string;
-  positionName: string;
-  areaName: string;
-  schoolName?: string | null;
-  programName?: string | null;
-  quantity: number;
-  createdAt: string;
-};
+export type { VacancyNotifyPayload };
 
-const NOTIFY_TITLE = "nueva vacante";
+const NOTIFY_TITLE = "Nueva vacante registrada";
 
 function parseNotifyEmails(): string[] {
   const raw =
-    process.env.VACANCY_NOTIFY_EMAILS ?? "camilo_quintero@cun.edu.co";
+    process.env.VACANCY_NOTIFY_EMAILS ??
+    "camilo_quintero@cun.edu.co,laura_garcias@cun.edu.co,angie_ruizm@cun.edu.co";
   return raw
     .split(",")
     .map((e) => e.trim().toLowerCase())
@@ -53,7 +52,8 @@ async function resolvePersonIdByEmail(
 
 function buildNotificationBody(v: VacancyNotifyPayload): string {
   const area = v.areaName?.trim() || "—";
-  return `Nueva vacante en el area ${area}`;
+  const cargo = v.positionName?.trim() || "Vacante";
+  return `Nueva vacante en el área ${area}. Cargo: ${cargo}.`;
 }
 
 function frontendVacancyUrl(vacancyId: string): string | null {
@@ -116,14 +116,15 @@ async function sendVacancyEmails(
   const transporter = createSmtpTransporter(cfg);
 
   const url = frontendVacancyUrl(v.vacancyId);
-  const textBody = buildNotificationBody(v);
-  const htmlBody = `<p>${textBody}</p>${url ? `<p><a href="${url}">Ver en Orbit</a></p>` : ""}`;
+  const subject = buildVacancyEmailSubject(v);
+  const textBody = buildVacancyEmailText(v, url);
+  const htmlBody = buildVacancyEmailHtml(v, url);
 
   const info = await transporter.sendMail({
     from: cfg.from,
     to: emails.join(", "),
-    subject: NOTIFY_TITLE,
-    text: textBody + (url ? `\n\nVer en Orbit: ${url}` : ""),
+    subject,
+    text: textBody,
     html: htmlBody,
   });
 
