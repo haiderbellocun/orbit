@@ -5,6 +5,7 @@ import {
   type CoreSchemaMode,
 } from "./coreSchema";
 import { toUpperAscii, toUpperAsciiOrNull } from "./textNormalize";
+import { notifyVacancyCreated } from "../services/vacancyNotifyService";
 
 async function vacanciesTableExists(): Promise<boolean> {
   const r = await pool.query(`SELECT to_regclass('vacancies.vacancy') AS t`);
@@ -201,4 +202,48 @@ export async function insertAutoVacancyOnDeactivate(
     }
     throw e;
   }
+
+  let areaName = "";
+  if (areaId != null) {
+    const areaT = qualifiedCoreTable(mode, "area");
+    const an = await pool.query(
+      `SELECT name FROM ${areaT} WHERE id = $1`,
+      [areaId]
+    );
+    areaName = an.rows[0]?.name != null ? String(an.rows[0].name) : "";
+  }
+
+  let schoolName: string | null = null;
+  let programName: string | null = null;
+  if (schoolId != null) {
+    const schoolT = qualifiedCoreTable(mode, "school");
+    const sn = await pool.query(
+      `SELECT name FROM ${schoolT} WHERE id = $1`,
+      [schoolId]
+    );
+    schoolName =
+      sn.rows[0]?.name != null ? String(sn.rows[0].name) : null;
+  }
+  if (programId != null) {
+    const programT = qualifiedCoreTable(mode, "program");
+    const pn = await pool.query(
+      `SELECT name FROM ${programT} WHERE id = $1`,
+      [programId]
+    );
+    programName =
+      pn.rows[0]?.name != null ? String(pn.rows[0].name) : null;
+  }
+
+  const createdAt = new Date().toISOString();
+  void notifyVacancyCreated({
+    vacancyId,
+    positionName: toUpperAscii(input.positionName.trim() || "VACANTE"),
+    areaName,
+    schoolName,
+    programName,
+    quantity: 1,
+    createdAt,
+  }).catch((err) => {
+    console.error("insertAutoVacancyOnDeactivate notify failed:", err);
+  });
 }

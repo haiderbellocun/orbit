@@ -10,6 +10,12 @@ import {
 import type { Vacancy, VacancyDetail, View } from '@/src/types';
 import { cn } from '@/src/lib/utils';
 import { getVacancy } from '@/src/lib/api';
+import {
+  computeVacancyActiveDays,
+  formatVacancyActiveDaysLabel,
+  formatVacancyDateOnly,
+  vacancyActiveDaysTooltip,
+} from '@/src/lib/vacancyActiveDays';
 
 const STATUS_LABEL: Record<Vacancy['operationStatus'], string> = {
   open: 'Abierta',
@@ -18,6 +24,7 @@ const STATUS_LABEL: Record<Vacancy['operationStatus'], string> = {
   hired: 'Contratado',
   closed: 'Cerrada',
   cancelled: 'Cancelada',
+  cancelled_by_capital: 'Cancelada por capital',
 };
 
 function formatTs(iso: string | null | undefined): string {
@@ -70,16 +77,19 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
 
   const v = detail ?? {
     ...summary,
-    requisition:
-      summary.reqNumber != null && summary.reqNumber !== ''
-        ? {
-            id: '',
-            reqNumber: summary.reqNumber,
-            assignedAt: summary.reqAssignedAt ?? '',
-            sentToCapitalAt: summary.sentToCapitalAt ?? null,
-            capitalNotes: summary.capitalNotes ?? null,
-          }
-        : null,
+    requisition: summary.reqAssignedAt
+      ? {
+          id: '',
+          reqNumber: summary.reqNumber ?? null,
+          assignedAt: summary.reqAssignedAt ?? '',
+          sentToCapitalAt: summary.sentToCapitalAt ?? null,
+          capitalNotes: summary.capitalNotes ?? null,
+          shortlistComplied: summary.shortlistComplied,
+          pdaComplied: summary.pdaComplied,
+          contractConditionsComplied: summary.contractConditionsComplied,
+          preInterviewCvComplied: summary.preInterviewCvComplied,
+        }
+      : null,
     statusHistory: [] as VacancyDetail['statusHistory'],
   };
 
@@ -121,7 +131,9 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                   v.operationStatus === 'requisition_sent' &&
                     'bg-violet-50 text-violet-700 border-violet-100',
                   v.operationStatus === 'hired' && 'bg-emerald-50 text-emerald-700 border-emerald-100',
-                  (v.operationStatus === 'closed' || v.operationStatus === 'cancelled') &&
+                  (v.operationStatus === 'closed' ||
+                    v.operationStatus === 'cancelled' ||
+                    v.operationStatus === 'cancelled_by_capital') &&
                     'bg-slate-100 text-slate-600 border-slate-200'
                 )}
               >
@@ -164,6 +176,11 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
               <Row label="Línea curricular" value={v.curricularLine ?? '—'} />
               <Row label="Cantidad" value={String(v.quantity)} />
               <Row label="Creado" value={formatTs(v.createdAt)} />
+              <Row
+                label="Tiempo activo"
+                value={formatVacancyActiveDaysLabel(computeVacancyActiveDays(v))}
+                title={vacancyActiveDaysTooltip(v)}
+              />
               <Row label="Actualizado" value={formatTs(v.updatedAt)} />
               <Row label="Cierre" value={formatTs(v.closedAt)} />
             </dl>
@@ -218,11 +235,19 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
               <p className="text-sm text-slate-500">Sin requisición asociada.</p>
             ) : (
               <dl className="space-y-2 text-sm">
-                <Row label="REQ" value={v.requisition.reqNumber} mono />
+                <Row
+                  label="REQ"
+                  value={
+                    v.requisition.reqNumber?.trim()
+                      ? v.requisition.reqNumber
+                      : 'Pendiente'
+                  }
+                  mono
+                />
                 <Row label="Asignado" value={formatTs(v.requisition.assignedAt)} />
                 <Row
                   label="Envío a capital"
-                  value={formatTs(v.requisition.sentToCapitalAt)}
+                  value={formatVacancyDateOnly(v.requisition.sentToCapitalAt)}
                 />
                 <div>
                   <dt className="text-[10px] font-bold uppercase text-slate-400 mb-1">
@@ -290,17 +315,22 @@ function Row({
   label,
   value,
   mono,
+  title,
 }: {
   label: string;
   value: string;
   mono?: boolean;
+  title?: string;
 }) {
   return (
     <div>
       <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
         {label}
       </dt>
-      <dd className={cn('text-slate-900 font-medium', mono && 'font-mono text-xs')}>
+      <dd
+        title={title}
+        className={cn('text-slate-900 font-medium', mono && 'font-mono text-xs')}
+      >
         {value}
       </dd>
     </div>

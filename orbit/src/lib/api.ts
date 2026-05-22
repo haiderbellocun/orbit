@@ -4,6 +4,7 @@ import type {
   VacancyDetail,
   VacancyOperationNoteEntry,
   VacancyOperationStatus,
+  OrbitNotification,
 } from "@/src/types";
 
 const DEFAULT_API_BASE = "http://localhost:4000/api";
@@ -589,7 +590,7 @@ export async function appendVacancyOperationNote(
 export async function createVacancyRequisition(
   id: string,
   body: {
-    reqNumber: string;
+    reqNumber?: string | null;
     sentToCapitalAt?: string | null;
     capitalNotes?: string | null;
     shortlistComplied?: boolean | null;
@@ -612,6 +613,7 @@ export async function createVacancyRequisition(
 export async function patchVacancyRequisition(
   id: string,
   body: {
+    reqNumber?: string | null;
     capitalNotes?: string | null;
     sentToCapitalAt?: string | null;
     shortlistComplied?: boolean | null;
@@ -633,7 +635,13 @@ export async function patchVacancyRequisition(
 
 export async function closeVacancy(
   id: string,
-  body?: { operationStatus?: "hired" | "closed" | "cancelled" }
+  body?: {
+    operationStatus?:
+      | "hired"
+      | "closed"
+      | "cancelled"
+      | "cancelled_by_capital";
+  }
 ): Promise<Vacancy> {
   const response = await authFetch(
     `${BASE_URL}/vacancies/${encodeURIComponent(id)}/close`,
@@ -644,6 +652,51 @@ export async function closeVacancy(
     }
   );
   return handleJson(response);
+}
+
+export async function getNotifications(params?: {
+  unreadOnly?: boolean;
+  limit?: number;
+}): Promise<OrbitNotification[]> {
+  const url = new URL(`${BASE_URL}/notifications`);
+  if (params?.unreadOnly) url.searchParams.set("unreadOnly", "1");
+  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
+  return handleJson(response);
+}
+
+export async function getUnreadNotificationCount(): Promise<number> {
+  const response = await authFetch(`${BASE_URL}/notifications/unread-count`, {
+    headers: jsonHeaders,
+  });
+  const data = (await handleJson(response)) as { count?: number };
+  return Number(data.count ?? 0);
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  const response = await authFetch(
+    `${BASE_URL}/notifications/${encodeURIComponent(id)}/read`,
+    { method: "PATCH", headers: jsonHeaders }
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(
+      (err as { error?: string }).error ?? `Error ${response.status}`
+    );
+  }
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  const response = await authFetch(`${BASE_URL}/notifications/read-all`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(
+      (err as { error?: string }).error ?? `Error ${response.status}`
+    );
+  }
 }
 
 // Coordinators
