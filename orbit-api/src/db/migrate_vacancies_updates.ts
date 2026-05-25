@@ -4,8 +4,17 @@ import { pool } from "./connection";
  * Migración incremental vacantes:
  * - req_number opcional en requisition
  * - operation_status cancelled_by_capital
+ * - direct_manager_identification en vacancy
  */
 async function migrateVacanciesUpdates(): Promise<void> {
+  await pool.query(`
+    ALTER TABLE vacancies.vacancy
+      ADD COLUMN IF NOT EXISTS direct_manager_identification VARCHAR(20)
+  `);
+  console.log(
+    "migrate_vacancies_updates: direct_manager_identification en vacancy"
+  );
+
   const reqNullable = await pool.query(`
     SELECT is_nullable
     FROM information_schema.columns

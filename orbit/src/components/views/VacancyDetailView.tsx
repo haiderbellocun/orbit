@@ -174,6 +174,10 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
               <Row label="Escuela" value={v.schoolName ?? '—'} />
               <Row label="Programa" value={v.programName ?? '—'} />
               <Row label="Línea curricular" value={v.curricularLine ?? '—'} />
+              <Row
+                label="CC jefe directo"
+                value={v.directManagerIdentification?.trim() || '—'}
+              />
               <Row label="Cantidad" value={String(v.quantity)} />
               <Row label="Creado" value={formatTs(v.createdAt)} />
               <Row

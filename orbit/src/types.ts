@@ -61,6 +61,8 @@ export interface Vacancy {
   programName?: string | null;
   positionName: string;
   curricularLine: string | null;
+  /** CC del jefe directo; opcional e inmutable tras el primer guardado. */
+  directManagerIdentification?: string | null;
   quantity: number;
   operationStatus: VacancyOperationStatus;
   operationNotes: VacancyOperationNoteEntry[];
