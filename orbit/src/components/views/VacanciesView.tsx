@@ -494,7 +494,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
       />
 
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-        <div className="flex flex-col md:flex-row gap-4 flex-1 lg:max-w-2xl">
+        <div className="flex flex-col md:flex-row gap-4 flex-1 min-w-0">
           <div className="glass-panel p-2 flex-1 flex items-center gap-3">
             <MagnifyingGlassIcon className="ml-3 h-4.5 w-4.5 text-slate-400" />
             <input
@@ -540,36 +540,36 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
           <p className="text-sm font-medium text-slate-600">Cargando vacantes...</p>
         </div>
       ) : (
-        <div className="glass-panel p-0 sm:p-1 relative z-10 overflow-x-auto rounded-2xl">
-          <table className="w-full min-w-[800px] text-left text-sm table-fixed">
+        <div className="glass-panel p-0 relative z-10 overflow-x-auto rounded-2xl w-full">
+          <table className="w-full min-w-0 text-left text-[15px] table-fixed">
             <colgroup>
-              <col className="w-[120px]" />
-              <col className="w-[100px]" />
-              <col />
-              <col />
-              <col />
-              <col />
-              <col className="w-14" />
-              <col className="w-[130px]" />
-              <col className="w-[148px]" />
+              <col className="w-[7%]" />
+              <col className="w-[7%]" />
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
+              <col className="w-[12%]" />
+              <col className="w-[18%]" />
+              <col className="w-[4%]" />
+              <col className="w-[12%]" />
+              <col className="w-[12%]" />
             </colgroup>
             <thead>
-              <tr className="border-b border-slate-200/80 bg-slate-50/80 text-[10px] uppercase tracking-widest text-slate-500">
-                <th className="py-3 px-3 font-bold whitespace-nowrap text-left">Creada</th>
-                <th className="py-3 px-3 font-bold whitespace-nowrap text-left">Tiempo activo</th>
-                <th className="py-3 px-3 font-bold">Área</th>
-                <th className="py-3 px-3 font-bold">Escuela</th>
-                <th className="py-3 px-3 font-bold">Programa</th>
-                <th className="py-3 px-3 font-bold">Cargo</th>
-                <th className="py-3 px-3 font-bold text-center">Cant.</th>
-                <th className="py-3 px-3 font-bold whitespace-nowrap">Estado</th>
-                <th className="py-3 px-3 font-bold text-right whitespace-nowrap">Acciones</th>
+              <tr className="border-b border-slate-200/80 bg-slate-50/80 text-xs uppercase tracking-widest text-slate-500">
+                <th className="py-3 px-4 font-bold whitespace-nowrap text-left">Creada</th>
+                <th className="py-3 px-4 font-bold whitespace-nowrap text-left">Tiempo activo</th>
+                <th className="py-3 px-4 font-bold">Área</th>
+                <th className="py-3 px-4 font-bold">Escuela</th>
+                <th className="py-3 px-4 font-bold">Programa</th>
+                <th className="py-3 px-4 font-bold">Cargo</th>
+                <th className="py-3 px-4 font-bold text-center">Cant.</th>
+                <th className="py-3 px-4 font-bold whitespace-nowrap">Estado</th>
+                <th className="py-3 px-4 font-bold text-right whitespace-nowrap">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-500 text-sm">
+                  <td colSpan={9} className="py-16 text-center text-slate-500 text-[15px]">
                     No hay vacantes para mostrar.
                   </td>
                 </tr>
@@ -579,44 +579,44 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     key={v.id}
                     className="border-b border-slate-100/80 hover:bg-violet-50/30 transition-colors"
                   >
-                    <td className="py-3 px-3 text-slate-600 text-xs whitespace-nowrap align-top">
+                    <td className="py-3 px-4 text-slate-600 text-sm whitespace-nowrap align-top">
                       {formatVacancyDateOnly(v.createdAt)}
                     </td>
                     <td
-                      className="py-3 px-3 text-slate-700 text-xs whitespace-nowrap align-top"
+                      className="py-3 px-4 text-slate-700 text-sm whitespace-nowrap align-top"
                       title={vacancyActiveDaysTooltip(v)}
                     >
                       <span className="font-semibold text-violet-700">
                         {formatVacancyActiveDaysLabel(computeVacancyActiveDays(v))}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-slate-800 align-top">
+                    <td className="py-3 px-4 text-slate-800 align-top">
                       <span className="line-clamp-2" title={v.areaName ?? ''}>
                         {v.areaName ?? '—'}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-slate-800 align-top">
+                    <td className="py-3 px-4 text-slate-800 align-top">
                       <span className="line-clamp-2" title={v.schoolName ?? ''}>
                         {v.schoolName ?? '—'}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-slate-700 align-top">
+                    <td className="py-3 px-4 text-slate-700 align-top">
                       <span className="line-clamp-2" title={v.programName ?? ''}>
                         {v.programName ?? '—'}
                       </span>
                     </td>
-                    <td className="py-3 px-3 font-medium text-slate-900 align-top">
+                    <td className="py-3 px-4 font-medium text-slate-900 align-top">
                       <span className="line-clamp-2" title={v.positionName}>
                         {v.positionName}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-center text-slate-800 tabular-nums align-top">
+                    <td className="py-3 px-4 text-center text-slate-800 tabular-nums align-top">
                       {v.quantity}
                     </td>
-                    <td className="py-3 px-3 align-top">
+                    <td className="py-3 px-4 align-top">
                       <span
                         className={cn(
-                          'inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold border',
+                          'inline-flex px-2 py-0.5 rounded-md text-xs font-bold border',
                           v.operationStatus === 'open' && 'bg-blue-50 text-blue-700 border-blue-100',
                           v.operationStatus === 'selected' &&
                             'bg-amber-50 text-amber-800 border-amber-100',
@@ -633,7 +633,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                         {STATUS_LABEL[v.operationStatus]}
                       </span>
                     </td>
-                    <td className="py-3 px-3 align-top">
+                    <td className="py-3 px-4 align-top">
                       <div className="flex flex-wrap gap-1">
                         <button
                           type="button"
