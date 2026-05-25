@@ -10,6 +10,7 @@ import {
   resolveCoreSchemaMode,
   type CoreSchemaMode,
 } from "../lib/coreSchema";
+import { validateDocument } from "../lib/dataValidators";
 import { toUpperAscii, toUpperAsciiOrNull } from "../lib/textNormalize";
 import { notifyVacancyCreated } from "../services/vacancyNotifyService";
 
@@ -433,6 +434,9 @@ function mapVacancyRow(
     positionName: String(row.position_name ?? ""),
     curricularLine:
       row.curricular_line == null ? null : String(row.curricular_line),
+    directManagerIdentification: validateDocument(
+      row.direct_manager_identification
+    ),
     quantity: Number(row.quantity ?? 0),
     operationNotes,
     ...mapComplianceFields(row),
@@ -559,6 +563,7 @@ router.get("/vacancies", async (req, res) => {
          v.created_at,
          v.updated_at,
          v.closed_at,
+         v.direct_manager_identification,
          r.req_number,
          r.assigned_at AS req_assigned_at,
          r.sent_to_capital_at,
@@ -681,14 +686,21 @@ router.post("/vacancies", async (req, res) => {
       return;
     }
 
+    const directManagerIdentification =
+      b.directManagerIdentification !== undefined
+        ? validateDocument(b.directManagerIdentification)
+        : null;
+
     const { rows } = await pool.query(
       `INSERT INTO vacancies.vacancy (
         area_id, school_id, program_id,
         position_name, curricular_line, quantity,
+        direct_manager_identification,
         operation_status
       ) VALUES (
         $1, $2, $3,
         $4, $5, $6,
+        $7,
         'open'
       ) RETURNING *`,
       [
@@ -698,6 +710,7 @@ router.post("/vacancies", async (req, res) => {
         positionName,
         curricularLine,
         quantity,
+        directManagerIdentification,
       ]
     );
 
@@ -1037,6 +1050,7 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
          v.created_at,
          v.updated_at,
          v.closed_at,
+         v.direct_manager_identification,
          r.req_number,
          r.assigned_at AS req_assigned_at,
          r.sent_to_capital_at,
@@ -1102,6 +1116,7 @@ router.get("/vacancies/:id", async (req, res) => {
          v.created_at,
          v.updated_at,
          v.closed_at,
+         v.direct_manager_identification,
          r.id AS requisition_id,
          r.req_number,
          r.assigned_at AS req_assigned_at,
@@ -1346,6 +1361,7 @@ router.patch("/vacancies/:id/requisition", async (req, res) => {
          v.created_at,
          v.updated_at,
          v.closed_at,
+         v.direct_manager_identification,
          r.req_number,
          r.assigned_at AS req_assigned_at,
          r.sent_to_capital_at,
@@ -1395,6 +1411,16 @@ router.patch("/vacancies/:id", async (req, res) => {
     }
 
     const b = req.body as Record<string, unknown>;
+
+    const existingCcRow = await pool.query(
+      `SELECT direct_manager_identification FROM vacancies.vacancy WHERE id = $1`,
+      [id]
+    );
+    const existingCc = validateDocument(
+      (existingCcRow.rows[0] as { direct_manager_identification?: unknown })
+        ?.direct_manager_identification
+    );
+
     const updates: string[] = [];
     const values: unknown[] = [];
     let p = 1;
@@ -1404,6 +1430,21 @@ router.patch("/vacancies/:id", async (req, res) => {
       values.push(val);
       p++;
     };
+
+    if (b.directManagerIdentification !== undefined) {
+      const incoming = validateDocument(b.directManagerIdentification);
+      if (existingCc != null) {
+        if (incoming !== existingCc) {
+          res.status(409).json({
+            error:
+              "La CC del jefe directo no puede modificarse una vez registrada.",
+          });
+          return;
+        }
+      } else if (incoming != null) {
+        setCol("direct_manager_identification", incoming);
+      }
+    }
 
     // programId + schoolId/areaId in the same body must not emit duplicate SET school_id / area_id.
     // Non-null programId: CORE infers school (and area when available); ignore explicit schoolId/areaId.

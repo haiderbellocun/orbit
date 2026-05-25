@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS vacancies.vacancy (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   closed_at TIMESTAMPTZ,
+  direct_manager_identification VARCHAR(20),
   created_by_person_id INTEGER,
   updated_by_person_id INTEGER,
   CONSTRAINT vacancy_quantity_positive CHECK (quantity > 0),

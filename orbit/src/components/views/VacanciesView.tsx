@@ -130,6 +130,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const [createProgramId, setCreateProgramId] = useState<number | '' | 'none'>('none');
   const [createPosition, setCreatePosition] = useState('');
   const [createLine, setCreateLine] = useState('');
+  const [createDirectManagerCc, setCreateDirectManagerCc] = useState('');
   const [createQty, setCreateQty] = useState('1');
   const [createOpNotes, setCreateOpNotes] = useState('');
   const [newOpNoteDraft, setNewOpNoteDraft] = useState('');
@@ -233,6 +234,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     setCreateProgramId('none');
     setCreatePosition('');
     setCreateLine('');
+    setCreateDirectManagerCc('');
     setCreateQty('1');
     setCreateOpNotes('');
     setNewOpNoteDraft('');
@@ -264,6 +266,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
       setFormError('El cargo es obligatorio.');
       return;
     }
+    const ccTrim = createDirectManagerCc.trim();
     const payload: CreateVacancyPayload = {
       areaId: Number(createAreaId),
       schoolId: createSchoolId === '' ? null : Number(createSchoolId),
@@ -272,6 +275,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
       curricularLine: toUpperAsciiOrNull(createLine),
       quantity: qty,
       operationNotes: createOpNotes.trim() ? toUpperAscii(createOpNotes) : null,
+      ...(ccTrim ? { directManagerIdentification: ccTrim } : {}),
     };
     try {
       await createVacancy(payload);
@@ -289,6 +293,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     if (!editRow) return;
     setFormError(null);
     const coreLocked = isVacancyCoreFieldsLocked(editRow);
+    const ccLocked = Boolean((editRow.directManagerIdentification ?? '').trim());
+    const ccTrim = createDirectManagerCc.trim();
 
     if (!coreLocked) {
       const qty = Number(createQty);
@@ -303,7 +309,10 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     }
 
     const patch: PatchVacancyPayload = coreLocked
-      ? { operationStatus: editRow.operationStatus }
+      ? {
+          operationStatus: editRow.operationStatus,
+          ...(!ccLocked && ccTrim ? { directManagerIdentification: ccTrim } : {}),
+        }
       : {
           areaId: createAreaId === '' ? undefined : Number(createAreaId),
           schoolId: createSchoolId === '' ? null : Number(createSchoolId),
@@ -317,6 +326,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
           curricularLine: toUpperAsciiOrNull(createLine),
           quantity: Number(createQty),
           operationStatus: editRow.operationStatus,
+          ...(!ccLocked && ccTrim ? { directManagerIdentification: ccTrim } : {}),
         };
     try {
       const apiRow = (await patchVacancy(editRow.id, patch)) as Vacancy;
@@ -448,6 +458,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     setCreateProgramId(v.programId == null ? 'none' : v.programId);
     setCreatePosition(v.positionName);
     setCreateLine(v.curricularLine ?? '');
+    setCreateDirectManagerCc(v.directManagerIdentification ?? '');
     setCreateQty(String(v.quantity));
     setCreateOpNotes('');
     setNewOpNoteDraft('');
@@ -803,6 +814,26 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   value={createQty}
                   onChange={(e) => setCreateQty(e.target.value)}
                 />
+              </Field>
+              <Field label="CC jefe directo (opcional)">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  disabled={
+                    editRow != null &&
+                    Boolean((editRow.directManagerIdentification ?? '').trim())
+                  }
+                  className="glass-input py-2.5 text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
+                  value={createDirectManagerCc}
+                  onChange={(e) => setCreateDirectManagerCc(e.target.value)}
+                  placeholder="Número de cédula"
+                />
+                {editRow &&
+                  Boolean((editRow.directManagerIdentification ?? '').trim()) && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      La CC del jefe directo no puede modificarse una vez registrada.
+                    </p>
+                  )}
               </Field>
               {!editRow && (
                 <Field label="Comentario inicial de operación (opcional)">

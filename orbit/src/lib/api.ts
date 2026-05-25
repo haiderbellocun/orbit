@@ -513,6 +513,8 @@ export type CreateVacancyPayload = {
   programId: number | null;
   positionName: string;
   curricularLine?: string | null;
+  /** CC del jefe directo (opcional). */
+  directManagerIdentification?: string | null;
   quantity: number;
   /** Primer comentario de operación (opcional). */
   operationNotes?: string | null;
@@ -524,6 +526,7 @@ export type PatchVacancyPayload = Partial<{
   programId: number | null;
   positionName: string;
   curricularLine: string | null;
+  directManagerIdentification?: string | null;
   quantity: number;
   operationStatus: VacancyOperationStatus;
   closedAt: string | null;
