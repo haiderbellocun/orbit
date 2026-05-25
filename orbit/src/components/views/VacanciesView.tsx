@@ -8,6 +8,7 @@ import {
   PencilSquareIcon,
   DocumentTextIcon,
   XCircleIcon,
+  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -40,6 +41,9 @@ import {
   isoToDateInputValue,
   vacancyActiveDaysTooltip,
 } from '@/src/lib/vacancyActiveDays';
+
+const ZOHO_REQUISITION_FORM_URL =
+  'https://forms.zohopublic.com/corporaciontelecampus/form/FormularioRequisicinDePersonalpruebasfabrica/formperma/-VuUg91k0dmkV0jnmTcX738gCDhJNdV9HhD7RJhSnRg';
 
 const STATUS_LABEL: Record<VacancyOperationStatus, string> = {
   open: 'Abierta',
@@ -651,6 +655,15 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                         >
                           <PencilSquareIcon className="h-4 w-4" />
                         </button>
+                        <a
+                          href={ZOHO_REQUISITION_FORM_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Formulario de requisición (Zoho)"
+                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 inline-flex"
+                        >
+                          <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+                        </a>
                         <button
                           type="button"
                           title="Agregar informacion requisición"
