@@ -101,6 +101,26 @@ export function validateDocument(val: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+export const DIRECT_MANAGER_IDENTIFICATION_MAX_LENGTH = 200;
+
+/** Nombre del jefe inmediato (opcional), texto libre con tope de longitud. */
+export function validateDirectManagerIdentification(
+  val: unknown
+): { ok: true; value: string | null } | { ok: false; reason: "too_long" | "invalid" } {
+  if (val === null || val === undefined) return { ok: true, value: null };
+
+  if (typeof val !== "string" && typeof val !== "number") {
+    return { ok: false, reason: "invalid" };
+  }
+
+  const trimmed = String(val).trim();
+  if (trimmed.length === 0) return { ok: true, value: null };
+  if (trimmed.length > DIRECT_MANAGER_IDENTIFICATION_MAX_LENGTH) {
+    return { ok: false, reason: "too_long" };
+  }
+  return { ok: true, value: trimmed };
+}
+
 /**
  * Validates and concatenates first and last names
  * Returns full name or null if both are missing

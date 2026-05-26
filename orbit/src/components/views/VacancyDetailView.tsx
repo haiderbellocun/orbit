@@ -175,15 +175,19 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
               <Row label="Programa" value={v.programName ?? '—'} />
               <Row label="Línea curricular" value={v.curricularLine ?? '—'} />
               <Row
-                label="CC jefe directo"
+                label="Nombre jefe inmediato"
                 value={v.directManagerIdentification?.trim() || '—'}
               />
               <Row label="Cantidad" value={String(v.quantity)} />
               <Row label="Creado" value={formatTs(v.createdAt)} />
               <Row
                 label="Tiempo activo"
-                value={formatVacancyActiveDaysLabel(computeVacancyActiveDays(v))}
-                title={vacancyActiveDaysTooltip(v)}
+                value={
+                  v.sentToCapitalAt
+                    ? formatVacancyActiveDaysLabel(computeVacancyActiveDays(v))
+                    : 'SIN FECHA DE ENVÍO'
+                }
+                title={v.sentToCapitalAt ? vacancyActiveDaysTooltip(v) : undefined}
               />
               <Row label="Actualizado" value={formatTs(v.updatedAt)} />
               <Row label="Cierre" value={formatTs(v.closedAt)} />
@@ -250,8 +254,12 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                 />
                 <Row label="Asignado" value={formatTs(v.requisition.assignedAt)} />
                 <Row
-                  label="Envío a capital"
-                  value={formatVacancyDateOnly(v.requisition.sentToCapitalAt)}
+                  label="Enviado a capital (opcional)"
+                  value={
+                    v.requisition.sentToCapitalAt
+                      ? formatVacancyDateOnly(v.requisition.sentToCapitalAt)
+                      : 'SIN FECHA DE ENVÍO'
+                  }
                 />
                 <div>
                   <dt className="text-[10px] font-bold uppercase text-slate-400 mb-1">

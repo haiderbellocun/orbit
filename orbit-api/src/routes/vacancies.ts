@@ -10,11 +10,22 @@ import {
   resolveCoreSchemaMode,
   type CoreSchemaMode,
 } from "../lib/coreSchema";
-import { validateDocument } from "../lib/dataValidators";
+import {
+  DIRECT_MANAGER_IDENTIFICATION_MAX_LENGTH,
+  validateDirectManagerIdentification,
+  validateDocument,
+} from "../lib/dataValidators";
 import { toUpperAscii, toUpperAsciiOrNull } from "../lib/textNormalize";
 import { notifyVacancyCreated } from "../services/vacancyNotifyService";
 
 const router = Router();
+
+function directManagerIdentificationError(reason: "too_long" | "invalid"): string {
+  if (reason === "too_long") {
+    return `El nombre del jefe inmediato no puede superar ${DIRECT_MANAGER_IDENTIFICATION_MAX_LENGTH} caracteres.`;
+  }
+  return "Valor inválido para nombre del jefe inmediato.";
+}
 
 const OPERATION_STATUSES = new Set([
   "open",
@@ -25,6 +36,27 @@ const OPERATION_STATUSES = new Set([
   "cancelled",
   "cancelled_by_capital",
 ]);
+
+async function resolveVacancyUuidFromParam(
+  vacancyParam: string
+): Promise<string | null> {
+  const raw = String(vacancyParam ?? "").trim();
+  if (isUuid(raw)) return raw;
+
+  // Allow numeric publicId in routes (e.g. /vacancies/4)
+  if (/^\d+$/.test(raw)) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const { rows } = await pool.query(
+      `SELECT id FROM vacancies.vacancy WHERE public_id = $1`,
+      [n]
+    );
+    if (rows.length === 0) return null;
+    return String((rows[0] as { id: unknown }).id);
+  }
+
+  return null;
+}
 
 const CLOSE_STATUSES = new Set([
   "hired",
@@ -161,7 +193,8 @@ async function insertVacancyChangeLog(
   action: string,
   details: unknown
 ): Promise<void> {
-  if (!isUuid(vacancyId)) {
+  const entityId = String(vacancyId ?? "").trim();
+  if (entityId === "") {
     throw new Error("insertVacancyChangeLog: vacancyId/entityId is required");
   }
 
@@ -426,6 +459,8 @@ function mapVacancyRow(
 ) {
   return {
     id: String(row.id),
+    publicId:
+      row.public_id == null ? null : Number(row.public_id),
     areaId: Number(row.area_id),
     schoolId:
       row.school_id == null ? null : Number(row.school_id),
@@ -548,6 +583,7 @@ router.get("/vacancies", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT
          v.id,
+         v.public_id,
          v.area_id,
          a.name AS area_name,
          v.school_id,
@@ -686,10 +722,18 @@ router.post("/vacancies", async (req, res) => {
       return;
     }
 
-    const directManagerIdentification =
-      b.directManagerIdentification !== undefined
-        ? validateDocument(b.directManagerIdentification)
-        : null;
+    let directManagerIdentification: string | null = null;
+    if (b.directManagerIdentification !== undefined) {
+      const parsed = validateDirectManagerIdentification(
+        b.directManagerIdentification
+      );
+      if (!parsed.ok) {
+        res.status(400).json({ error: directManagerIdentificationError(parsed.reason) });
+        return;
+      }
+      directManagerIdentification =
+        parsed.value == null ? null : toUpperAscii(parsed.value);
+    }
 
     const { rows } = await pool.query(
       `INSERT INTO vacancies.vacancy (
@@ -744,8 +788,8 @@ router.post("/vacancies", async (req, res) => {
 /** PATCH /vacancies/:id/close */
 router.patch("/vacancies/:id/close", async (req, res) => {
   try {
-    const id = req.params.id;
-    if (!isUuid(id)) {
+    const id = await resolveVacancyUuidFromParam(req.params.id);
+    if (id == null) {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
@@ -810,8 +854,8 @@ router.patch("/vacancies/:id/close", async (req, res) => {
 /** POST /vacancies/:id/operation-notes */
 router.post("/vacancies/:id/operation-notes", async (req, res) => {
   try {
-    const id = req.params.id;
-    if (!isUuid(id)) {
+    const id = await resolveVacancyUuidFromParam(req.params.id);
+    if (id == null) {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
@@ -902,8 +946,8 @@ router.post("/vacancies/:id/operation-notes", async (req, res) => {
 
 /** POST /vacancies/:id/requisition */
 router.post("/vacancies/:id/requisition", async (req, res) => {
-  const id = req.params.id;
-  if (!isUuid(id)) {
+  const id = await resolveVacancyUuidFromParam(req.params.id);
+  if (id == null) {
     res.status(400).json({ error: "Invalid id" });
     return;
   }
@@ -1077,8 +1121,8 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
 /** GET /vacancies/:id */
 router.get("/vacancies/:id", async (req, res) => {
   try {
-    const id = req.params.id;
-    if (!isUuid(id)) {
+    const id = await resolveVacancyUuidFromParam(req.params.id);
+    if (id == null) {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
@@ -1101,6 +1145,7 @@ router.get("/vacancies/:id", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT
          v.id,
+         v.public_id,
          v.area_id,
          a.name AS area_name,
          v.school_id,
@@ -1118,6 +1163,7 @@ router.get("/vacancies/:id", async (req, res) => {
          v.closed_at,
          v.direct_manager_identification,
          r.id AS requisition_id,
+         r.public_id AS requisition_public_id,
          r.req_number,
          r.assigned_at AS req_assigned_at,
          r.sent_to_capital_at,
@@ -1225,8 +1271,8 @@ router.get("/vacancies/:id", async (req, res) => {
 /** PATCH /vacancies/:id/requisition */
 router.patch("/vacancies/:id/requisition", async (req, res) => {
   try {
-    const id = req.params.id;
-    if (!isUuid(id)) {
+    const id = await resolveVacancyUuidFromParam(req.params.id);
+    if (id == null) {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
@@ -1385,8 +1431,8 @@ router.patch("/vacancies/:id/requisition", async (req, res) => {
 /** PATCH /vacancies/:id */
 router.patch("/vacancies/:id", async (req, res) => {
   try {
-    const id = req.params.id;
-    if (!isUuid(id)) {
+    const id = await resolveVacancyUuidFromParam(req.params.id);
+    if (id == null) {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
@@ -1416,7 +1462,7 @@ router.patch("/vacancies/:id", async (req, res) => {
       `SELECT direct_manager_identification FROM vacancies.vacancy WHERE id = $1`,
       [id]
     );
-    const existingCc = validateDocument(
+    const existingManagerName = validateDocument(
       (existingCcRow.rows[0] as { direct_manager_identification?: unknown })
         ?.direct_manager_identification
     );
@@ -1432,12 +1478,20 @@ router.patch("/vacancies/:id", async (req, res) => {
     };
 
     if (b.directManagerIdentification !== undefined) {
-      const incoming = validateDocument(b.directManagerIdentification);
-      if (existingCc != null) {
-        if (incoming !== existingCc) {
+      const parsed = validateDirectManagerIdentification(
+        b.directManagerIdentification
+      );
+      if (!parsed.ok) {
+        res.status(400).json({ error: directManagerIdentificationError(parsed.reason) });
+        return;
+      }
+      const incoming =
+        parsed.value == null ? null : toUpperAscii(parsed.value);
+      if (existingManagerName != null) {
+        if (incoming !== existingManagerName) {
           res.status(409).json({
             error:
-              "La CC del jefe directo no puede modificarse una vez registrada.",
+              "El nombre del jefe inmediato no puede modificarse una vez registrado.",
           });
           return;
         }

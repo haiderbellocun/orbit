@@ -27,6 +27,8 @@ function dayDiffInclusive(startKey: string, endKey: string): number {
 }
 
 function endIsoForVacancy(v: Vacancy): string {
+  // Si hay fecha de envío a capital, usarla como fin del cálculo.
+  if (v.sentToCapitalAt) return v.sentToCapitalAt;
   if (v.closedAt) return v.closedAt;
   if (TERMINAL_STATUSES.has(v.operationStatus) && v.updatedAt) {
     return v.updatedAt;
