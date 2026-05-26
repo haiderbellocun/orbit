@@ -1,99 +1,34 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 import {
   PlusIcon,
   MagnifyingGlassIcon,
-  XMarkIcon,
   EyeIcon,
   PencilSquareIcon,
-  DocumentTextIcon,
-  XCircleIcon,
-  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
-import { toUpperAscii, toUpperAsciiOrNull } from '@/src/lib/textNormalize';
-import type { Vacancy, Teacher, Coordinator, VacancyOperationStatus } from '@/src/types';
-import {
-  getVacancies,
-  createVacancy,
-  patchVacancy,
-  createVacancyRequisition,
-  patchVacancyRequisition,
-  closeVacancy,
-  appendVacancyOperationNote,
-  getCatalogAreas,
-  getCatalogSchools,
-  getCatalogPrograms,
-  getCatalogRoles,
-  type CatalogArea,
-  type CatalogSchool,
-  type CatalogProgram,
-  type CatalogRole,
-  type CreateVacancyPayload,
-  type PatchVacancyPayload,
-} from '@/src/lib/api';
+import type { Vacancy, Teacher, Coordinator } from '@/src/types';
+import { getVacancies } from '@/src/lib/api';
 import {
   computeVacancyActiveDays,
-  dateInputToIso,
   formatVacancyActiveDaysLabel,
   formatVacancyDateOnly,
-  isoToDateInputValue,
   vacancyActiveDaysTooltip,
 } from '@/src/lib/vacancyActiveDays';
+import {
+  STATUS_LABEL,
+  isVacancyFullyLocked,
+} from '@/src/lib/vacancyFormHelpers';
+import { VacancyManageModal } from '@/src/components/views/VacancyManageModal';
 
-const ZOHO_REQUISITION_FORM_URL =
-  'https://forms.zohopublic.com/corporaciontelecampus/form/FormularioRequisicinDePersonalpruebasfabrica/formperma/-VuUg91k0dmkV0jnmTcX738gCDhJNdV9HhD7RJhSnRg';
-
-const STATUS_LABEL: Record<VacancyOperationStatus, string> = {
-  open: 'Abierta',
-  selected: 'Seleccionado',
-  requisition_sent: 'Requisición Enviada',
-  hired: 'Contratado',
-  closed: 'Cerrada',
-  cancelled: 'Cancelada',
-  cancelled_by_capital: 'Cancelada por capital',
-};
-
-/** Contratada, cerrada o cancelada: sin edición ni cierre. */
-function isVacancyFullyLocked(status: VacancyOperationStatus): boolean {
-  return (
-    status === 'hired' ||
-    status === 'closed' ||
-    status === 'cancelled' ||
-    status === 'cancelled_by_capital'
-  );
-}
-
-/** Con requisición: datos base bloqueados; requisición sigue editable. */
-function isVacancyCoreFieldsLocked(v: Vacancy): boolean {
-  return Boolean(v.reqAssignedAt);
-}
-
-function formatDt(iso: string | null | undefined): string {
-  if (iso == null || iso === '') return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 19);
-  return d.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
-}
-
-type TriSelectValue = '' | 'true' | 'false';
-
-function triToBool(s: TriSelectValue): boolean | null {
-  if (s === 'true') return true;
-  if (s === 'false') return false;
-  return null;
-}
-
-function boolToTri(v: boolean | null | undefined): TriSelectValue {
-  if (v === true) return 'true';
-  if (v === false) return 'false';
-  return '';
-}
+type ManagePanel =
+  | null
+  | { mode: 'create' }
+  | { mode: 'edit'; vacancy: Vacancy };
 
 interface VacanciesViewProps {
   onSelectVacancy: (v: Vacancy) => void;
-  /** Called after a successful PATCH so the detail view can show updated notes / feedback. */
   onVacancySaved?: (v: Vacancy) => void;
   searchQuery?: string;
   setSearchQuery?: (q: string) => void;
@@ -116,44 +51,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const [rows, setRows] = useState<Vacancy[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
   const [saveBanner, setSaveBanner] = useState<string | null>(null);
-
-  const [areas, setAreas] = useState<CatalogArea[]>([]);
-  const [schools, setSchools] = useState<CatalogSchool[]>([]);
-  const [programs, setPrograms] = useState<CatalogProgram[]>([]);
-  const [roles, setRoles] = useState<CatalogRole[]>([]);
-
-  const [showCreate, setShowCreate] = useState(false);
-  const [editRow, setEditRow] = useState<Vacancy | null>(null);
-  const [reqRow, setReqRow] = useState<Vacancy | null>(null);
-  const [closeRow, setCloseRow] = useState<Vacancy | null>(null);
-
-  const [createAreaId, setCreateAreaId] = useState<number | ''>('');
-  const [createSchoolId, setCreateSchoolId] = useState<number | ''>('');
-  const [createProgramId, setCreateProgramId] = useState<number | '' | 'none'>('none');
-  const [createPosition, setCreatePosition] = useState('');
-  const [createLine, setCreateLine] = useState('');
-  const [createDirectManagerCc, setCreateDirectManagerCc] = useState('');
-  const [createQty, setCreateQty] = useState('1');
-  const [createOpNotes, setCreateOpNotes] = useState('');
-  const [newOpNoteDraft, setNewOpNoteDraft] = useState('');
-  const [opNoteSaving, setOpNoteSaving] = useState(false);
-  const [editReqCapitalNotes, setEditReqCapitalNotes] = useState('');
-  const [editReqNumber, setEditReqNumber] = useState('');
-  const [editReqSentAt, setEditReqSentAt] = useState('');
-  const [createTerna, setCreateTerna] = useState<TriSelectValue>('');
-  const [createPda, setCreatePda] = useState<TriSelectValue>('');
-  const [createContract, setCreateContract] = useState<TriSelectValue>('');
-  const [createCv, setCreateCv] = useState<TriSelectValue>('');
-
-  const [reqNumber, setReqNumber] = useState('');
-  const [reqSentAt, setReqSentAt] = useState('');
-  const [reqCapNotes, setReqCapNotes] = useState('');
-
-  const [closeStatus, setCloseStatus] = useState<
-    'hired' | 'closed' | 'cancelled' | 'cancelled_by_capital'
-  >('closed');
+  const [managePanel, setManagePanel] = useState<ManagePanel>(null);
 
   const refresh = useCallback(async (): Promise<Vacancy[]> => {
     setLoading(true);
@@ -182,42 +81,6 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     return () => window.clearTimeout(t);
   }, [saveBanner]);
 
-  const loadCatalogs = useCallback(async () => {
-    try {
-      const [a, r] = await Promise.all([getCatalogAreas(), getCatalogRoles()]);
-      setAreas(a);
-      setRoles(r);
-    } catch {
-      /* vacío: catálogo opcional si CORE no está */
-    }
-  }, []);
-
-  useEffect(() => {
-    if (showCreate || editRow) void loadCatalogs();
-  }, [showCreate, editRow, loadCatalogs]);
-
-  const onAreaChange = (idNum: number | '') => {
-    setCreateAreaId(idNum);
-    setCreateSchoolId('');
-    setCreateProgramId('none');
-    setPrograms([]);
-    if (idNum === '') {
-      setSchools([]);
-      return;
-    }
-    void getCatalogSchools({ area_id: Number(idNum) }).then(setSchools);
-  };
-
-  const onSchoolChange = (idNum: number | '') => {
-    setCreateSchoolId(idNum);
-    setCreateProgramId('none');
-    if (idNum === '') {
-      setPrograms([]);
-      return;
-    }
-    void getCatalogPrograms({ school_id: Number(idNum) }).then(setPrograms);
-  };
-
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return rows;
@@ -232,253 +95,18 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     );
   }, [rows, searchQuery]);
 
-  function resetCreateForm() {
-    setCreateAreaId('');
-    setCreateSchoolId('');
-    setCreateProgramId('none');
-    setCreatePosition('');
-    setCreateLine('');
-    setCreateDirectManagerCc('');
-    setCreateQty('1');
-    setCreateOpNotes('');
-    setNewOpNoteDraft('');
-    setEditReqCapitalNotes('');
-    setEditReqNumber('');
-    setEditReqSentAt('');
-    setCreateTerna('');
-    setCreatePda('');
-    setCreateContract('');
-    setCreateCv('');
-    setFormError(null);
-    setSchools([]);
-    setPrograms([]);
-  }
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    if (createAreaId === '') {
-      setFormError('Seleccione área.');
-      return;
-    }
-    const qty = Number(createQty);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      setFormError('La cantidad debe ser mayor a 0.');
-      return;
-    }
-    if (!createPosition.trim()) {
-      setFormError('El cargo es obligatorio.');
-      return;
-    }
-    const ccTrim = createDirectManagerCc.trim();
-    const payload: CreateVacancyPayload = {
-      areaId: Number(createAreaId),
-      schoolId: createSchoolId === '' ? null : Number(createSchoolId),
-      programId: createProgramId === 'none' || createProgramId === '' ? null : Number(createProgramId),
-      positionName: toUpperAscii(createPosition),
-      curricularLine: toUpperAsciiOrNull(createLine),
-      quantity: qty,
-      operationNotes: createOpNotes.trim() ? toUpperAscii(createOpNotes) : null,
-      ...(ccTrim ? { directManagerIdentification: ccTrim } : {}),
-    };
-    try {
-      await createVacancy(payload);
-      setShowCreate(false);
-      resetCreateForm();
-      await refresh();
-      setSaveBanner('Vacante creada correctamente.');
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Error al crear');
-    }
-  }
-
-  async function handleEditSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editRow) return;
-    setFormError(null);
-    const coreLocked = isVacancyCoreFieldsLocked(editRow);
-    const ccLocked = Boolean((editRow.directManagerIdentification ?? '').trim());
-    const ccTrim = createDirectManagerCc.trim();
-
-    if (!coreLocked) {
-      const qty = Number(createQty);
-      if (!Number.isFinite(qty) || qty <= 0) {
-        setFormError('La cantidad debe ser mayor a 0.');
-        return;
-      }
-      if (!createPosition.trim()) {
-        setFormError('El cargo es obligatorio.');
-        return;
-      }
-    }
-
-    const patch: PatchVacancyPayload = coreLocked
-      ? {
-          operationStatus: editRow.operationStatus,
-          ...(!ccLocked && ccTrim ? { directManagerIdentification: ccTrim } : {}),
-        }
-      : {
-          areaId: createAreaId === '' ? undefined : Number(createAreaId),
-          schoolId: createSchoolId === '' ? null : Number(createSchoolId),
-          programId:
-            createProgramId === 'none'
-              ? null
-              : createProgramId === ''
-                ? undefined
-                : Number(createProgramId),
-          positionName: toUpperAscii(createPosition),
-          curricularLine: toUpperAsciiOrNull(createLine),
-          quantity: Number(createQty),
-          operationStatus: editRow.operationStatus,
-          ...(!ccLocked && ccTrim ? { directManagerIdentification: ccTrim } : {}),
-        };
-    try {
-      const apiRow = (await patchVacancy(editRow.id, patch)) as Vacancy;
-      if (editRow.reqAssignedAt) {
-        const normCap = (s: string | null | undefined) => {
-          const t = (s ?? '').trim();
-          return t === '' ? null : toUpperAscii(t);
-        };
-        const nextCap = normCap(editReqCapitalNotes);
-        const prevCap = normCap(editRow.capitalNotes ?? null);
-        const nextReq = editReqNumber.trim()
-          ? toUpperAscii(editReqNumber)
-          : null;
-        const prevReq =
-          editRow.reqNumber != null && editRow.reqNumber !== ''
-            ? editRow.reqNumber
-            : null;
-        const nextSent = dateInputToIso(editReqSentAt);
-        const prevSent = editRow.sentToCapitalAt ?? null;
-        const reqPatch: Parameters<typeof patchVacancyRequisition>[1] = {
-          shortlistComplied: triToBool(createTerna),
-          pdaComplied: triToBool(createPda),
-          contractConditionsComplied: triToBool(createContract),
-          preInterviewCvComplied: triToBool(createCv),
-        };
-        if (nextReq !== prevReq) reqPatch.reqNumber = nextReq;
-        if (nextCap !== prevCap) reqPatch.capitalNotes = nextCap;
-        if (nextSent !== prevSent) reqPatch.sentToCapitalAt = nextSent;
-        await patchVacancyRequisition(editRow.id, reqPatch);
-      }
-      const list = await refresh();
-      const fresh = list.find((x) => x.id === editRow.id) ?? editRow;
-      const merged: Vacancy = {
-        ...editRow,
-        ...apiRow,
-        ...fresh,
-        areaName: fresh.areaName ?? editRow.areaName ?? apiRow.areaName,
-        schoolName: fresh.schoolName ?? editRow.schoolName ?? apiRow.schoolName,
-        programName: fresh.programName ?? editRow.programName ?? apiRow.programName,
-        reqNumber: fresh.reqNumber ?? editRow.reqNumber ?? apiRow.reqNumber,
-        operationNotes: fresh.operationNotes ?? apiRow.operationNotes,
-        capitalNotes: fresh.capitalNotes ?? apiRow.capitalNotes,
-      };
-      onVacancySaved?.(merged);
-      setEditRow(null);
-      resetCreateForm();
-      setSaveBanner(
-        coreLocked
-          ? 'Estado operación actualizado.'
-          : 'Cambios guardados (cumplimientos, estado y demás campos).'
-      );
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Error al guardar');
-    }
-  }
-
-  async function handleAppendOperationNote() {
-    if (!editRow) return;
-    const text = newOpNoteDraft.trim();
-    if (text === '') {
-      setFormError('Escriba un comentario para añadir.');
-      return;
-    }
-    setFormError(null);
-    setOpNoteSaving(true);
-    try {
-      await appendVacancyOperationNote(editRow.id, { text: toUpperAscii(newOpNoteDraft) });
-      setNewOpNoteDraft('');
-      const list = await refresh();
-      const fresh = list.find((x) => x.id === editRow.id);
-      if (fresh) setEditRow(fresh);
-      setSaveBanner('Comentario de operación añadido.');
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Error al añadir comentario');
-    } finally {
-      setOpNoteSaving(false);
-    }
-  }
-
-  async function handleRequisitionSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!reqRow) return;
-    setFormError(null);
-    try {
-      await createVacancyRequisition(reqRow.id, {
-        reqNumber: reqNumber.trim() ? toUpperAscii(reqNumber) : null,
-        sentToCapitalAt: dateInputToIso(reqSentAt),
-        capitalNotes: reqCapNotes.trim() ? toUpperAscii(reqCapNotes) : null,
-        shortlistComplied: triToBool(createTerna),
-        pdaComplied: triToBool(createPda),
-        contractConditionsComplied: triToBool(createContract),
-        preInterviewCvComplied: triToBool(createCv),
-      });
-      setReqRow(null);
-      setReqNumber('');
-      setReqSentAt('');
-      setReqCapNotes('');
-      setCreateTerna('');
-      setCreatePda('');
-      setCreateContract('');
-      setCreateCv('');
-      await refresh();
-      setSaveBanner('Requisición registrada.');
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Error al crear requisición');
-    }
-  }
-
-  async function handleCloseSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!closeRow) return;
-    setFormError(null);
-    try {
-      await closeVacancy(closeRow.id, { operationStatus: closeStatus });
-      setCloseRow(null);
-      await refresh();
-      setSaveBanner('Vacante cerrada.');
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Error al cerrar');
-    }
-  }
-
   function openEdit(v: Vacancy) {
-    setFormError(null);
     setSaveBanner(null);
-    setEditRow(v);
-    setCreateAreaId(v.areaId);
-    setCreateSchoolId(v.schoolId == null ? '' : v.schoolId);
-    setCreateProgramId(v.programId == null ? 'none' : v.programId);
-    setCreatePosition(v.positionName);
-    setCreateLine(v.curricularLine ?? '');
-    setCreateDirectManagerCc(v.directManagerIdentification ?? '');
-    setCreateQty(String(v.quantity));
-    setCreateOpNotes('');
-    setNewOpNoteDraft('');
-    setEditReqCapitalNotes(v.capitalNotes ?? '');
-    setEditReqNumber(v.reqNumber ?? '');
-    setEditReqSentAt(isoToDateInputValue(v.sentToCapitalAt));
-    setCreateTerna(boolToTri(v.shortlistComplied));
-    setCreatePda(boolToTri(v.pdaComplied));
-    setCreateContract(boolToTri(v.contractConditionsComplied));
-    setCreateCv(boolToTri(v.preInterviewCvComplied));
-    void getCatalogSchools({ area_id: v.areaId }).then(setSchools);
-    void (v.schoolId != null
-      ? getCatalogPrograms({ school_id: v.schoolId })
-      : Promise.resolve([])
-    ).then(setPrograms);
-  };
+    setManagePanel({ mode: 'edit', vacancy: v });
+  }
+
+  async function handleModalSaved(v: Vacancy, message: string) {
+    const list = await refresh();
+    const fresh = list.find((x) => x.id === v.id) ?? v;
+    onVacancySaved?.(fresh);
+    setSaveBanner(message);
+    setManagePanel(null);
+  }
 
   return (
     <div className="space-y-8 relative">
@@ -508,8 +136,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
           <button
             type="button"
             onClick={() => {
-              resetCreateForm();
-              setShowCreate(true);
+              setSaveBanner(null);
+              setManagePanel({ mode: 'create' });
             }}
             className="glass-button-primary flex items-center gap-2 px-8 py-3 whitespace-nowrap"
           >
@@ -638,7 +266,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                       </span>
                     </td>
                     <td className="py-3 px-4 align-top">
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap gap-1 justify-end">
                         <button
                           type="button"
                           title="Ver detalle"
@@ -649,7 +277,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                         </button>
                         <button
                           type="button"
-                          title="Editar"
+                          title="Gestionar vacante y requisición"
                           disabled={isVacancyFullyLocked(v.operationStatus)}
                           onClick={() => {
                             if (isVacancyFullyLocked(v.operationStatus)) return;
@@ -658,48 +286,6 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                           className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:text-slate-600 disabled:hover:border-slate-200"
                         >
                           <PencilSquareIcon className="h-4 w-4" />
-                        </button>
-                        <a
-                          href={ZOHO_REQUISITION_FORM_URL}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Formulario de requisición (Zoho)"
-                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 inline-flex"
-                        >
-                          <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                        </a>
-                        <button
-                          type="button"
-                          title="Agregar informacion requisición"
-                          disabled={Boolean(v.reqAssignedAt)}
-                          onClick={() => {
-                            setFormError(null);
-                            setReqRow(v);
-                            setReqNumber('');
-                            setReqSentAt('');
-                            setReqCapNotes('');
-                            setCreateTerna('');
-                            setCreatePda('');
-                            setCreateContract('');
-                            setCreateCv('');
-                          }}
-                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 disabled:opacity-35"
-                        >
-                          <DocumentTextIcon className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          title="Cerrar vacante"
-                          disabled={isVacancyFullyLocked(v.operationStatus)}
-                          onClick={() => {
-                            if (isVacancyFullyLocked(v.operationStatus)) return;
-                            setFormError(null);
-                            setCloseRow(v);
-                            setCloseStatus('closed');
-                          }}
-                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-rose-600 hover:border-rose-200 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:text-slate-600 disabled:hover:border-slate-200"
-                        >
-                          <XCircleIcon className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
@@ -712,521 +298,20 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
       )}
 
       <AnimatePresence>
-        {(showCreate || editRow) && (
-          <ModalShell
-            title={editRow ? 'Editar vacante' : 'Nueva vacante'}
-            panelMaxClassName="max-w-4xl"
-            onClose={() => {
-              setShowCreate(false);
-              setEditRow(null);
-              resetCreateForm();
-            }}
-          >
-            {formError && (
-              <p className="text-sm text-rose-600 mb-4">{formError}</p>
-            )}
-            {editRow && isVacancyCoreFieldsLocked(editRow) && (
-              <p className="text-sm text-violet-900 bg-violet-50/95 border border-violet-200/80 rounded-xl px-4 py-3 mb-4">
-                Esta vacante ya tiene requisición (<strong>{editRow.reqNumber}</strong>). Solo
-                puede cambiar el <strong>estado de operación</strong> y{' '}
-                <strong>añadir comentarios</strong>; el resto de los datos queda bloqueado.
-              </p>
-            )}
-            <form
-              onSubmit={editRow ? handleEditSubmit : handleCreate}
-              className="space-y-4 max-h-[min(82vh,calc(90vh-7rem))] overflow-y-auto overflow-x-visible pr-1 min-w-0"
-            >
-              <div className="grid grid-cols-1 gap-4">
-                <Field label="Área *">
-                  <select
-                    required
-                    disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
-                    className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full disabled:opacity-60 disabled:cursor-not-allowed"
-                    value={createAreaId === '' ? '' : String(createAreaId)}
-                    onChange={(e) =>
-                      onAreaChange(e.target.value ? Number(e.target.value) : '')
-                    }
-                  >
-                    <option value="">Seleccione...</option>
-                    {areas.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Escuela (opcional)">
-                  <select
-                    disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
-                    className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full disabled:opacity-60 disabled:cursor-not-allowed"
-                    value={createSchoolId === '' ? '' : String(createSchoolId)}
-                    onChange={(e) =>
-                      onSchoolChange(e.target.value ? Number(e.target.value) : '')
-                    }
-                  >
-                    <option value="">
-                      {createAreaId === '' ? 'Primero elija área' : 'Sin escuela / elegir…'}
-                    </option>
-                    {schools.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-              <Field label="Programa (opcional)">
-                <select
-                  disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
-                  className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full disabled:opacity-60 disabled:cursor-not-allowed"
-                  value={
-                    createProgramId === 'none' || createProgramId === ''
-                      ? 'none'
-                      : String(createProgramId)
-                  }
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setCreateProgramId(val === 'none' ? 'none' : Number(val));
-                  }}
-                >
-                  <option value="none">Sin programa</option>
-                  {programs.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Cargo *">
-                <input
-                  required
-                  disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
-                  list="role-names"
-                  className="glass-input py-2.5 text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
-                  value={createPosition}
-                  onChange={(e) => setCreatePosition(e.target.value)}
-                  placeholder="Nombre del cargo o elija de lista"
-                />
-                <datalist id="role-names">
-                  {roles.map((r) => (
-                    <option key={r.id} value={r.name} />
-                  ))}
-                </datalist>
-              </Field>
-              <Field label="Línea curricular / área">
-                <input
-                  disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
-                  className="glass-input py-2.5 text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
-                  value={createLine}
-                  onChange={(e) => setCreateLine(e.target.value)}
-                />
-              </Field>
-              <Field label="Cantidad *">
-                <input
-                  required
-                  type="number"
-                  min={1}
-                  disabled={editRow != null && isVacancyCoreFieldsLocked(editRow)}
-                  className="glass-input py-2.5 text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
-                  value={createQty}
-                  onChange={(e) => setCreateQty(e.target.value)}
-                />
-              </Field>
-              <Field label="Nombre jefe inmediato (opcional)">
-                <input
-                  type="text"
-                  maxLength={200}
-                  disabled={
-                    editRow != null &&
-                    Boolean((editRow.directManagerIdentification ?? '').trim())
-                  }
-                  className="glass-input py-2.5 text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
-                  value={createDirectManagerCc}
-                  onChange={(e) => setCreateDirectManagerCc(e.target.value)}
-                  placeholder="Nombre completo"
-                />
-                {editRow &&
-                  Boolean((editRow.directManagerIdentification ?? '').trim()) && (
-                    <p className="text-xs text-slate-500 mt-1">
-                      El nombre del jefe inmediato no puede modificarse una vez registrado.
-                    </p>
-                  )}
-              </Field>
-              {!editRow && (
-                <Field label="Comentario inicial de operación (opcional)">
-                  <textarea
-                    className="glass-input py-2.5 text-sm w-full min-h-[72px]"
-                    value={createOpNotes}
-                    onChange={(e) => setCreateOpNotes(e.target.value)}
-                  />
-                </Field>
-              )}
-              {editRow && (
-                <>
-                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 space-y-2">
-                    <p className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">
-                      Comentarios de operación
-                    </p>
-                    <ul className="space-y-2 max-h-44 overflow-y-auto text-sm text-slate-700">
-                      {(editRow.operationNotes ?? []).length === 0 ? (
-                        <li className="text-slate-400 text-xs">Sin comentarios aún.</li>
-                      ) : (
-                        (editRow.operationNotes ?? []).map((n) => (
-                          <li key={n.id} className="border-b border-slate-100 pb-2 last:border-0 last:pb-0">
-                            <div className="text-[10px] text-slate-500 font-medium">
-                              {formatDt(n.createdAt)}
-                              {n.createdByName ? ` · ${n.createdByName}` : ''}
-                            </div>
-                            <p className="mt-0.5 whitespace-pre-wrap">{n.text}</p>
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
-                      <textarea
-                        className="glass-input py-2 text-sm w-full min-h-[56px] flex-1"
-                        placeholder="Nuevo comentario…"
-                        value={newOpNoteDraft}
-                        onChange={(e) => setNewOpNoteDraft(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        disabled={opNoteSaving}
-                        onClick={() => void handleAppendOperationNote()}
-                        className="glass-button-secondary py-2.5 px-4 text-xs font-bold uppercase tracking-widest whitespace-nowrap shrink-0"
-                      >
-                        {opNoteSaving ? '…' : 'Añadir'}
-                      </button>
-                    </div>
-                  </div>
-                  {editRow.reqAssignedAt && (
-                    <>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-widest">
-                        Requisición (editable)
-                      </p>
-                      <Field label="Número REQ (opcional)">
-                        <input
-                          className="glass-input py-2.5 text-sm w-full font-mono"
-                          value={editReqNumber}
-                          onChange={(e) => setEditReqNumber(e.target.value)}
-                          placeholder="REQ-2026-001"
-                        />
-                      </Field>
-                      <Field label="Enviado a capital (opcional)">
-                        <input
-                          type="date"
-                          className="glass-input py-2.5 text-sm w-full"
-                          value={editReqSentAt}
-                          onChange={(e) => setEditReqSentAt(e.target.value)}
-                        />
-                      </Field>
-                      <Field label="Notas capital humano (requisición)">
-                        <textarea
-                          className="glass-input py-2.5 text-sm w-full min-h-[56px]"
-                          value={editReqCapitalNotes}
-                          onChange={(e) => setEditReqCapitalNotes(e.target.value)}
-                        />
-                      </Field>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-widest">
-                        Cumplimientos (requisición)
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
-                        <TriField label="Terna" value={createTerna} onChange={setCreateTerna} />
-                        <TriField label="PDA" value={createPda} onChange={setCreatePda} />
-                        <TriField
-                          label="Condiciones contractuales"
-                          value={createContract}
-                          onChange={setCreateContract}
-                        />
-                        <TriField
-                          label="Hojas de vida pre-entrevista"
-                          value={createCv}
-                          onChange={setCreateCv}
-                        />
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-              {editRow && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Estado operación">
-                    <select
-                      className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full"
-                      value={editRow.operationStatus}
-                      onChange={(e) => {
-                        const st = e.target.value as VacancyOperationStatus;
-                        setEditRow({ ...editRow, operationStatus: st });
-                      }}
-                    >
-                      {(Object.keys(STATUS_LABEL) as VacancyOperationStatus[]).map(
-                        (k) => (
-                          <option key={k} value={k}>
-                            {STATUS_LABEL[k]}
-                          </option>
-                        )
-                      )}
-                    </select>
-                  </Field>
-                </div>
-              )}
-              {!editRow && (
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest">
-                  Al crear, el estado queda <strong>Abierta</strong>. REQ y fechas no se
-                  capturan aquí.
-                </p>
-              )}
-              {editRow && (
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest">
-                  Use &quot;Guardar cambios&quot; para aplicar el estado operación seleccionado.
-                </p>
-              )}
-              <div className="flex gap-3 pt-2">
-                <button type="submit" className="flex-1 glass-button-primary py-3 text-xs font-bold uppercase tracking-widest">
-                  {editRow ? 'Guardar cambios' : 'Crear vacante'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCreate(false);
-                    setEditRow(null);
-                    resetCreateForm();
-                  }}
-                  className="flex-1 glass-button-secondary py-3 text-xs font-bold uppercase tracking-widest"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          </ModalShell>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {reqRow && (
-          <ModalShell
-            title="Convertir en requisición"
-            onClose={() => {
-              setReqRow(null);
-              setReqNumber('');
-              setReqSentAt('');
-              setReqCapNotes('');
-              setCreateTerna('');
-              setCreatePda('');
-              setCreateContract('');
-              setCreateCv('');
-              setFormError(null);
-            }}
-          >
-            {formError && (
-              <p className="text-sm text-rose-600 mb-4">{formError}</p>
-            )}
-            <p className="text-sm text-slate-600 mb-4">
-              Vacante: <strong>{reqRow.positionName}</strong> ({reqRow.schoolName})
-            </p>
-            <form onSubmit={handleRequisitionSubmit} className="space-y-4">
-              <Field label="Número REQ (opcional)">
-                <input
-                  className="glass-input py-2.5 text-sm w-full font-mono"
-                  value={reqNumber}
-                  onChange={(e) => setReqNumber(e.target.value)}
-                  placeholder="REQ-2026-001"
-                />
-              </Field>
-              <Field label="Enviado a capital (opcional)">
-                <input
-                  type="date"
-                  className="glass-input py-2.5 text-sm w-full"
-                  value={reqSentAt}
-                  onChange={(e) => setReqSentAt(e.target.value)}
-                />
-              </Field>
-              <Field label="Notas capital humano (opcional)">
-                <textarea
-                  className="glass-input py-2.5 text-sm w-full min-h-[56px]"
-                  value={reqCapNotes}
-                  onChange={(e) => setReqCapNotes(e.target.value)}
-                  placeholder="Observaciones para capital humano…"
-                />
-              </Field>
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest">
-                Cumplimientos
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
-                <TriField label="Terna" value={createTerna} onChange={setCreateTerna} />
-                <TriField label="PDA" value={createPda} onChange={setCreatePda} />
-                <TriField
-                  label="Condiciones contractuales"
-                  value={createContract}
-                  onChange={setCreateContract}
-                />
-                <TriField
-                  label="Hojas de vida pre-entrevista"
-                  value={createCv}
-                  onChange={setCreateCv}
-                />
-              </div>
-              <div className="flex gap-3">
-                <button type="submit" className="flex-1 glass-button-primary py-3 text-xs font-bold uppercase tracking-widest">
-                  Registrar requisición
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setReqRow(null);
-                    setReqNumber('');
-                    setReqSentAt('');
-                    setReqCapNotes('');
-                    setCreateTerna('');
-                    setCreatePda('');
-                    setCreateContract('');
-                    setCreateCv('');
-                    setFormError(null);
-                  }}
-                  className="flex-1 glass-button-secondary py-3 text-xs font-bold uppercase tracking-widest"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          </ModalShell>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {closeRow && (
-          <ModalShell
-            title="Cerrar vacante"
-            onClose={() => {
-              setCloseRow(null);
-              setFormError(null);
-            }}
-          >
-            {formError && (
-              <p className="text-sm text-rose-600 mb-4">{formError}</p>
-            )}
-            <p className="text-sm text-slate-600 mb-4">
-              {closeRow.positionName} — se guardará <code className="text-xs bg-slate-100 px-1 rounded">closed_at</code>{' '}
-              en este momento.
-            </p>
-            <form onSubmit={handleCloseSubmit} className="space-y-4">
-              <Field label="Estado final">
-                <select
-                  className="glass-input py-2.5 text-sm w-full"
-                  value={closeStatus}
-                  onChange={(e) =>
-                    setCloseStatus(e.target.value as typeof closeStatus)
-                  }
-                >
-                  <option value="hired">Contratado</option>
-                  <option value="closed">Cerrada</option>
-                  <option value="cancelled">Cancelada</option>
-                  <option value="cancelled_by_capital">Cancelada por capital</option>
-                </select>
-              </Field>
-              <div className="flex gap-3">
-                <button type="submit" className="flex-1 glass-button-primary py-3 text-xs font-bold uppercase tracking-widest">
-                  Confirmar cierre
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCloseRow(null)}
-                  className="flex-1 glass-button-secondary py-3 text-xs font-bold uppercase tracking-widest"
-                >
-                  Volver
-                </button>
-              </div>
-            </form>
-          </ModalShell>
+        {managePanel && (
+          <VacancyManageModal
+            key={
+              managePanel.mode === 'create'
+                ? 'create'
+                : `edit-${managePanel.vacancy.id}-${managePanel.vacancy.updatedAt ?? ''}`
+            }
+            mode={managePanel.mode}
+            vacancy={managePanel.mode === 'edit' ? managePanel.vacancy : null}
+            onClose={() => setManagePanel(null)}
+            onSaved={(v, message) => void handleModalSaved(v, message)}
+          />
         )}
       </AnimatePresence>
     </div>
   );
 };
-
-function ModalShell({
-  title,
-  children,
-  onClose,
-  panelMaxClassName = 'max-w-lg',
-}: {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-  /** Tailwind max-width for the panel (e.g. max-w-4xl for wide forms). */
-  panelMaxClassName?: string;
-}) {
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-      />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 12 }}
-        className={cn(
-          'w-full glass-panel p-6 sm:p-8 relative z-10 shadow-2xl max-h-[92vh] overflow-hidden flex flex-col min-w-0',
-          panelMaxClassName,
-        )}
-      >
-        <div className="flex justify-between items-start mb-6 gap-4">
-          <h2 className="text-xl font-bold text-slate-900 font-display">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 shrink-0"
-          >
-            <XMarkIcon className="h-5 w-5" />
-          </button>
-        </div>
-        {children}
-      </motion.div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function TriField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: TriSelectValue;
-  onChange: (v: TriSelectValue) => void;
-}) {
-  return (
-    <Field label={label}>
-      <select
-        className="glass-input py-2.5 text-sm w-full min-w-0 max-w-full"
-        value={value}
-        onChange={(e) => onChange(e.target.value as TriSelectValue)}
-      >
-        <option value="">Pendiente</option>
-        <option value="true">Sí cumplió</option>
-        <option value="false">No cumplió</option>
-      </select>
-    </Field>
-  );
-}

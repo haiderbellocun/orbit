@@ -249,6 +249,23 @@ END $migrate_log_op_status$;
  * requisition.capital_notes.
  */
 /** Cumplimientos (terna, PDA, etc.) viven en requisition, no en vacancy. */
+async function upgradeDirectManagerIdentificationColumn(): Promise<void> {
+  const { rows } = await pool.query<{ max_len: number | null }>(`
+    SELECT character_maximum_length AS max_len
+    FROM information_schema.columns
+    WHERE table_schema = 'vacancies'
+      AND table_name = 'vacancy'
+      AND column_name = 'direct_manager_identification'
+  `);
+  if (rows.length === 0) return;
+  const maxLen = rows[0]?.max_len;
+  if (maxLen != null && maxLen >= 200) return;
+  await pool.query(`
+    ALTER TABLE vacancies.vacancy
+      ALTER COLUMN direct_manager_identification TYPE VARCHAR(200)
+  `);
+}
+
 async function upgradeRequisitionComplianceColumns(): Promise<void> {
   await pool.query(
     `ALTER TABLE vacancies.requisition
@@ -416,6 +433,7 @@ export async function migrateVacancies(): Promise<void> {
   await pool.query(buildVacanciesDdl(mode));
   await upgradeVacanciesLegacyColumns();
   await upgradeRequisitionComplianceColumns();
+  await upgradeDirectManagerIdentificationColumn();
 
   await pool.query(
     `DROP TRIGGER IF EXISTS trg_vacancy_touch_updated ON vacancies.vacancy`

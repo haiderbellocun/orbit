@@ -87,16 +87,19 @@ export function canManageVacancies(capabilities: readonly string[]): boolean {
 const LANDING_VIEW_ORDER: View[] = [
   "personal",
   "news",
-  "home",
   "teachers",
   "academic-load",
   "coordinators",
   "lites",
-  "vacancies",
 ];
 
 /** Primera vista del menú a la que el usuario puede entrar. */
 export function getDefaultView(capabilities: readonly string[]): View {
+  // Preferimos siempre Command Center (home).
+  if (canAccessView("home", capabilities)) return "home";
+  // Si no hay acceso a Command Center, ir a Vacantes.
+  if (canAccessView("vacancies", capabilities)) return "vacancies";
+  // Si tampoco hay Vacantes, usamos el orden restante.
   for (const v of LANDING_VIEW_ORDER) {
     if (canAccessView(v, capabilities)) return v;
   }
