@@ -10,6 +10,7 @@ import {
 import type { Vacancy, VacancyDetail, View } from '@/src/types';
 import { cn } from '@/src/lib/utils';
 import { getVacancy } from '@/src/lib/api';
+import { STATUS_LABEL as STATUS_LABEL_ES } from '@/src/lib/vacancyFormHelpers';
 import {
   computeVacancyActiveDays,
   formatVacancyActiveDaysLabel,
@@ -26,6 +27,12 @@ const STATUS_LABEL: Record<Vacancy['operationStatus'], string> = {
   cancelled: 'Cancelada',
   cancelled_by_capital: 'Cancelada por capital',
 };
+
+function statusLabelEs(status: string | null | undefined): string {
+  if (status == null || status === '') return '(inicial)';
+  const map = STATUS_LABEL_ES as unknown as Record<string, string>;
+  return map[status] ?? status;
+}
 
 function formatTs(iso: string | null | undefined): string {
   if (iso == null || iso === '') return '—';
@@ -303,7 +310,7 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                     className="border-l-2 border-violet-200 pl-4 py-0.5"
                   >
                     <p className="font-bold text-slate-800 text-xs">
-                      {h.previousOperationStatus ?? '(inicial)'} → {h.newOperationStatus}
+                      {statusLabelEs(h.previousOperationStatus)} → {statusLabelEs(h.newOperationStatus)}
                     </p>
                     <p className="text-[10px] text-slate-400 mt-0.5">
                       {formatTs(h.changedAt)}

@@ -1,0 +1,10 @@
+# Flags para gcloud run deploy (comas en VACANCY_NOTIFY_EMAILS no rompen el CLI).
+# Ver: gcloud topic flags-file
+--update-env-vars:
+  CORS_ORIGIN: https://orbit-frontend-526995286786.us-central1.run.app
+  ALLOW_LOCAL_EMAIL_AUTH: "1"
+  ORBIT_FRONTEND_URL: https://orbit-frontend-526995286786.us-central1.run.app
+  SMTP_SERVICE: gmail
+  SMTP_HOST: smtp.gmail.com
+  SMTP_PORT: "587"
+  VACANCY_NOTIFY_EMAILS: "camilo_quintero@cun.edu.co,laura_garcias@cun.edu.co,angie_ruizm@cun.edu.co"

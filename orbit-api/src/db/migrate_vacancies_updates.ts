@@ -6,13 +6,17 @@ import { pool } from "./connection";
  * - operation_status cancelled_by_capital
  * - direct_manager_identification en vacancy
  */
-async function migrateVacanciesUpdates(): Promise<void> {
+export async function migrateVacanciesUpdates(): Promise<void> {
   await pool.query(`
     ALTER TABLE vacancies.vacancy
       ADD COLUMN IF NOT EXISTS direct_manager_identification VARCHAR(200)
   `);
+  await pool.query(`
+    ALTER TABLE vacancies.vacancy
+      ALTER COLUMN direct_manager_identification TYPE VARCHAR(200)
+  `);
   console.log(
-    "migrate_vacancies_updates: direct_manager_identification en vacancy"
+    "migrate_vacancies_updates: direct_manager_identification VARCHAR(200)"
   );
 
   const reqNullable = await pool.query(`
@@ -58,12 +62,18 @@ async function migrateVacanciesUpdates(): Promise<void> {
   }
 }
 
-migrateVacanciesUpdates()
-  .then(() => {
-    console.log("migrate_vacancies_updates: OK");
-    process.exit(0);
-  })
-  .catch((e) => {
-    console.error("migrate_vacancies_updates failed:", e);
-    process.exit(1);
-  });
+const isMain =
+  typeof require !== "undefined" &&
+  require.main === module;
+
+if (isMain) {
+  migrateVacanciesUpdates()
+    .then(() => {
+      console.log("migrate_vacancies_updates: OK");
+      process.exit(0);
+    })
+    .catch((e) => {
+      console.error("migrate_vacancies_updates failed:", e);
+      process.exit(1);
+    });
+}

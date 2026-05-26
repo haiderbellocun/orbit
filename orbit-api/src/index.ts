@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { verifyConnection } from "./db/connection";
+import { runStartupSchemaPatches } from "./db/startupSchemaPatches";
 import coordinatorsRouter from "./routes/coordinators";
 import reinstatementsRouter from "./routes/reinstatements";
 import teachersRouter from "./routes/teachers";
@@ -54,6 +55,16 @@ app.get("/health", async (_req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Servidor escuchando en el puerto ${port}`);
-});
+async function start(): Promise<void> {
+  try {
+    await runStartupSchemaPatches();
+  } catch (e) {
+    console.error("Startup schema patches failed:", e);
+  }
+
+  app.listen(port, () => {
+    console.log(`Servidor escuchando en el puerto ${port}`);
+  });
+}
+
+void start();

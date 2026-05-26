@@ -8,7 +8,8 @@ $REGION = "us-central1"
 $SERVICE = "orbit-backend"
 $FRONTEND_URL = "https://orbit-frontend-526995286786.us-central1.run.app"
 
-$RepoRoot = Split-Path -Parent $PSScriptRoot
+$GcpDir = $PSScriptRoot
+$RepoRoot = Split-Path -Parent $GcpDir
 Set-Location (Join-Path $RepoRoot "orbit-api")
 
 gcloud config set project $PROJECT
@@ -17,8 +18,8 @@ gcloud config set project $PROJECT
 # CORS_ORIGIN debe coincidir con el frontend en producción.
 # SMTP y VACANCY_NOTIFY_EMAILS: configurar en Secret Manager y referenciar con
 #   --set-secrets o --update-env-vars en el primer despliegue (no commitear contraseñas).
-# VACANCY_NOTIFY_EMAILS omitido aquí: las comas rompen --update-env-vars en gcloud.
-# Valor por defecto en vacancyNotifyService.ts; para override usar consola/Secret Manager.
+# Env vars vía --flags-file (YAML): las comas de VACANCY_NOTIFY_EMAILS rompen --update-env-vars en PowerShell.
+$DeployFlagsFile = Join-Path $GcpDir "orbit-backend-deploy-flags.yaml"
 gcloud run deploy $SERVICE `
   --source . `
   --project $PROJECT `
@@ -26,7 +27,7 @@ gcloud run deploy $SERVICE `
   --platform managed `
   --allow-unauthenticated `
   --port 8080 `
-  --update-env-vars "CORS_ORIGIN=$FRONTEND_URL,ALLOW_LOCAL_EMAIL_AUTH=1,ORBIT_FRONTEND_URL=$FRONTEND_URL,SMTP_SERVICE=gmail,SMTP_HOST=smtp.gmail.com,SMTP_PORT=587"
+  --flags-file $DeployFlagsFile
 
 Write-Host ""
 Write-Host "Backend: https://orbit-backend-526995286786.us-central1.run.app"
