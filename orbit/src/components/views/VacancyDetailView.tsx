@@ -211,7 +211,7 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
               Observaciones
             </h3>
             <div className="space-y-3 text-sm text-slate-600">
-              <p>
+              <div>
                 <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
                   Operación
                 </span>
@@ -230,7 +230,7 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                     ))}
                   </ul>
                 )}
-              </p>
+              </div>
             </div>
           </motion.div>
         </div>
