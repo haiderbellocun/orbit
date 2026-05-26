@@ -19,6 +19,7 @@ CREATE SCHEMA IF NOT EXISTS vacancies;
 
 CREATE TABLE IF NOT EXISTS vacancies.vacancy (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  public_id BIGSERIAL UNIQUE,
   area_id INTEGER NOT NULL,
   school_id INTEGER,
   program_id INTEGER,
@@ -29,7 +30,7 @@ CREATE TABLE IF NOT EXISTS vacancies.vacancy (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   closed_at TIMESTAMPTZ,
-  direct_manager_identification VARCHAR(20),
+  direct_manager_identification VARCHAR(200),
   created_by_person_id INTEGER,
   updated_by_person_id INTEGER,
   CONSTRAINT vacancy_quantity_positive CHECK (quantity > 0),
@@ -43,12 +44,18 @@ CREATE TABLE IF NOT EXISTS vacancies.vacancy (
   CONSTRAINT fk_vacancy_program FOREIGN KEY (program_id) REFERENCES ${refProgram}(id)
 );
 
+ALTER TABLE vacancies.vacancy
+  ADD COLUMN IF NOT EXISTS public_id BIGSERIAL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vacancy_public_id ON vacancies.vacancy(public_id);
+
 CREATE INDEX IF NOT EXISTS idx_vacancy_area ON vacancies.vacancy(area_id);
 CREATE INDEX IF NOT EXISTS idx_vacancy_school ON vacancies.vacancy(school_id);
 CREATE INDEX IF NOT EXISTS idx_vacancy_created ON vacancies.vacancy(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS vacancies.requisition (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  public_id BIGSERIAL UNIQUE,
   vacancy_id UUID NOT NULL UNIQUE REFERENCES vacancies.vacancy(id) ON DELETE CASCADE,
   req_number VARCHAR(100) NOT NULL UNIQUE,
   assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -59,6 +66,11 @@ CREATE TABLE IF NOT EXISTS vacancies.requisition (
   contract_conditions_complied BOOLEAN,
   pre_interview_cv_complied BOOLEAN
 );
+
+ALTER TABLE vacancies.requisition
+  ADD COLUMN IF NOT EXISTS public_id BIGSERIAL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_requisition_public_id ON vacancies.requisition(public_id);
 
 CREATE INDEX IF NOT EXISTS idx_requisition_vacancy ON vacancies.requisition(vacancy_id);
 

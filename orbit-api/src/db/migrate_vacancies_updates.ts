@@ -9,7 +9,7 @@ import { pool } from "./connection";
 async function migrateVacanciesUpdates(): Promise<void> {
   await pool.query(`
     ALTER TABLE vacancies.vacancy
-      ADD COLUMN IF NOT EXISTS direct_manager_identification VARCHAR(20)
+      ADD COLUMN IF NOT EXISTS direct_manager_identification VARCHAR(200)
   `);
   console.log(
     "migrate_vacancies_updates: direct_manager_identification en vacancy"

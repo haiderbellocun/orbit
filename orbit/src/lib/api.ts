@@ -513,7 +513,7 @@ export type CreateVacancyPayload = {
   programId: number | null;
   positionName: string;
   curricularLine?: string | null;
-  /** CC del jefe directo (opcional). */
+  /** Nombre del jefe inmediato (opcional). */
   directManagerIdentification?: string | null;
   quantity: number;
   /** Primer comentario de operación (opcional). */

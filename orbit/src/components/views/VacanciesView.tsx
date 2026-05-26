@@ -541,23 +541,25 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         </div>
       ) : (
         <div className="glass-panel p-0 relative z-10 overflow-x-auto rounded-2xl w-full">
-          <table className="w-full min-w-0 text-left text-[15px] table-fixed">
+          <table className="w-full min-w-[1080px] text-left text-[15px] table-fixed border-collapse">
             <colgroup>
-              <col className="w-[7%]" />
-              <col className="w-[7%]" />
-              <col className="w-[14%]" />
-              <col className="w-[14%]" />
+              <col className="w-[6%]" />
+              <col className="w-[13%]" />
               <col className="w-[12%]" />
-              <col className="w-[18%]" />
+              <col className="w-[12%]" />
+              <col className="w-[11%]" />
+              <col className="w-[16%]" />
               <col className="w-[4%]" />
               <col className="w-[12%]" />
-              <col className="w-[12%]" />
+              <col className="w-[14%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-slate-200/80 bg-slate-50/80 text-xs uppercase tracking-widest text-slate-500">
-                <th className="py-3 px-4 font-bold whitespace-nowrap text-left">Creada</th>
-                <th className="py-3 px-4 font-bold whitespace-nowrap text-left">Tiempo activo</th>
-                <th className="py-3 px-4 font-bold">Área</th>
+                <th className="py-3 px-3 font-bold whitespace-nowrap text-left">Creada</th>
+                <th className="py-3 px-3 font-bold text-left leading-tight whitespace-normal">
+                  Tiempo activo
+                </th>
+                <th className="py-3 px-3 font-bold">Área</th>
                 <th className="py-3 px-4 font-bold">Escuela</th>
                 <th className="py-3 px-4 font-bold">Programa</th>
                 <th className="py-3 px-4 font-bold">Cargo</th>
@@ -579,18 +581,20 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     key={v.id}
                     className="border-b border-slate-100/80 hover:bg-violet-50/30 transition-colors"
                   >
-                    <td className="py-3 px-4 text-slate-600 text-sm whitespace-nowrap align-top">
+                    <td className="py-3 px-3 text-slate-600 text-sm whitespace-nowrap align-top">
                       {formatVacancyDateOnly(v.createdAt)}
                     </td>
                     <td
-                      className="py-3 px-4 text-slate-700 text-sm whitespace-nowrap align-top"
-                      title={vacancyActiveDaysTooltip(v)}
+                      className="py-3 px-3 text-slate-700 align-top"
+                      title={v.sentToCapitalAt ? vacancyActiveDaysTooltip(v) : 'SIN FECHA DE ENVÍO'}
                     >
-                      <span className="font-semibold text-violet-700">
-                        {formatVacancyActiveDaysLabel(computeVacancyActiveDays(v))}
+                      <span className="block font-semibold text-violet-700 text-[11px] leading-snug uppercase tracking-wide whitespace-normal break-words">
+                        {v.sentToCapitalAt
+                          ? formatVacancyActiveDaysLabel(computeVacancyActiveDays(v))
+                          : 'SIN FECHA DE ENVÍO'}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-slate-800 align-top">
+                    <td className="py-3 px-3 text-slate-800 align-top">
                       <span className="line-clamp-2" title={v.areaName ?? ''}>
                         {v.areaName ?? '—'}
                       </span>
@@ -828,10 +832,10 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   onChange={(e) => setCreateQty(e.target.value)}
                 />
               </Field>
-              <Field label="CC jefe directo (opcional)">
+              <Field label="Nombre jefe inmediato (opcional)">
                 <input
                   type="text"
-                  inputMode="numeric"
+                  maxLength={200}
                   disabled={
                     editRow != null &&
                     Boolean((editRow.directManagerIdentification ?? '').trim())
@@ -839,12 +843,12 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   className="glass-input py-2.5 text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
                   value={createDirectManagerCc}
                   onChange={(e) => setCreateDirectManagerCc(e.target.value)}
-                  placeholder="Número de cédula"
+                  placeholder="Nombre completo"
                 />
                 {editRow &&
                   Boolean((editRow.directManagerIdentification ?? '').trim()) && (
                     <p className="text-xs text-slate-500 mt-1">
-                      La CC del jefe directo no puede modificarse una vez registrada.
+                      El nombre del jefe inmediato no puede modificarse una vez registrado.
                     </p>
                   )}
               </Field>
