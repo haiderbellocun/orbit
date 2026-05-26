@@ -43,13 +43,13 @@ async function resolveVacancyUuidFromParam(
   const raw = String(vacancyParam ?? "").trim();
   if (isUuid(raw)) return raw;
 
-  // Allow numeric publicId in routes (e.g. /vacancies/4)
+  // Numeric route param: list/detail expose `id` (bigint legacy or UUID) and optional public_id.
   if (/^\d+$/.test(raw)) {
     const n = Number(raw);
     if (!Number.isFinite(n) || n <= 0) return null;
     const { rows } = await pool.query(
-      `SELECT id FROM vacancies.vacancy WHERE public_id = $1`,
-      [n]
+      `SELECT id FROM vacancies.vacancy WHERE public_id = $1 OR id::text = $2`,
+      [n, raw]
     );
     if (rows.length === 0) return null;
     return String((rows[0] as { id: unknown }).id);
