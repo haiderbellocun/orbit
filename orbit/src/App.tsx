@@ -21,6 +21,7 @@ import { ProgramsView } from './components/views/ProgramsView';
 import { PersonalView } from './components/views/PersonalView';
 import { View, Teacher, Vacancy, NAV_ITEMS } from './types';
 import { VacancyDetailView } from './components/views/VacancyDetailView';
+import { VacancyInformativePanelView } from './components/views/VacancyInformativePanelView';
 import { MOCK_TEACHERS, MOCK_VACANCIES, MOCK_COORDINATORS } from './data/mockData';
 
 import { BRAND_CONFIG } from './config/brand';
@@ -212,9 +213,20 @@ export default function App() {
             {...commonProps}
           />
         );
+      case 'vacancy-informative-panel':
+        return <VacancyInformativePanelView />;
       case 'vacancy-detail':
         return selectedVacancy ? (
-          <VacancyDetailView summary={selectedVacancy} setView={setView} {...commonProps} />
+          <VacancyDetailView
+            summary={selectedVacancy}
+            setView={setView}
+            onVacancySaved={handleVacancySaved}
+            onVacancyDeleted={() => {
+              setSelectedVacancy(null);
+              setView('vacancies');
+            }}
+            {...commonProps}
+          />
         ) : (
           <VacanciesView
             onSelectVacancy={handleSelectVacancy}

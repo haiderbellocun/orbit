@@ -13,13 +13,47 @@ export const STATUS_LABEL: Record<VacancyOperationStatus, string> = {
   cancelled_by_capital: 'Cancelada por capital',
 };
 
+const TERMINAL_STATUSES = new Set<VacancyOperationStatus>([
+  'hired',
+  'closed',
+  'cancelled',
+  'cancelled_by_capital',
+]);
+
+/** Estado terminal (contratado, cerrado o cancelado). */
+export function isVacancyTerminalStatus(
+  status: VacancyOperationStatus
+): boolean {
+  return TERMINAL_STATUSES.has(status);
+}
+
+/** @deprecated Use isVacancyTerminalStatus or canOpenVacancyManage */
 export function isVacancyFullyLocked(status: VacancyOperationStatus): boolean {
-  return (
-    status === 'hired' ||
-    status === 'closed' ||
-    status === 'cancelled' ||
-    status === 'cancelled_by_capital'
-  );
+  return isVacancyTerminalStatus(status);
+}
+
+/** Puede abrir el modal de gestión (al menos pestaña requisición). */
+export function canOpenVacancyManage(
+  status: VacancyOperationStatus,
+  isVacancyAdmin = false
+): boolean {
+  if (isVacancyAdmin) return true;
+  if (!TERMINAL_STATUSES.has(status)) return true;
+  return status === 'hired';
+}
+
+/** Solo edición de requisición (p. ej. contratado). */
+export function isVacancyHiredRequisitionOnly(
+  status: VacancyOperationStatus
+): boolean {
+  return status === 'hired';
+}
+
+/** Campos base de vacante y estado estándar bloqueados. */
+export function isVacancyCoreEditBlocked(
+  status: VacancyOperationStatus
+): boolean {
+  return TERMINAL_STATUSES.has(status);
 }
 
 export function isVacancyCoreFieldsLocked(v: Vacancy): boolean {
@@ -71,4 +105,9 @@ export function formatVacancyDt(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso.slice(0, 19);
   return d.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+/** Texto de confirmación destructiva (case-insensitive). */
+export function isConfirmTextValid(text: string): boolean {
+  return text.trim().toLowerCase() === 'confirmar';
 }

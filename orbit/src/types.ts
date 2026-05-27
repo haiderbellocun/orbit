@@ -4,7 +4,8 @@ export type View =
   | 'teachers' 
   | 'teacher-detail' 
   | 'vacancies' 
-  | 'vacancy-detail' 
+  | 'vacancy-detail'
+  | 'vacancy-informative-panel'
   | 'reinstatements' 
   | 'news' 
   | 'coordinators' 
@@ -205,6 +206,11 @@ export const NAV_ITEMS = [
   { id: 'coordinators', label: 'Coordinadores', iconKey: 'coordinators' },
   { id: 'lites', label: 'LITEs', iconKey: 'lites' },
   { id: 'vacancies', label: 'Vacantes', iconKey: 'vacancies' },
+  {
+    id: 'vacancy-informative-panel',
+    label: 'Panel informativo',
+    iconKey: 'audit',
+  },
   { id: 'personal', label: 'Personal', iconKey: 'personal' },
   { id: 'news', label: 'Novedades', iconKey: 'news' },
   // { id: 'reinstatements', label: 'Reintegros', iconKey: 'reinstatements' },

@@ -1,13 +1,4 @@
-import type { Vacancy, VacancyOperationStatus } from '@/src/types';
-
 const BOGOTA_TZ = 'America/Bogota';
-
-const TERMINAL_STATUSES = new Set<VacancyOperationStatus>([
-  'hired',
-  'closed',
-  'cancelled',
-  'cancelled_by_capital',
-]);
 
 function calendarDayKey(iso: string): string {
   return new Date(iso).toLocaleDateString('en-CA', { timeZone: BOGOTA_TZ });
@@ -26,43 +17,23 @@ function dayDiffInclusive(startKey: string, endKey: string): number {
   return Math.max(1, diff + 1);
 }
 
-function endIsoForVacancy(v: Vacancy): string {
-  // Si hay fecha de envío a capital, usarla como fin del cálculo.
-  if (v.sentToCapitalAt) return v.sentToCapitalAt;
-  if (v.closedAt) return v.closedAt;
-  if (TERMINAL_STATUSES.has(v.operationStatus) && v.updatedAt) {
-    return v.updatedAt;
-  }
-  return new Date().toISOString();
-}
-
-export function computeVacancyActiveDays(v: Vacancy): number {
-  const startKey = calendarDayKey(v.createdAt);
-  const endKey = calendarDayKey(endIsoForVacancy(v));
-  if (TERMINAL_STATUSES.has(v.operationStatus) || v.closedAt) {
-    return dayDiffInclusive(startKey, endKey);
-  }
-  return dayDiffInclusive(startKey, todayKeyBogota());
+/** Días desde envío a capital hasta hoy (inclusive). Requiere `sentToCapitalAt`. */
+export function computeVacancyActiveDaysFromSent(sentToCapitalAt: string): number {
+  const startKey = calendarDayKey(sentToCapitalAt);
+  const endKey = todayKeyBogota();
+  return dayDiffInclusive(startKey, endKey);
 }
 
 export function formatVacancyActiveDaysLabel(days: number): string {
   return days === 1 ? '1 día' : `${days} días`;
 }
 
-export function vacancyActiveDaysTooltip(v: Vacancy): string {
-  const start = new Date(v.createdAt).toLocaleDateString('es-CO', {
+export function vacancyActiveDaysTooltip(sentToCapitalAt: string): string {
+  const start = new Date(sentToCapitalAt).toLocaleDateString('es-CO', {
     timeZone: BOGOTA_TZ,
     dateStyle: 'medium',
   });
-  const endIso = endIsoForVacancy(v);
-  const endLabel =
-    TERMINAL_STATUSES.has(v.operationStatus) || v.closedAt
-      ? new Date(endIso).toLocaleDateString('es-CO', {
-          timeZone: BOGOTA_TZ,
-          dateStyle: 'medium',
-        })
-      : 'Hoy';
-  return `Creada: ${start} · Hasta: ${endLabel}`;
+  return `Enviado a capital: ${start} · Hasta: Hoy`;
 }
 
 export function formatVacancyDateOnly(iso: string | null | undefined): string {

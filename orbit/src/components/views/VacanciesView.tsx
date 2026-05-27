@@ -5,21 +5,24 @@ import {
   MagnifyingGlassIcon,
   EyeIcon,
   PencilSquareIcon,
+  TrashIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
 import type { Vacancy, Teacher, Coordinator } from '@/src/types';
-import { getVacancies } from '@/src/lib/api';
+import { getVacancies, getStoredCapabilities, deleteVacancy } from '@/src/lib/api';
 import {
-  computeVacancyActiveDays,
+  computeVacancyActiveDaysFromSent,
   formatVacancyActiveDaysLabel,
   formatVacancyDateOnly,
   vacancyActiveDaysTooltip,
 } from '@/src/lib/vacancyActiveDays';
 import {
   STATUS_LABEL,
-  isVacancyFullyLocked,
+  canOpenVacancyManage,
 } from '@/src/lib/vacancyFormHelpers';
+import { canVacancyAdmin } from '@/src/lib/permissions';
+import { ConfirmTextModal } from '@/src/components/common/ConfirmTextModal';
 import { VacancyManageModal } from '@/src/components/views/VacancyManageModal';
 
 type ManagePanel =
@@ -53,6 +56,9 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveBanner, setSaveBanner] = useState<string | null>(null);
   const [managePanel, setManagePanel] = useState<ManagePanel>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Vacancy | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const isVacancyAdmin = canVacancyAdmin(getStoredCapabilities());
 
   const refresh = useCallback(async (): Promise<Vacancy[]> => {
     setLoading(true);
@@ -214,11 +220,17 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     </td>
                     <td
                       className="py-3 px-3 text-slate-700 align-top"
-                      title={v.sentToCapitalAt ? vacancyActiveDaysTooltip(v) : 'SIN FECHA DE ENVÍO'}
+                      title={
+                        v.sentToCapitalAt
+                          ? vacancyActiveDaysTooltip(v.sentToCapitalAt)
+                          : 'SIN FECHA DE ENVÍO'
+                      }
                     >
                       <span className="block font-semibold text-violet-700 text-[11px] leading-snug uppercase tracking-wide whitespace-normal break-words">
                         {v.sentToCapitalAt
-                          ? formatVacancyActiveDaysLabel(computeVacancyActiveDays(v))
+                          ? formatVacancyActiveDaysLabel(
+                              computeVacancyActiveDaysFromSent(v.sentToCapitalAt)
+                            )
                           : 'SIN FECHA DE ENVÍO'}
                       </span>
                     </td>
@@ -278,15 +290,25 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                         <button
                           type="button"
                           title="Gestionar vacante y requisición"
-                          disabled={isVacancyFullyLocked(v.operationStatus)}
+                          disabled={!canOpenVacancyManage(v.operationStatus, isVacancyAdmin)}
                           onClick={() => {
-                            if (isVacancyFullyLocked(v.operationStatus)) return;
+                            if (!canOpenVacancyManage(v.operationStatus, isVacancyAdmin)) return;
                             openEdit(v);
                           }}
                           className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:text-slate-600 disabled:hover:border-slate-200"
                         >
                           <PencilSquareIcon className="h-4 w-4" />
                         </button>
+                        {isVacancyAdmin && (
+                          <button
+                            type="button"
+                            title="Eliminar vacante y requisición"
+                            onClick={() => setDeleteTarget(v)}
+                            className="p-1.5 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -309,9 +331,37 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
             vacancy={managePanel.mode === 'edit' ? managePanel.vacancy : null}
             onClose={() => setManagePanel(null)}
             onSaved={(v, message) => void handleModalSaved(v, message)}
+            isVacancyAdmin={isVacancyAdmin}
           />
         )}
       </AnimatePresence>
+
+      <ConfirmTextModal
+        open={deleteTarget != null}
+        title="Eliminar vacante y requisición"
+        description="Se eliminará por completo la vacante y su requisición asociada. Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        loading={deleteLoading}
+        onClose={() => {
+          if (!deleteLoading) setDeleteTarget(null);
+        }}
+        onConfirm={async (confirmText) => {
+          if (!deleteTarget) return;
+          setDeleteLoading(true);
+          try {
+            await deleteVacancy(deleteTarget.id, { confirmText });
+            setDeleteTarget(null);
+            setSaveBanner('Vacante eliminada.');
+            await refresh();
+          } catch (e) {
+            setLoadError(
+              e instanceof Error ? e.message : 'No se pudo eliminar'
+            );
+          } finally {
+            setDeleteLoading(false);
+          }
+        }}
+      />
     </div>
   );
 };

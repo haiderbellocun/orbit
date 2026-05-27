@@ -12,11 +12,16 @@ import { cn } from '@/src/lib/utils';
 import { getVacancy } from '@/src/lib/api';
 import { STATUS_LABEL as STATUS_LABEL_ES } from '@/src/lib/vacancyFormHelpers';
 import {
-  computeVacancyActiveDays,
+  computeVacancyActiveDaysFromSent,
   formatVacancyActiveDaysLabel,
   formatVacancyDateOnly,
   vacancyActiveDaysTooltip,
 } from '@/src/lib/vacancyActiveDays';
+import { canOpenVacancyManage } from '@/src/lib/vacancyFormHelpers';
+import { canVacancyAdmin } from '@/src/lib/permissions';
+import { deleteVacancy, getStoredCapabilities } from '@/src/lib/api';
+import { ConfirmTextModal } from '@/src/components/common/ConfirmTextModal';
+import { VacancyManageModal } from '@/src/components/views/VacancyManageModal';
 
 const STATUS_LABEL: Record<Vacancy['operationStatus'], string> = {
   open: 'Abierta',
@@ -50,15 +55,23 @@ function tri(v: boolean | null | undefined): string {
 interface VacancyDetailViewProps {
   summary: Vacancy;
   setView: (v: View) => void;
+  onVacancyDeleted?: () => void;
+  onVacancySaved?: (v: Vacancy) => void;
 }
 
 export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
   summary,
   setView,
+  onVacancyDeleted,
+  onVacancySaved,
 }) => {
   const [detail, setDetail] = useState<VacancyDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const isVacancyAdmin = canVacancyAdmin(getStoredCapabilities());
 
   useEffect(() => {
     let cancelled = false;
@@ -159,11 +172,31 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
             </div>
           </div>
         </div>
-        {loading && (
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-            Cargando detalle…
-          </p>
-        )}
+        <div className="flex flex-wrap gap-2 items-center">
+          {canOpenVacancyManage(v.operationStatus, isVacancyAdmin) && (
+            <button
+              type="button"
+              onClick={() => setEditOpen(true)}
+              className="glass-button-secondary py-2.5 px-4 text-xs font-bold uppercase tracking-widest"
+            >
+              Gestionar
+            </button>
+          )}
+          {isVacancyAdmin && (
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(true)}
+              className="py-2.5 px-4 text-xs font-bold uppercase tracking-widest rounded-xl border border-red-200 text-red-600 hover:bg-red-50"
+            >
+              Eliminar
+            </button>
+          )}
+          {loading && (
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+              Cargando detalle…
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -191,10 +224,16 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                 label="Tiempo activo"
                 value={
                   v.sentToCapitalAt
-                    ? formatVacancyActiveDaysLabel(computeVacancyActiveDays(v))
+                    ? formatVacancyActiveDaysLabel(
+                        computeVacancyActiveDaysFromSent(v.sentToCapitalAt)
+                      )
                     : 'SIN FECHA DE ENVÍO'
                 }
-                title={v.sentToCapitalAt ? vacancyActiveDaysTooltip(v) : undefined}
+                title={
+                  v.sentToCapitalAt
+                    ? vacancyActiveDaysTooltip(v.sentToCapitalAt)
+                    : undefined
+                }
               />
               <Row label="Actualizado" value={formatTs(v.updatedAt)} />
               <Row label="Cierre" value={formatTs(v.closedAt)} />
@@ -326,6 +365,45 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
           </motion.div>
         </div>
       </div>
+
+      {editOpen && (
+        <VacancyManageModal
+          mode="edit"
+          vacancy={v}
+          isVacancyAdmin={isVacancyAdmin}
+          onClose={() => setEditOpen(false)}
+          onSaved={(updated, msg) => {
+            setEditOpen(false);
+            onVacancySaved?.(updated);
+            void getVacancy(updated.id).then(setDetail).catch(() => undefined);
+            setError(null);
+          }}
+        />
+      )}
+
+      <ConfirmTextModal
+        open={deleteOpen}
+        title="Eliminar vacante y requisición"
+        description="Se eliminará por completo la vacante y su requisición asociada."
+        confirmLabel="Eliminar"
+        loading={deleteLoading}
+        onClose={() => {
+          if (!deleteLoading) setDeleteOpen(false);
+        }}
+        onConfirm={async (confirmText) => {
+          setDeleteLoading(true);
+          try {
+            await deleteVacancy(v.id, { confirmText });
+            setDeleteOpen(false);
+            onVacancyDeleted?.();
+            setView('vacancies');
+          } catch (e) {
+            setError(e instanceof Error ? e.message : 'No se pudo eliminar');
+          } finally {
+            setDeleteLoading(false);
+          }
+        }}
+      />
     </div>
   );
 };

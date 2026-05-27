@@ -1,10 +1,15 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { pool } from "../db/connection";
 import {
   orbitPersonIdFromRequest,
   schoolScopeFromRequest,
   vacancyAllowedForSchoolScope,
 } from "../middleware/orbitAuth";
+import {
+  hasCapability,
+  ORBIT_CAPABILITY,
+  VACANCY_ADMIN_ROLE_ID,
+} from "../lib/orbitCapabilities";
 import {
   qualifiedCoreTable,
   resolveCoreSchemaMode,
@@ -71,10 +76,37 @@ const FULLY_LOCKED_STATUSES = new Set([
   "cancelled_by_capital",
 ]);
 
+/** Estados en los que no se puede editar la requisición (sí en `hired`). */
+const REQUISITION_BLOCKED_STATUSES = new Set([
+  "closed",
+  "cancelled",
+  "cancelled_by_capital",
+]);
+
 const VACANCY_FULLY_LOCKED_MESSAGE =
   "Esta vacante está contratada, cerrada, cancelada o cancelada por capital y no puede modificarse.";
 
+const REQUISITION_LOCKED_MESSAGE =
+  "Esta vacante está cerrada o cancelada y la requisición no puede modificarse.";
+
 type VacancyEditGate = "missing" | "blocked" | null;
+
+function isConfirmTextValid(text: unknown): boolean {
+  return typeof text === "string" && text.trim().toLowerCase() === "confirmar";
+}
+
+function denyUnlessVacancyAdmin(req: Request, res: Response): boolean {
+  const u = req.orbitUser;
+  if (
+    u == null ||
+    u.roleId !== VACANCY_ADMIN_ROLE_ID ||
+    !hasCapability(u.capabilities, ORBIT_CAPABILITY.VACANCIES_ADMIN)
+  ) {
+    res.status(403).json({ error: "No tienes permiso para esta acción" });
+    return true;
+  }
+  return false;
+}
 
 async function vacancyEditGate(id: string): Promise<VacancyEditGate> {
   const r = await pool.query(
@@ -87,6 +119,87 @@ async function vacancyEditGate(id: string): Promise<VacancyEditGate> {
   );
   if (FULLY_LOCKED_STATUSES.has(op)) return "blocked";
   return null;
+}
+
+async function requisitionEditGate(id: string): Promise<VacancyEditGate> {
+  const r = await pool.query(
+    `SELECT operation_status FROM vacancies.vacancy WHERE id = $1`,
+    [id]
+  );
+  if (r.rows.length === 0) return "missing";
+  const op = String(
+    (r.rows[0] as { operation_status?: unknown }).operation_status ?? ""
+  );
+  if (REQUISITION_BLOCKED_STATUSES.has(op)) return "blocked";
+  return null;
+}
+
+async function loadVacancyAuditSnapshot(
+  vacancyId: string
+): Promise<Record<string, unknown>> {
+  const mode = await resolveCoreSchemaMode();
+  if (mode == null) {
+    const { rows } = await pool.query(
+      `SELECT v.public_id, v.position_name, v.operation_status, r.req_number
+       FROM vacancies.vacancy v
+       LEFT JOIN vacancies.requisition r ON r.vacancy_id = v.id
+       WHERE v.id = $1`,
+      [vacancyId]
+    );
+    if (rows.length === 0) return { vacancyId };
+    const row = rows[0] as Record<string, unknown>;
+    return {
+      vacancyId,
+      vacancyPublicId:
+        row.public_id == null ? null : Number(row.public_id),
+      positionName: String(row.position_name ?? ""),
+      operationStatus: String(row.operation_status ?? ""),
+      reqNumber: row.req_number == null ? null : String(row.req_number),
+    };
+  }
+
+  const areaT = qualifiedCoreTable(mode, "area");
+  const schoolT = qualifiedCoreTable(mode, "school");
+  const { rows } = await pool.query(
+    `SELECT v.public_id, v.position_name, v.operation_status,
+            a.name AS area_name, s.name AS school_name, r.req_number
+     FROM vacancies.vacancy v
+     JOIN ${areaT} a ON a.id = v.area_id
+     LEFT JOIN ${schoolT} s ON s.id = v.school_id
+     LEFT JOIN vacancies.requisition r ON r.vacancy_id = v.id
+     WHERE v.id = $1`,
+    [vacancyId]
+  );
+  if (rows.length === 0) return { vacancyId };
+  const row = rows[0] as Record<string, unknown>;
+  return {
+    vacancyId,
+    vacancyPublicId: row.public_id == null ? null : Number(row.public_id),
+    positionName: String(row.position_name ?? ""),
+    areaName: String(row.area_name ?? ""),
+    schoolName: row.school_name == null ? null : String(row.school_name),
+    operationStatus: String(row.operation_status ?? ""),
+    reqNumber: row.req_number == null ? null : String(row.req_number),
+  };
+}
+
+function vacancyChangeLogActionLabel(
+  action: string,
+  details: Record<string, unknown>
+): string {
+  const actionType = String(details.actionType ?? "");
+  if (actionType === "admin_status_change") return "Cambio de estado (admin)";
+  if (action === "DELETE") return "Eliminación total";
+  if (action === "INSERT") return "Creación de vacante";
+  if (details.requisitionPatch != null || details.reqNumber != null) {
+    return "Actualización de requisición";
+  }
+  if (details.operationNoteAppended === true) return "Comentario de operación";
+  if (details.operationStatus != null) return "Cambio de estado";
+  if (action === "UPDATE") return "Actualización de vacante";
+  if (action === "INSERT") return "Creación de vacante";
+  if (action === "DELETE") return "Eliminación";
+  return "Registro de actividad";
 }
 
 function isUuid(s: string): boolean {
@@ -187,21 +300,46 @@ type Queryable = {
  * Some local/dev DBs may have either entity_name or entity_type.
  * Attempts are ordered from the current shape to older fallback shapes.
  */
+type VacancyChangeLogOpts = {
+  createdByPersonId?: number | null;
+  snapshot?: Record<string, unknown>;
+};
+
 async function insertVacancyChangeLog(
   db: Queryable,
   vacancyId: string,
   action: string,
-  details: unknown
+  details: unknown,
+  opts?: VacancyChangeLogOpts
 ): Promise<void> {
   const entityId = String(vacancyId ?? "").trim();
   if (entityId === "") {
     throw new Error("insertVacancyChangeLog: vacancyId/entityId is required");
   }
 
-  const payload = JSON.stringify(details ?? {});
+  const baseDetails =
+    details != null && typeof details === "object" && !Array.isArray(details)
+      ? (details as Record<string, unknown>)
+      : { payload: details };
+  const merged = { ...baseDetails, ...(opts?.snapshot ?? {}) };
+  const payload = JSON.stringify(merged);
   const normalizedAction = normalizeVacancyChangeLogAction(action);
+  const createdBy = opts?.createdByPersonId ?? null;
 
   const attempts: Array<{ sql: string; values: unknown[] }> = [
+    {
+      sql: `INSERT INTO vacancies.vacancy_change_log
+              (entity_type, entity_id, action, details, created_by_person_id)
+            VALUES
+              ($1, $2, $3, $4::jsonb, $5)`,
+      values: [
+        CHANGE_LOG_ENTITY_NAME,
+        vacancyId,
+        normalizedAction,
+        payload,
+        createdBy,
+      ],
+    },
     {
       sql: `INSERT INTO vacancies.vacancy_change_log
               (entity_type, entity_id, action, details)
@@ -211,10 +349,36 @@ async function insertVacancyChangeLog(
     },
     {
       sql: `INSERT INTO vacancies.vacancy_change_log
+              (entity_name, entity_id, action, details, created_by_person_id)
+            VALUES
+              ($1, $2, $3, $4::jsonb, $5)`,
+      values: [
+        CHANGE_LOG_ENTITY_NAME,
+        vacancyId,
+        normalizedAction,
+        payload,
+        createdBy,
+      ],
+    },
+    {
+      sql: `INSERT INTO vacancies.vacancy_change_log
               (entity_name, entity_id, action, details)
             VALUES
               ($1, $2, $3, $4::jsonb)`,
       values: [CHANGE_LOG_ENTITY_NAME, vacancyId, normalizedAction, payload],
+    },
+    {
+      sql: `INSERT INTO vacancies.vacancy_change_log
+              (entity_type, entity_id, vacancy_id, action, details, created_by_person_id)
+            VALUES
+              ($1, $2, $2, $3, $4::jsonb, $5)`,
+      values: [
+        CHANGE_LOG_ENTITY_NAME,
+        vacancyId,
+        normalizedAction,
+        payload,
+        createdBy,
+      ],
     },
     {
       sql: `INSERT INTO vacancies.vacancy_change_log
@@ -229,6 +393,19 @@ async function insertVacancyChangeLog(
             VALUES
               ($1, $2, $2, $3, $4::jsonb)`,
       values: [CHANGE_LOG_ENTITY_NAME, vacancyId, normalizedAction, payload],
+    },
+    {
+      sql: `INSERT INTO vacancies.vacancy_change_log
+              (vacancy_id, action, details, entity_name, created_by_person_id)
+            VALUES
+              ($1, $2, $3::jsonb, $4, $5)`,
+      values: [
+        vacancyId,
+        normalizedAction,
+        payload,
+        CHANGE_LOG_ENTITY_NAME,
+        createdBy,
+      ],
     },
     {
       sql: `INSERT INTO vacancies.vacancy_change_log
@@ -775,6 +952,16 @@ router.post("/vacancies", async (req, res) => {
       vacancyId,
       mode
     );
+
+    const snapshot = await loadVacancyAuditSnapshot(vacancyId);
+    await insertVacancyChangeLog(
+      pool,
+      vacancyId,
+      "INSERT",
+      { actionType: "create" },
+      { createdByPersonId: personId, snapshot }
+    );
+
     res.status(201).json(mapVacancyRow(row, operationNotes));
     void notifyVacancyCreatedFromId(vacancyId).catch((err) => {
       console.error("POST /vacancies notify failed:", err);
@@ -835,9 +1022,17 @@ router.patch("/vacancies/:id/close", async (req, res) => {
       return;
     }
 
-    await insertVacancyChangeLog(pool, id, "UPDATE", {
-      operationStatus: statusIn,
-    });
+    const snapshot = await loadVacancyAuditSnapshot(id);
+    await insertVacancyChangeLog(
+      pool,
+      id,
+      "UPDATE",
+      { operationStatus: statusIn, actionType: "close" },
+      {
+        createdByPersonId: orbitPersonIdFromRequest(req),
+        snapshot,
+      }
+    );
 
     const row = rows[0] as Record<string, unknown>;
     const notes =
@@ -933,9 +1128,14 @@ router.post("/vacancies/:id/operation-notes", async (req, res) => {
       createdByName,
     };
 
-    await insertVacancyChangeLog(pool, id, "UPDATE", {
-      operationNoteAppended: true,
-    });
+    const snapshot = await loadVacancyAuditSnapshot(id);
+    await insertVacancyChangeLog(
+      pool,
+      id,
+      "UPDATE",
+      { operationNoteAppended: true, actionType: "operation_note" },
+      { createdByPersonId: personId, snapshot }
+    );
 
     res.status(201).json({ note });
   } catch (e) {
@@ -1053,15 +1253,26 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
       [id]
     );
 
-    await insertVacancyChangeLog(client, id, "UPDATE", {
-      reqNumber,
-      sentToCapitalAt,
-      capitalNotes,
-      shortlistComplied,
-      pdaComplied,
-      contractConditionsComplied,
-      preInterviewCvComplied,
-    });
+    const snapshot = await loadVacancyAuditSnapshot(id);
+    await insertVacancyChangeLog(
+      client,
+      id,
+      "UPDATE",
+      {
+        actionType: "requisition_created",
+        reqNumber,
+        sentToCapitalAt,
+        capitalNotes,
+        shortlistComplied,
+        pdaComplied,
+        contractConditionsComplied,
+        preInterviewCvComplied,
+      },
+      {
+        createdByPersonId: orbitPersonIdFromRequest(req),
+        snapshot,
+      }
+    );
 
     await client.query("COMMIT");
 
@@ -1115,6 +1326,327 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   } finally {
     client.release();
+  }
+});
+
+/** GET /vacancies/audit-log — panel informativo (rol 38) */
+router.get("/vacancies/audit-log", async (req, res) => {
+  try {
+    if (denyUnlessVacancyAdmin(req, res)) return;
+
+    const mode = await resolveCoreSchemaMode();
+    const limitRaw = Number.parseInt(String(req.query.limit ?? "200"), 10);
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(limitRaw, 1), 500)
+      : 200;
+    const qSearch =
+      typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
+    const fromDate =
+      typeof req.query.from === "string" ? req.query.from.trim() : "";
+    const toDate = typeof req.query.to === "string" ? req.query.to.trim() : "";
+
+    const personT =
+      mode != null ? qualifiedCoreTable(mode, "person") : null;
+    const areaT = mode != null ? qualifiedCoreTable(mode, "area") : null;
+    const schoolT = mode != null ? qualifiedCoreTable(mode, "school") : null;
+
+    const joins =
+      personT != null
+        ? `LEFT JOIN ${personT} per ON per.id = l.created_by_person_id`
+        : "";
+    const vacancyJoin =
+      areaT != null && schoolT != null
+        ? `LEFT JOIN vacancies.vacancy v ON v.id = l.entity_id
+           LEFT JOIN ${areaT} a ON a.id = v.area_id
+           LEFT JOIN ${schoolT} s ON s.id = v.school_id`
+        : `LEFT JOIN vacancies.vacancy v ON v.id = l.entity_id`;
+
+    const { rows } = await pool.query(
+      `SELECT
+         l.id,
+         l.action,
+         l.details,
+         l.created_at,
+         l.created_by_person_id,
+         l.entity_id,
+         v.public_id AS live_public_id,
+         v.position_name AS live_position_name,
+         a.name AS live_area_name,
+         s.name AS live_school_name,
+         per.full_name AS actor_name
+       FROM vacancies.vacancy_change_log l
+       ${vacancyJoin}
+       ${joins}
+       ORDER BY l.created_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+
+    const data = rows
+      .map((raw) => {
+        const row = raw as Record<string, unknown>;
+        const details =
+          row.details != null && typeof row.details === "object"
+            ? (row.details as Record<string, unknown>)
+            : {};
+        const action = String(row.action ?? "");
+        const positionName =
+          row.live_position_name != null
+            ? String(row.live_position_name)
+            : String(details.positionName ?? "");
+        const areaName =
+          row.live_area_name != null
+            ? String(row.live_area_name)
+            : String(details.areaName ?? "");
+        const vacancyPublicId =
+          row.live_public_id != null
+            ? Number(row.live_public_id)
+            : details.vacancyPublicId != null
+              ? Number(details.vacancyPublicId)
+              : null;
+        const reqNumber =
+          details.reqNumber != null ? String(details.reqNumber) : null;
+        const createdAt =
+          row.created_at != null
+            ? new Date(row.created_at as string | Date).toISOString()
+            : "";
+
+        if (fromDate && createdAt.slice(0, 10) < fromDate) return null;
+        if (toDate && createdAt.slice(0, 10) > toDate) return null;
+
+        if (qSearch) {
+          const hay = [
+            positionName,
+            areaName,
+            reqNumber ?? "",
+            vacancyPublicId != null ? String(vacancyPublicId) : "",
+            vacancyChangeLogActionLabel(action, details),
+          ]
+            .join(" ")
+            .toLowerCase();
+          if (!hay.includes(qSearch)) return null;
+        }
+
+        return {
+          id: String(row.id),
+          createdAt,
+          action,
+          actionLabel: vacancyChangeLogActionLabel(action, details),
+          vacancyPublicId,
+          positionName,
+          areaName,
+          schoolName:
+            row.live_school_name != null
+              ? String(row.live_school_name)
+              : details.schoolName != null
+                ? String(details.schoolName)
+                : null,
+          reqNumber,
+          actorName:
+            row.actor_name != null && String(row.actor_name).trim() !== ""
+              ? String(row.actor_name)
+              : null,
+          details,
+          vacancyDeleted: row.entity_id == null && action === "DELETE",
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null);
+
+    res.json({ data });
+  } catch (e) {
+    console.error("GET /vacancies/audit-log failed:", e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** DELETE /vacancies/:id — eliminación total (rol 38) */
+router.delete("/vacancies/:id", async (req, res) => {
+  try {
+    if (denyUnlessVacancyAdmin(req, res)) return;
+
+    const id = await resolveVacancyUuidFromParam(req.params.id);
+    if (id == null) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    if (await denyIfVacancyOutOfSchoolScope(req, res, id)) return;
+
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!isConfirmTextValid(b.confirmText)) {
+      res.status(400).json({
+        error: 'Debe escribir CONFIRMAR en confirmText para eliminar la vacante.',
+      });
+      return;
+    }
+
+    const snapRow = await pool.query(
+      `SELECT v.*, r.req_number, r.sent_to_capital_at, r.capital_notes
+       FROM vacancies.vacancy v
+       LEFT JOIN vacancies.requisition r ON r.vacancy_id = v.id
+       WHERE v.id = $1`,
+      [id]
+    );
+    if (snapRow.rows.length === 0) {
+      res.status(404).json({ error: "Vacancy not found" });
+      return;
+    }
+
+    const snapshot = await loadVacancyAuditSnapshot(id);
+    const reqRow = snapRow.rows[0] as Record<string, unknown>;
+    const requisition =
+      reqRow.req_number != null
+        ? {
+            reqNumber: String(reqRow.req_number),
+            sentToCapitalAt:
+              reqRow.sent_to_capital_at == null
+                ? null
+                : new Date(
+                    reqRow.sent_to_capital_at as string | Date
+                  ).toISOString(),
+            capitalNotes:
+              reqRow.capital_notes == null
+                ? null
+                : String(reqRow.capital_notes),
+          }
+        : null;
+
+    await insertVacancyChangeLog(
+      pool,
+      id,
+      "DELETE",
+      { actionType: "total_delete", requisition },
+      {
+        createdByPersonId: orbitPersonIdFromRequest(req),
+        snapshot,
+      }
+    );
+
+    await pool.query(`DELETE FROM vacancies.vacancy WHERE id = $1`, [id]);
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE /vacancies/:id failed:", e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/** PATCH /vacancies/:id/admin-status — cambio de estado forzado (rol 38) */
+router.patch("/vacancies/:id/admin-status", async (req, res) => {
+  try {
+    if (denyUnlessVacancyAdmin(req, res)) return;
+
+    const id = await resolveVacancyUuidFromParam(req.params.id);
+    if (id == null) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    if (await denyIfVacancyOutOfSchoolScope(req, res, id)) return;
+
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    if (!isConfirmTextValid(b.confirmText)) {
+      res.status(400).json({
+        error: 'Debe escribir CONFIRMAR en confirmText para cambiar el estado.',
+      });
+      return;
+    }
+
+    const statusIn = String(b.operationStatus ?? "").trim();
+    if (!OPERATION_STATUSES.has(statusIn)) {
+      res.status(400).json({ error: "Invalid operationStatus" });
+      return;
+    }
+
+    const prev = await pool.query(
+      `SELECT operation_status FROM vacancies.vacancy WHERE id = $1`,
+      [id]
+    );
+    if (prev.rows.length === 0) {
+      res.status(404).json({ error: "Vacancy not found" });
+      return;
+    }
+    const previousStatus = String(
+      (prev.rows[0] as { operation_status?: unknown }).operation_status ?? ""
+    );
+
+    const updates = [`operation_status = $1`];
+    const values: unknown[] = [statusIn];
+    if (FULLY_LOCKED_STATUSES.has(statusIn)) {
+      updates.push(`closed_at = COALESCE(closed_at, now())`);
+    }
+    values.push(id);
+
+    const mode = await resolveCoreSchemaMode();
+    if (mode == null) {
+      res.status(503).json({
+        error: "CORE catalog (area/school/program) is not available",
+      });
+      return;
+    }
+
+    const result = await pool.query(
+      `UPDATE vacancies.vacancy SET ${updates.join(", ")} WHERE id = $2 RETURNING *`,
+      values
+    );
+
+    const snapshot = await loadVacancyAuditSnapshot(id);
+    await insertVacancyChangeLog(
+      pool,
+      id,
+      "UPDATE",
+      {
+        actionType: "admin_status_change",
+        previousOperationStatus: previousStatus,
+        operationStatus: statusIn,
+      },
+      {
+        createdByPersonId: orbitPersonIdFromRequest(req),
+        snapshot,
+      }
+    );
+
+    const areaT = qualifiedCoreTable(mode, "area");
+    const schoolT = qualifiedCoreTable(mode, "school");
+    const programT = qualifiedCoreTable(mode, "program");
+    const personT = qualifiedCoreTable(mode, "person");
+    const opNotesSql = sqlOperationNotesAgg(personT);
+
+    const { rows } = await pool.query(
+      `SELECT
+         v.id,
+         v.public_id,
+         v.area_id,
+         a.name AS area_name,
+         v.school_id,
+         s.name AS school_name,
+         v.program_id,
+         p.name AS program_name,
+         v.position_name,
+         v.curricular_line,
+         v.quantity,
+         v.operation_status,
+         ${opNotesSql} AS operation_notes_json,
+         ${SQL_REQUISITION_COMPLIANCE},
+         v.created_at,
+         v.updated_at,
+         v.closed_at,
+         v.direct_manager_identification,
+         r.req_number,
+         r.assigned_at AS req_assigned_at,
+         r.sent_to_capital_at,
+         r.capital_notes AS requisition_capital_notes
+       FROM vacancies.vacancy v
+       JOIN ${areaT} a ON a.id = v.area_id
+       LEFT JOIN ${schoolT} s ON s.id = v.school_id
+       LEFT JOIN ${programT} p ON p.id = v.program_id
+       LEFT JOIN vacancies.requisition r ON r.vacancy_id = v.id
+       WHERE v.id = $1`,
+      [id]
+    );
+
+    res.json(mapListRow(rows[0] as Record<string, unknown>));
+  } catch (e) {
+    console.error("PATCH /vacancies/:id/admin-status failed:", e);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -1278,13 +1810,13 @@ router.patch("/vacancies/:id/requisition", async (req, res) => {
     }
     if (await denyIfVacancyOutOfSchoolScope(req, res, id)) return;
 
-    const gate = await vacancyEditGate(id);
+    const gate = await requisitionEditGate(id);
     if (gate === "missing") {
       res.status(404).json({ error: "Vacancy not found" });
       return;
     }
     if (gate === "blocked") {
-      res.status(409).json({ error: VACANCY_FULLY_LOCKED_MESSAGE });
+      res.status(409).json({ error: REQUISITION_LOCKED_MESSAGE });
       return;
     }
 
@@ -1373,9 +1905,17 @@ router.patch("/vacancies/:id/requisition", async (req, res) => {
       return;
     }
 
-    await insertVacancyChangeLog(pool, id, "UPDATE", {
-      requisitionPatch: b,
-    });
+    const snapshot = await loadVacancyAuditSnapshot(id);
+    await insertVacancyChangeLog(
+      pool,
+      id,
+      "UPDATE",
+      { actionType: "requisition_patch", requisitionPatch: b },
+      {
+        createdByPersonId: orbitPersonIdFromRequest(req),
+        snapshot,
+      }
+    );
 
     const mode = await resolveCoreSchemaMode();
     if (mode == null) {
@@ -1392,6 +1932,7 @@ router.patch("/vacancies/:id/requisition", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT
          v.id,
+         v.public_id,
          v.area_id,
          a.name AS area_name,
          v.school_id,
@@ -1613,7 +2154,17 @@ router.patch("/vacancies/:id", async (req, res) => {
       return;
     }
 
-    await insertVacancyChangeLog(pool, id, "UPDATE", b);
+    const snapshot = await loadVacancyAuditSnapshot(id);
+    await insertVacancyChangeLog(
+      pool,
+      id,
+      "UPDATE",
+      { actionType: "vacancy_patch", ...b },
+      {
+        createdByPersonId: orbitPersonIdFromRequest(req),
+        snapshot,
+      }
+    );
 
     const row = result.rows[0] as Record<string, unknown>;
     const notes = await loadOperationNotesForVacancy(id, mode);
