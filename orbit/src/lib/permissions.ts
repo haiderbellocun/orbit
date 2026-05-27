@@ -7,6 +7,7 @@ export const ORBIT_CAPABILITY = {
   COORDINATORS: "view:coordinators",
   LITES: "view:lites",
   VACANCIES: "view:vacancies",
+  VACANCIES_ADMIN: "vacancies:admin",
   PERSONAL: "view:personal",
   NEWS: "view:news",
 } as const;
@@ -21,6 +22,7 @@ const NAV_ID_TO_CAPABILITY: Record<string, OrbitCapability> = {
   coordinators: ORBIT_CAPABILITY.COORDINATORS,
   lites: ORBIT_CAPABILITY.LITES,
   vacancies: ORBIT_CAPABILITY.VACANCIES,
+  "vacancy-informative-panel": ORBIT_CAPABILITY.VACANCIES_ADMIN,
   personal: ORBIT_CAPABILITY.PERSONAL,
   news: ORBIT_CAPABILITY.NEWS,
 };
@@ -31,6 +33,7 @@ const VIEW_TO_CAPABILITY: Partial<Record<View, OrbitCapability>> = {
   "teacher-detail": ORBIT_CAPABILITY.TEACHERS,
   vacancies: ORBIT_CAPABILITY.VACANCIES,
   "vacancy-detail": ORBIT_CAPABILITY.VACANCIES,
+  "vacancy-informative-panel": ORBIT_CAPABILITY.VACANCIES_ADMIN,
   coordinators: ORBIT_CAPABILITY.COORDINATORS,
   lites: ORBIT_CAPABILITY.LITES,
   "academic-load": ORBIT_CAPABILITY.ACADEMIC_LOAD,
@@ -82,6 +85,27 @@ export function canBulkImportTeachers(capabilities: readonly string[]): boolean 
 
 export function canManageVacancies(capabilities: readonly string[]): boolean {
   return hasCapability(capabilities, ORBIT_CAPABILITY.VACANCIES);
+}
+
+export function canVacancyAdmin(capabilities: readonly string[]): boolean {
+  return hasCapability(capabilities, ORBIT_CAPABILITY.VACANCIES_ADMIN);
+}
+
+/** `role_id` del usuario en sesión (orbit_user). */
+export function getStoredRoleId(): number | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("orbit_user");
+    if (!raw) return null;
+    const u = JSON.parse(raw) as { roleId?: unknown };
+    const n =
+      typeof u.roleId === "number"
+        ? u.roleId
+        : Number.parseInt(String(u.roleId ?? ""), 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
 }
 
 const LANDING_VIEW_ORDER: View[] = [

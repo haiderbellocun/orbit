@@ -10,6 +10,7 @@ import type { Vacancy, VacancyOperationStatus } from '@/src/types';
 import {
   createVacancy,
   patchVacancy,
+  patchVacancyAdminStatus,
   createVacancyRequisition,
   patchVacancyRequisition,
   appendVacancyOperationNote,
@@ -29,6 +30,8 @@ import {
   ZOHO_REQUISITION_FORM_URL,
   STATUS_LABEL,
   isVacancyCoreFieldsLocked,
+  isVacancyCoreEditBlocked,
+  isVacancyHiredRequisitionOnly,
   triToBool,
   boolToTri,
   triLabel,
@@ -36,6 +39,7 @@ import {
   formatVacancyDt,
   type TriSelectValue,
 } from '@/src/lib/vacancyFormHelpers';
+import { ConfirmTextModal } from '@/src/components/common/ConfirmTextModal';
 
 type ManageTab = 'vacancy' | 'requisition' | 'status';
 type Step = 'form' | 'summary';
@@ -45,6 +49,7 @@ export interface VacancyManageModalProps {
   vacancy: Vacancy | null;
   onClose: () => void;
   onSaved: (vacancy: Vacancy, bannerMessage: string) => void;
+  isVacancyAdmin?: boolean;
 }
 
 export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
@@ -52,6 +57,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
   vacancy,
   onClose,
   onSaved,
+  isVacancyAdmin = false,
 }) => {
   const [step, setStep] = useState<Step>('form');
   const [activeTab, setActiveTab] = useState<ManageTab>('vacancy');
@@ -83,9 +89,18 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
   const [pda, setPda] = useState<TriSelectValue>('');
   const [contract, setContract] = useState<TriSelectValue>('');
   const [cv, setCv] = useState<TriSelectValue>('');
+  const [adminConfirmOpen, setAdminConfirmOpen] = useState(false);
 
   const editVacancy = vacancy;
-  const coreLocked = editVacancy != null && isVacancyCoreFieldsLocked(editVacancy);
+  const hiredRequisitionOnly =
+    editVacancy != null && isVacancyHiredRequisitionOnly(editVacancy.operationStatus);
+  const coreLocked =
+    editVacancy != null &&
+    (isVacancyCoreFieldsLocked(editVacancy) || hiredRequisitionOnly);
+  const adminStatusChange =
+    isVacancyAdmin &&
+    editVacancy != null &&
+    operationStatus !== editVacancy.operationStatus;
   const ccLocked =
     editVacancy != null && Boolean((editVacancy.directManagerIdentification ?? '').trim());
   const hasExistingReq = Boolean(editVacancy?.reqAssignedAt);
@@ -108,6 +123,9 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
     setPda(boolToTri(v.pdaComplied));
     setContract(boolToTri(v.contractConditionsComplied));
     setCv(boolToTri(v.preInterviewCvComplied));
+    if (isVacancyHiredRequisitionOnly(v.operationStatus)) {
+      setActiveTab('requisition');
+    }
     void getCatalogSchools({ area_id: v.areaId }).then(setSchools);
     void (v.schoolId != null
       ? getCatalogPrograms({ school_id: v.schoolId })
@@ -237,7 +255,12 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
   function hasVacancyPatchChanges(): boolean {
     if (mode === 'create') return true;
     if (!editVacancy) return false;
+    if (hiredRequisitionOnly && !isVacancyAdmin) return false;
     if (coreLocked) {
+      if (isVacancyAdmin && operationStatus !== editVacancy.operationStatus) {
+        return true;
+      }
+      if (hiredRequisitionOnly) return false;
       return (
         operationStatus !== editVacancy.operationStatus ||
         (!ccLocked && directManagerCc.trim() !== (editVacancy.directManagerIdentification ?? '').trim())
@@ -262,6 +285,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
     if (!editVacancy) return {};
     const ccTrim = directManagerCc.trim();
     if (coreLocked) {
+      if (hiredRequisitionOnly) return {};
       return {
         operationStatus,
         ...(!ccLocked && ccTrim ? { directManagerIdentification: ccTrim } : {}),
@@ -373,7 +397,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
     }
   }
 
-  async function handleConfirm() {
+  async function executeSave(confirmText?: string) {
     setFormError(null);
     setSaving(true);
     try {
@@ -399,8 +423,22 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
           messages.push('requisición registrada');
         }
       } else if (editVacancy) {
-        let id = editVacancy.id;
-        if (hasVacancyPatchChanges()) {
+        const id = editVacancy.id;
+        if (
+          isVacancyAdmin &&
+          editVacancy &&
+          operationStatus !== editVacancy.operationStatus
+        ) {
+          if (!confirmText) {
+            setFormError('Se requiere confirmación para cambiar el estado.');
+            return;
+          }
+          result = await patchVacancyAdminStatus(id, {
+            operationStatus,
+            confirmText,
+          });
+          messages.push('Estado actualizado (admin)');
+        } else if (hasVacancyPatchChanges()) {
           result = (await patchVacancy(id, buildVacancyPatch())) as Vacancy;
           messages.push(coreLocked ? 'Estado actualizado' : 'Vacante actualizada');
         }
@@ -425,14 +463,30 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
     }
   }
 
+  function handleConfirm() {
+    if (adminStatusChange) {
+      setAdminConfirmOpen(true);
+      return;
+    }
+    void executeSave();
+  }
+
   const tabs = useMemo(() => {
-    const base: { id: ManageTab; label: string }[] = [
-      { id: 'vacancy', label: 'Vacante' },
-      { id: 'requisition', label: 'Requisición' },
-    ];
-    if (mode === 'edit') base.push({ id: 'status', label: 'Estado' });
+    const base: { id: ManageTab; label: string }[] = [];
+    if (!hiredRequisitionOnly) {
+      base.push({ id: 'vacancy', label: 'Vacante' });
+    }
+    base.push({ id: 'requisition', label: 'Requisición' });
+    if (
+      mode === 'edit' &&
+      (isVacancyAdmin ||
+        (editVacancy != null &&
+          !isVacancyCoreEditBlocked(editVacancy.operationStatus)))
+    ) {
+      base.push({ id: 'status', label: 'Estado' });
+    }
     return base;
-  }, [mode]);
+  }, [mode, hiredRequisitionOnly, isVacancyAdmin, editVacancy]);
 
   const title =
     step === 'summary'
@@ -677,7 +731,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                   />
                 </Field>
               )}
-              {mode === 'edit' && editVacancy && (
+              {mode === 'edit' && editVacancy && !hiredRequisitionOnly && (
                 <>
                   <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 space-y-2">
                     <p className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">
@@ -729,6 +783,12 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
             </div>
           ) : activeTab === 'requisition' ? (
             <div className="space-y-4">
+              {hiredRequisitionOnly && (
+                <p className="text-sm text-emerald-900 bg-emerald-50/95 border border-emerald-200/80 rounded-xl px-4 py-3">
+                  Vacante <strong>contratada</strong>: solo puede editar los datos de la
+                  requisición.
+                </p>
+              )}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm text-slate-600">
                   {mode === 'create'
@@ -797,6 +857,12 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
             </div>
           ) : activeTab === 'status' ? (
             <div className="space-y-4">
+              {isVacancyAdmin && (
+                <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  Como administrador puede cambiar el estado en cualquier momento. Al guardar
+                  deberá escribir <strong>CONFIRMAR</strong>.
+                </p>
+              )}
               <p className="text-sm text-slate-600">
                 Este estado es el que define el cierre/contratación/cancelación de la vacante.
               </p>
@@ -865,6 +931,22 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
           )}
         </div>
       </motion.div>
+
+      <ConfirmTextModal
+        open={adminConfirmOpen}
+        title="Confirmar cambio de estado"
+        description="Va a cambiar el estado de la vacante. Esta acción quedará registrada en el panel informativo."
+        confirmLabel="Cambiar estado"
+        danger={false}
+        loading={saving}
+        onClose={() => {
+          if (!saving) setAdminConfirmOpen(false);
+        }}
+        onConfirm={async (confirmText) => {
+          setAdminConfirmOpen(false);
+          await executeSave(confirmText);
+        }}
+      />
     </div>
   );
 };

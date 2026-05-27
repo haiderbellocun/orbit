@@ -49,7 +49,8 @@ Debe existir una fila activa en `person` cuyo `email` o `edu_email` coincida con
 
 - **Acceso total** (`orbitAccess: "full"`, todas las capabilities): `role_id` en `ORBIT_FULL_ACCESS_ROLE_IDS` (p. ej. 1, 10, 13, 19, **42**, 43–46).
 - **Rol 9 (operaciones)**: todos los paneles + datos completos (equivalente a acceso total en módulos actuales).
-- **Roles 37 y 38**: solo panel Vacantes (`view:vacancies`).
+- **Rol 37**: solo panel Vacantes (`view:vacancies`).
+- **Rol 38**: panel Vacantes + **Panel informativo** + eliminación total y cambio de estado forzado (`vacancies:admin`).
 - **Coordinadores de escuela** (`orbitAccess: "school"`, roles **4, 5, 6, 7, 8, 11**): todos los paneles; datos filtrados por `person.school_id` del usuario (docentes, carga, coordinadores académicos, LITEs, vacantes, catálogo y resumen).
 - **Rol 51** (`orbitAccess: "school"`): paneles **Personal** y **Vacantes** únicamente; personal y vacantes filtrados por escuela del usuario.
 - **LITE** (`orbitAccess: "lite"`): `role_id` = `ORBIT_LITE_ROLE_ID` (si no es 9) o nombre/código `LITE` / `LIDER`, con `school_id` y al menos un programa (`program_id` o `person_program_assignments.programs_id`). El `role_id` 9 en login ORBIT usa el perfil operaciones, no LITE.
@@ -66,6 +67,7 @@ Cualquier otro rol (p. ej. coordinador académico no listado) recibe **403** has
 | `view:coordinators` | Coordinadores |
 | `view:lites` | LITEs |
 | `view:vacancies` | Vacantes |
+| `vacancies:admin` | Administración de vacantes (rol 38): panel informativo, eliminar, cambio de estado con confirmación |
 | `view:personal` | Personal (colaboradores de la escuela) |
 
 La carga masiva (`/api/import/*`) exige `view:teachers` y acceso distinto de LITE (`orbitAccess: "full"`).

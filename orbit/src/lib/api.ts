@@ -657,6 +657,66 @@ export async function closeVacancy(
   return handleJson(response);
 }
 
+export async function deleteVacancy(
+  id: string,
+  body: { confirmText: string }
+): Promise<{ ok: boolean }> {
+  const response = await authFetch(
+    `${BASE_URL}/vacancies/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      headers: jsonHeaders,
+      body: JSON.stringify(body),
+    }
+  );
+  return handleJson(response);
+}
+
+export async function patchVacancyAdminStatus(
+  id: string,
+  body: { operationStatus: VacancyOperationStatus; confirmText: string }
+): Promise<Vacancy> {
+  const response = await authFetch(
+    `${BASE_URL}/vacancies/${encodeURIComponent(id)}/admin-status`,
+    {
+      method: "PATCH",
+      headers: jsonHeaders,
+      body: JSON.stringify(body),
+    }
+  );
+  return handleJson(response);
+}
+
+export type VacancyAuditLogEntry = {
+  id: string;
+  createdAt: string;
+  action: string;
+  actionLabel: string;
+  vacancyPublicId: number | null;
+  positionName: string;
+  areaName: string;
+  schoolName: string | null;
+  reqNumber: string | null;
+  actorName: string | null;
+  details: Record<string, unknown>;
+  vacancyDeleted: boolean;
+};
+
+export async function getVacancyAuditLog(params?: {
+  q?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+}): Promise<{ data: VacancyAuditLogEntry[] }> {
+  const url = new URL(`${BASE_URL}/vacancies/audit-log`);
+  if (params?.q) url.searchParams.set("q", params.q);
+  if (params?.from) url.searchParams.set("from", params.from);
+  if (params?.to) url.searchParams.set("to", params.to);
+  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
+  return handleJson(response);
+}
+
 export async function getNotifications(params?: {
   unreadOnly?: boolean;
   limit?: number;

@@ -18,6 +18,7 @@
     "migrate:person-is-active": "ts-node src/db/migrate_person_is_active.ts",
     "migrate:vacancies-updates": "ts-node src/db/migrate_vacancies_updates.ts",
     "migrate:vacancies-public-ids": "ts-node src/db/migrate_vacancies_public_ids.ts",
+    "migrate:vacancies-audit-retention": "ts-node src/db/migrate_vacancies_audit_retention.ts",
     "migrate:direct-manager-length": "ts-node src/db/migrate_direct_manager_identification_length.ts",
     "migrate:notifications": "ts-node src/db/migrate_notifications.ts",
     "seed": "ts-node src/db/seed.ts",

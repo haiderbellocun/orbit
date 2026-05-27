@@ -6,6 +6,7 @@ import {
   ROLE_51_STAFF_ROLE_ID,
   ROLE_9_OPERATIONS_CAPABILITIES,
   SCHOOL_COORDINATOR_ROLE_IDS,
+  VACANCIES_ADMIN_CAPABILITIES,
   VACANCIES_ONLY_CAPABILITIES,
   resolveOrbitAccess,
 } from "./orbitCapabilities";
@@ -82,21 +83,29 @@ for (const id of SCHOOL_COORDINATOR_ROLE_IDS) {
   });
 }
 
-for (const id of [37, 38]) {
-  test(`role ${id} vacancies only`, () => {
-    const r = resolveOrbitAccess({
-      roleId: id,
-      roleCode: null,
-      roleName: null,
-    });
-    assert.ok(r);
-    assert.equal(r.orbitAccess, "full");
-    assert.deepEqual(r.capabilities, [
-    ...VACANCIES_ONLY_CAPABILITIES,
-  ]);
-    assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.HOME), false);
+test("role 37 vacancies only", () => {
+  const r = resolveOrbitAccess({
+    roleId: 37,
+    roleCode: null,
+    roleName: null,
   });
-}
+  assert.ok(r);
+  assert.equal(r.orbitAccess, "full");
+  assert.deepEqual(r.capabilities, [...VACANCIES_ONLY_CAPABILITIES]);
+  assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN), false);
+});
+
+test("role 38 vacancies + admin", () => {
+  const r = resolveOrbitAccess({
+    roleId: 38,
+    roleCode: null,
+    roleName: null,
+  });
+  assert.ok(r);
+  assert.equal(r.orbitAccess, "full");
+  assert.deepEqual(r.capabilities, [...VACANCIES_ADMIN_CAPABILITIES]);
+  assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN), true);
+});
 
 test("LITE by configured role id (not 9)", () => {
   const prev = process.env.ORBIT_LITE_ROLE_ID;

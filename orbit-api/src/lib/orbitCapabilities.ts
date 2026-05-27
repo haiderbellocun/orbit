@@ -14,6 +14,8 @@ export const ORBIT_CAPABILITY = {
   COORDINATORS: "view:coordinators",
   LITES: "view:lites",
   VACANCIES: "view:vacancies",
+  /** Administración de vacantes: eliminar, panel informativo, cambio de estado forzado (rol 38). */
+  VACANCIES_ADMIN: "vacancies:admin",
   PERSONAL: "view:personal",
   NEWS: "view:news",
 } as const;
@@ -49,6 +51,14 @@ export const VACANCIES_ONLY_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.VACANCIES,
 ];
 
+/** Rol con permisos administrativos sobre vacantes. */
+export const VACANCY_ADMIN_ROLE_ID = 38;
+
+export const VACANCIES_ADMIN_CAPABILITIES: readonly OrbitCapability[] = [
+  ORBIT_CAPABILITY.VACANCIES,
+  ORBIT_CAPABILITY.VACANCIES_ADMIN,
+];
+
 /** Coordinadores de escuela: todos los paneles, datos filtrados por `person.school_id`. */
 export const SCHOOL_COORDINATOR_ROLE_IDS: readonly number[] = [4, 5, 6, 7, 8, 11];
 
@@ -73,7 +83,7 @@ export function isRole51StaffRoleId(roleId: number): boolean {
 const ROLE_CAPABILITY_MAP: Readonly<Record<number, readonly OrbitCapability[]>> = {
   9: ROLE_9_OPERATIONS_CAPABILITIES,
   37: VACANCIES_ONLY_CAPABILITIES,
-  38: VACANCIES_ONLY_CAPABILITIES,
+  38: VACANCIES_ADMIN_CAPABILITIES,
 };
 
 export function getFullAccessRoleIds(): number[] {
