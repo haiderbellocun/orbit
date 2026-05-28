@@ -6,6 +6,7 @@ import {
   vacancyAllowedForSchoolScope,
 } from "../middleware/orbitAuth";
 import {
+  canAccessVacancyInformativePanel,
   hasCapability,
   ORBIT_CAPABILITY,
   VACANCY_ADMIN_ROLE_ID,
@@ -93,6 +94,15 @@ type VacancyEditGate = "missing" | "blocked" | null;
 
 function isConfirmTextValid(text: unknown): boolean {
   return typeof text === "string" && text.trim().toLowerCase() === "confirmar";
+}
+
+function denyUnlessVacancyInformativePanel(req: Request, res: Response): boolean {
+  const u = req.orbitUser;
+  if (u == null || !canAccessVacancyInformativePanel(u.capabilities)) {
+    res.status(403).json({ error: "No tienes permiso para esta acción" });
+    return true;
+  }
+  return false;
 }
 
 function denyUnlessVacancyAdmin(req: Request, res: Response): boolean {
@@ -1329,10 +1339,10 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
   }
 });
 
-/** GET /vacancies/audit-log — panel informativo (rol 38) */
+/** GET /vacancies/audit-log — panel informativo (roles 37, 38) */
 router.get("/vacancies/audit-log", async (req, res) => {
   try {
-    if (denyUnlessVacancyAdmin(req, res)) return;
+    if (denyUnlessVacancyInformativePanel(req, res)) return;
 
     const mode = await resolveCoreSchemaMode();
     const limitRaw = Number.parseInt(String(req.query.limit ?? "200"), 10);

@@ -14,7 +14,9 @@ export const ORBIT_CAPABILITY = {
   COORDINATORS: "view:coordinators",
   LITES: "view:lites",
   VACANCIES: "view:vacancies",
-  /** Administración de vacantes: eliminar, panel informativo, cambio de estado forzado (rol 38). */
+  /** Panel informativo de vacantes (bitácora de cambios). */
+  VACANCIES_INFORMATIVE_PANEL: "vacancies:informative_panel",
+  /** Administración de vacantes: eliminar y cambio de estado forzado (rol 38). */
   VACANCIES_ADMIN: "vacancies:admin",
   PERSONAL: "view:personal",
   NEWS: "view:news",
@@ -51,6 +53,12 @@ export const VACANCIES_ONLY_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.VACANCIES,
 ];
 
+/** Rol 37: vacantes + panel informativo (sin eliminar ni cambio de estado forzado). */
+export const ROLE_37_VACANCIES_CAPABILITIES: readonly OrbitCapability[] = [
+  ORBIT_CAPABILITY.VACANCIES,
+  ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL,
+];
+
 /** Rol con permisos administrativos sobre vacantes. */
 export const VACANCY_ADMIN_ROLE_ID = 38;
 
@@ -82,7 +90,7 @@ export function isRole51StaffRoleId(roleId: number): boolean {
 /** Perfiles parciales: role_id → capabilities (tiene prioridad sobre perfil LITE por id). */
 const ROLE_CAPABILITY_MAP: Readonly<Record<number, readonly OrbitCapability[]>> = {
   9: ROLE_9_OPERATIONS_CAPABILITIES,
-  37: VACANCIES_ONLY_CAPABILITIES,
+  37: ROLE_37_VACANCIES_CAPABILITIES,
   38: VACANCIES_ADMIN_CAPABILITIES,
 };
 
@@ -202,4 +210,13 @@ export function hasCapability(
 ): boolean {
   if (!capabilities || capabilities.length === 0) return false;
   return capabilities.includes(required);
+}
+
+export function canAccessVacancyInformativePanel(
+  capabilities: readonly string[] | undefined
+): boolean {
+  return (
+    hasCapability(capabilities, ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL) ||
+    hasCapability(capabilities, ORBIT_CAPABILITY.VACANCIES_ADMIN)
+  );
 }

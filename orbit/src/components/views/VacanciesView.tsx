@@ -14,7 +14,6 @@ import { getVacancies, getStoredCapabilities, deleteVacancy } from '@/src/lib/ap
 import {
   computeVacancyActiveDaysFromSent,
   formatVacancyActiveDaysLabel,
-  formatVacancyDateOnly,
   vacancyActiveDaysTooltip,
 } from '@/src/lib/vacancyActiveDays';
 import {
@@ -177,8 +176,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         <div className="glass-panel p-0 relative z-10 overflow-x-auto rounded-2xl w-full">
           <table className="w-full min-w-[1080px] text-left text-[15px] table-fixed border-collapse">
             <colgroup>
-              <col className="w-[6%]" />
-              <col className="w-[13%]" />
+              <col className="w-[10%]" />
+              <col className="w-[11%]" />
               <col className="w-[12%]" />
               <col className="w-[12%]" />
               <col className="w-[11%]" />
@@ -189,7 +188,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
             </colgroup>
             <thead>
               <tr className="border-b border-slate-200/80 bg-slate-50/80 text-xs uppercase tracking-widest text-slate-500">
-                <th className="py-3 px-3 font-bold whitespace-nowrap text-left">Creada</th>
+                <th className="py-3 px-3 font-bold whitespace-nowrap text-left"># Requisición</th>
                 <th className="py-3 px-3 font-bold text-left leading-tight whitespace-normal">
                   Tiempo activo
                 </th>
@@ -215,8 +214,15 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     key={v.id}
                     className="border-b border-slate-100/80 hover:bg-violet-50/30 transition-colors"
                   >
-                    <td className="py-3 px-3 text-slate-600 text-sm whitespace-nowrap align-top">
-                      {formatVacancyDateOnly(v.createdAt)}
+                    <td className="py-3 px-3 text-slate-700 text-sm align-top">
+                      {v.reqNumber?.trim() ? (
+                        <span
+                          className="block font-medium leading-snug break-words"
+                          title={v.reqNumber}
+                        >
+                          {v.reqNumber}
+                        </span>
+                      ) : null}
                     </td>
                     <td
                       className="py-3 px-3 text-slate-700 align-top"
