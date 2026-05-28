@@ -7,6 +7,7 @@ import {
   ROLE_9_OPERATIONS_CAPABILITIES,
   SCHOOL_COORDINATOR_ROLE_IDS,
   VACANCIES_ADMIN_CAPABILITIES,
+  ROLE_37_VACANCIES_CAPABILITIES,
   VACANCIES_ONLY_CAPABILITIES,
   resolveOrbitAccess,
 } from "./orbitCapabilities";
@@ -83,7 +84,7 @@ for (const id of SCHOOL_COORDINATOR_ROLE_IDS) {
   });
 }
 
-test("role 37 vacancies only", () => {
+test("role 37 vacancies + informative panel", () => {
   const r = resolveOrbitAccess({
     roleId: 37,
     roleCode: null,
@@ -91,8 +92,16 @@ test("role 37 vacancies only", () => {
   });
   assert.ok(r);
   assert.equal(r.orbitAccess, "full");
-  assert.deepEqual(r.capabilities, [...VACANCIES_ONLY_CAPABILITIES]);
+  assert.deepEqual(r.capabilities, [...ROLE_37_VACANCIES_CAPABILITIES]);
+  assert.equal(
+    r.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL),
+    true
+  );
   assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN), false);
+});
+
+test("VACANCIES_ONLY_CAPABILITIES unchanged (vacancies list only)", () => {
+  assert.deepEqual(VACANCIES_ONLY_CAPABILITIES, [ORBIT_CAPABILITY.VACANCIES]);
 });
 
 test("role 38 vacancies + admin", () => {
