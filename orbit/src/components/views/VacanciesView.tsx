@@ -347,8 +347,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 relative z-10">
-        <div className="glass-panel p-4 flex flex-col gap-3 flex-1 min-w-0">
+      <div className="relative z-10 flex flex-col gap-4">
+        <div className="glass-panel p-4 flex flex-col gap-3 w-full">
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-end">
             <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[180px] flex-1">
               Buscar
@@ -416,6 +416,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 </select>
               </label>
             )}
+          </div>
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-end border-t border-slate-100/80 pt-3">
             {programOptions.length > 0 && (
               <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[140px]">
                 Programa
@@ -433,8 +435,6 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 </select>
               </label>
             )}
-          </div>
-          <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-end border-t border-slate-100/80 pt-3">
             <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[160px]">
               Fecha según
               <select
@@ -474,41 +474,42 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
             </button>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setSaveBanner(null);
-            setManagePanel({ mode: 'create' });
-          }}
-          className="glass-button-primary flex items-center justify-center gap-2 px-8 py-3 whitespace-nowrap shrink-0"
-        >
-          <PlusIcon className="h-5 w-5" />
-          <span>Nueva vacante</span>
-        </button>
-      </div>
-
-      {saveBanner && (
-        <div
-          role="status"
-          className="glass-panel px-4 py-3 text-sm font-medium text-emerald-900 bg-emerald-50/95 border border-emerald-200/80 rounded-2xl shadow-sm"
-        >
-          {saveBanner}
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              setSaveBanner(null);
+              setManagePanel({ mode: 'create' });
+            }}
+            className="glass-button-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-sm whitespace-nowrap"
+          >
+            <PlusIcon className="h-4 w-4" />
+            <span>Nueva vacante</span>
+          </button>
         </div>
-      )}
 
-      {loadError && (
-        <div className="glass-panel p-4 text-sm text-rose-700 bg-rose-50/80 border border-rose-100">
-          {loadError}
-        </div>
-      )}
+        {saveBanner && (
+          <div
+            role="status"
+            className="glass-panel px-4 py-3 text-sm font-medium text-emerald-900 bg-emerald-50/95 border border-emerald-200/80 rounded-2xl shadow-sm"
+          >
+            {saveBanner}
+          </div>
+        )}
 
-      {loading ? (
-        <div className="glass-panel p-20 flex flex-col items-center justify-center text-center space-y-4 relative z-10">
-          <div className="h-10 w-10 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
-          <p className="text-sm font-medium text-slate-600">Cargando vacantes...</p>
-        </div>
-      ) : (
-        <div className="glass-panel p-0 relative z-10 overflow-x-auto rounded-2xl w-full">
+        {loadError && (
+          <div className="glass-panel p-4 text-sm text-rose-700 bg-rose-50/80 border border-rose-100">
+            {loadError}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="glass-panel p-20 flex flex-col items-center justify-center text-center space-y-4 overflow-hidden rounded-2xl w-full">
+            <div className="h-10 w-10 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+            <p className="text-sm font-medium text-slate-600">Cargando vacantes...</p>
+          </div>
+        ) : (
+          <div className="glass-panel p-0 overflow-x-auto rounded-2xl w-full">
           <table className="w-full min-w-[1120px] text-left text-[15px] table-fixed border-collapse">
             <colgroup>
               <col className="w-[9%]" />
@@ -671,7 +672,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
             </tbody>
           </table>
         </div>
-      )}
+        )}
+      </div>
 
       <AnimatePresence>
         {managePanel && (
