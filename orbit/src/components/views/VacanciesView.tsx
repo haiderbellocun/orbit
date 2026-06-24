@@ -6,6 +6,8 @@ import {
   EyeIcon,
   PencilSquareIcon,
   TrashIcon,
+  BriefcaseIcon,
+  QueueListIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -39,6 +41,46 @@ const STATUS_ORDER: VacancyOperationStatus[] = [
   'cancelled_by_capital',
 ];
 
+type VacancyDateField = 'createdAt' | 'sentToCapitalAt';
+
+const numberFormatter = new Intl.NumberFormat('es-CO');
+
+function vacancyDateValue(v: Vacancy, field: VacancyDateField): string | null {
+  const raw = field === 'createdAt' ? v.createdAt : v.sentToCapitalAt;
+  if (!raw?.trim()) return null;
+  return raw.slice(0, 10);
+}
+
+function matchesDateRange(
+  v: Vacancy,
+  field: VacancyDateField,
+  from: string,
+  to: string
+): boolean {
+  const day = vacancyDateValue(v, field);
+  if (!day) return !from && !to;
+  if (from && day < from) return false;
+  if (to && day > to) return false;
+  return true;
+}
+
+function uniqueSortedOptions(
+  rows: Vacancy[],
+  getLabel: (v: Vacancy) => string | null | undefined,
+  getValue: (v: Vacancy) => string
+): { value: string; label: string }[] {
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    const label = getLabel(row)?.trim();
+    if (!label) continue;
+    const value = getValue(row);
+    if (!map.has(value)) map.set(value, label);
+  }
+  return [...map.entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'es'));
+}
+
 interface VacanciesViewProps {
   onSelectVacancy: (v: Vacancy) => void;
   onVacancySaved?: (v: Vacancy) => void;
@@ -68,6 +110,12 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const [deleteTarget, setDeleteTarget] = useState<Vacancy | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<VacancyOperationStatus | ''>('');
+  const [dateField, setDateField] = useState<VacancyDateField>('createdAt');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
+  const [schoolFilter, setSchoolFilter] = useState('');
+  const [programFilter, setProgramFilter] = useState('');
   const isVacancyAdmin = canVacancyAdmin(getStoredCapabilities());
 
   const refresh = useCallback(async (): Promise<Vacancy[]> => {
@@ -97,6 +145,36 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     return () => window.clearTimeout(t);
   }, [saveBanner]);
 
+  const areaOptions = useMemo(
+    () =>
+      uniqueSortedOptions(
+        rows,
+        (v) => v.areaName,
+        (v) => String(v.areaId)
+      ),
+    [rows]
+  );
+
+  const schoolOptions = useMemo(
+    () =>
+      uniqueSortedOptions(
+        rows,
+        (v) => v.schoolName,
+        (v) => String(v.schoolId ?? '')
+      ).filter((o) => o.value !== ''),
+    [rows]
+  );
+
+  const programOptions = useMemo(
+    () =>
+      uniqueSortedOptions(
+        rows,
+        (v) => v.programName,
+        (v) => String(v.programId ?? '')
+      ).filter((o) => o.value !== ''),
+    [rows]
+  );
+
   const statusOptions = useMemo(() => {
     const counts = new Map<VacancyOperationStatus, number>();
     for (const v of rows) {
@@ -115,10 +193,38 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     }
   }, [statusFilter, statusOptions]);
 
+  useEffect(() => {
+    if (!areaFilter) return;
+    if (!areaOptions.some((o) => o.value === areaFilter)) setAreaFilter('');
+  }, [areaFilter, areaOptions]);
+
+  useEffect(() => {
+    if (!schoolFilter) return;
+    if (!schoolOptions.some((o) => o.value === schoolFilter)) setSchoolFilter('');
+  }, [schoolFilter, schoolOptions]);
+
+  useEffect(() => {
+    if (!programFilter) return;
+    if (!programOptions.some((o) => o.value === programFilter)) setProgramFilter('');
+  }, [programFilter, programOptions]);
+
+  const hasActiveFilters =
+    statusFilter !== '' ||
+    dateFrom !== '' ||
+    dateTo !== '' ||
+    areaFilter !== '' ||
+    schoolFilter !== '' ||
+    programFilter !== '' ||
+    searchQuery.trim() !== '';
+
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return rows.filter((v) => {
       if (statusFilter && v.operationStatus !== statusFilter) return false;
+      if (areaFilter && String(v.areaId) !== areaFilter) return false;
+      if (schoolFilter && String(v.schoolId ?? '') !== schoolFilter) return false;
+      if (programFilter && String(v.programId ?? '') !== programFilter) return false;
+      if (!matchesDateRange(v, dateField, dateFrom, dateTo)) return false;
       if (!q) return true;
       return (
         v.positionName.toLowerCase().includes(q) ||
@@ -129,7 +235,33 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         (v.reqNumber ?? '').toLowerCase().includes(q)
       );
     });
-  }, [rows, searchQuery, statusFilter]);
+  }, [
+    rows,
+    searchQuery,
+    statusFilter,
+    areaFilter,
+    schoolFilter,
+    programFilter,
+    dateField,
+    dateFrom,
+    dateTo,
+  ]);
+
+  const filteredQuantityTotal = useMemo(
+    () => filtered.reduce((sum, v) => sum + (v.quantity ?? 0), 0),
+    [filtered]
+  );
+
+  function resetFilters() {
+    setStatusFilter('');
+    setDateField('createdAt');
+    setDateFrom('');
+    setDateTo('');
+    setAreaFilter('');
+    setSchoolFilter('');
+    setProgramFilter('');
+    setSearchQuery?.('');
+  }
 
   function openEdit(v: Vacancy) {
     setSaveBanner(null);
@@ -157,46 +289,181 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-        <div className="flex flex-col md:flex-row gap-4 flex-1 min-w-0">
-          <div className="glass-panel p-2 flex-1 flex items-center gap-3">
-            <MagnifyingGlassIcon className="ml-3 h-4.5 w-4.5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Buscar por cargo, programa, área, REQ..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery?.(e.target.value)}
-              className="w-full bg-transparent border-none focus:ring-0 text-sm py-2"
-            />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
+        <div className="glass-card p-6 flex items-center gap-5">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-violet-50/80 text-violet-600 border border-violet-100/80 shadow-inner shrink-0">
+            <BriefcaseIcon className="h-7 w-7" />
           </div>
-          {statusOptions.length > 0 && (
-            <select
-              className="glass-input py-2.5 text-sm min-w-[200px] max-w-[260px]"
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as VacancyOperationStatus | '')
-              }
-            >
-              <option value="">Todos los estados ({rows.length})</option>
-              {statusOptions.map(({ status, count }) => (
-                <option key={status} value={status}>
-                  {STATUS_LABEL[status]} ({count})
-                </option>
-              ))}
-            </select>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              setSaveBanner(null);
-              setManagePanel({ mode: 'create' });
-            }}
-            className="glass-button-primary flex items-center gap-2 px-8 py-3 whitespace-nowrap"
-          >
-            <PlusIcon className="h-5 w-5" />
-            <span>Nueva vacante</span>
-          </button>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Total vacantes (cantidad)
+            </p>
+            <p className="text-3xl font-bold text-slate-900 font-display tabular-nums">
+              {loading ? '—' : numberFormatter.format(filteredQuantityTotal)}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Suma del campo «Cant.» según filtros activos
+            </p>
+          </div>
         </div>
+        <div className="glass-card p-6 flex items-center gap-5">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-cyan-50/80 text-cyan-600 border border-cyan-100/80 shadow-inner shrink-0">
+            <QueueListIcon className="h-7 w-7" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Registros (filas)
+            </p>
+            <p className="text-3xl font-bold text-slate-900 font-display tabular-nums">
+              {loading ? '—' : numberFormatter.format(filtered.length)}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {hasActiveFilters
+                ? `De ${numberFormatter.format(rows.length)} en total`
+                : 'Filas de vacantes visibles'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 relative z-10">
+        <div className="glass-panel p-4 flex flex-col gap-3 flex-1 min-w-0">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-end">
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[180px] flex-1">
+              Buscar
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="search"
+                  placeholder="Cargo, programa, área, REQ…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery?.(e.target.value)}
+                  className="glass-input w-full pl-9 py-2 text-sm font-normal normal-case tracking-normal"
+                />
+              </div>
+            </label>
+            {statusOptions.length > 0 && (
+              <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[160px]">
+                Estado
+                <select
+                  className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                  value={statusFilter}
+                  onChange={(e) =>
+                    setStatusFilter(e.target.value as VacancyOperationStatus | '')
+                  }
+                >
+                  <option value="">Todos ({rows.length})</option>
+                  {statusOptions.map(({ status, count }) => (
+                    <option key={status} value={status}>
+                      {STATUS_LABEL[status]} ({count})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {areaOptions.length > 0 && (
+              <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[140px]">
+                Área
+                <select
+                  className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                  value={areaFilter}
+                  onChange={(e) => setAreaFilter(e.target.value)}
+                >
+                  <option value="">Todas</option>
+                  {areaOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {schoolOptions.length > 0 && (
+              <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[140px]">
+                Escuela
+                <select
+                  className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                  value={schoolFilter}
+                  onChange={(e) => setSchoolFilter(e.target.value)}
+                >
+                  <option value="">Todas</option>
+                  {schoolOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {programOptions.length > 0 && (
+              <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[140px]">
+                Programa
+                <select
+                  className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                  value={programFilter}
+                  onChange={(e) => setProgramFilter(e.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {programOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-end border-t border-slate-100/80 pt-3">
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[160px]">
+              Fecha según
+              <select
+                className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                value={dateField}
+                onChange={(e) => setDateField(e.target.value as VacancyDateField)}
+              >
+                <option value="createdAt">Fecha de creación</option>
+                <option value="sentToCapitalAt">Envío a capital</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest">
+              Desde
+              <input
+                type="date"
+                className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest">
+              Hasta
+              <input
+                type="date"
+                className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={resetFilters}
+              disabled={loading || !hasActiveFilters}
+              className="glass-button-secondary py-2.5 px-5 text-xs font-bold uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Reiniciar filtros
+            </button>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setSaveBanner(null);
+            setManagePanel({ mode: 'create' });
+          }}
+          className="glass-button-primary flex items-center justify-center gap-2 px-8 py-3 whitespace-nowrap shrink-0"
+        >
+          <PlusIcon className="h-5 w-5" />
+          <span>Nueva vacante</span>
+        </button>
       </div>
 
       {saveBanner && (
