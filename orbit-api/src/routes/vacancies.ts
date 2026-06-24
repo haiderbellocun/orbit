@@ -1704,7 +1704,7 @@ router.patch("/vacancies/:id/admin-status", async (req, res) => {
     }
 
     const result = await pool.query(
-      `UPDATE vacancies.vacancy SET ${updates.join(", ")} WHERE id = $2 RETURNING *`,
+      `UPDATE vacancies.vacancy SET ${updates.join(", ")} WHERE id = $${values.length} RETURNING *`,
       values
     );
 
