@@ -196,7 +196,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               )}
             </div>
 
-            {showLocalEmailLogin && (
+            {/* {showLocalEmailLogin && (
               <div className="pt-6 mt-6 border-t border-slate-200/80 space-y-3">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   Desarrollo local
@@ -220,7 +220,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                   </button>
                 </form>
               </div>
-            )}
+            )} */}
           </div>
         </div>
 
