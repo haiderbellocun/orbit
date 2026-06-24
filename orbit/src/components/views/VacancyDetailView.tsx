@@ -218,7 +218,15 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                 label="Nombre jefe inmediato"
                 value={v.directManagerIdentification?.trim() || '—'}
               />
-              <Row label="Cantidad" value={String(v.quantity)} />
+              <Row label="Cantidad solicitada" value={String(v.quantity)} />
+              <Row
+                label="Cantidad contratada"
+                value={String(v.hiredQuantity ?? 0)}
+              />
+              <Row
+                label="Pendientes"
+                value={String(Math.max(0, v.quantity - (v.hiredQuantity ?? 0)))}
+              />
               <Row label="Creado" value={formatTs(v.createdAt)} />
               <Row
                 label="Tiempo activo"

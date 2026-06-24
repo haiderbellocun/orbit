@@ -65,6 +65,8 @@ export interface Vacancy {
   /** Nombre del jefe inmediato; opcional e inmutable tras el primer guardado. */
   directManagerIdentification?: string | null;
   quantity: number;
+  /** Personas efectivamente contratadas (≤ quantity). */
+  hiredQuantity: number;
   operationStatus: VacancyOperationStatus;
   operationNotes: VacancyOperationNoteEntry[];
   /**

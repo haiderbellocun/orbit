@@ -5,6 +5,7 @@ import { pool } from "./connection";
  * - req_number opcional en requisition
  * - operation_status cancelled_by_capital
  * - direct_manager_identification en vacancy
+ * - hired_quantity (personas contratadas vs quantity solicitada)
  */
 export async function migrateVacanciesUpdates(): Promise<void> {
   await pool.query(`
@@ -59,6 +60,31 @@ export async function migrateVacanciesUpdates(): Promise<void> {
     console.log(
       "migrate_vacancies_updates: operation_status incluye cancelled_by_capital"
     );
+  }
+
+  const hiredQtyCol = await pool.query(`
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'vacancies'
+      AND table_name = 'vacancy'
+      AND column_name = 'hired_quantity'
+  `);
+  if (hiredQtyCol.rows.length === 0) {
+    await pool.query(`
+      ALTER TABLE vacancies.vacancy
+        ADD COLUMN hired_quantity INTEGER NOT NULL DEFAULT 0
+    `);
+    await pool.query(`
+      UPDATE vacancies.vacancy
+      SET hired_quantity = quantity
+      WHERE operation_status = 'hired' AND hired_quantity = 0
+    `);
+    await pool.query(`
+      ALTER TABLE vacancies.vacancy
+        ADD CONSTRAINT vacancy_hired_quantity_check
+        CHECK (hired_quantity >= 0 AND hired_quantity <= quantity)
+    `);
+    console.log("migrate_vacancies_updates: hired_quantity agregada");
   }
 }
 

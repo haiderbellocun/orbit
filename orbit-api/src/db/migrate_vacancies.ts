@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS vacancies.vacancy (
   position_name VARCHAR(255) NOT NULL,
   curricular_line VARCHAR(500),
   quantity INTEGER NOT NULL,
+  hired_quantity INTEGER NOT NULL DEFAULT 0,
   operation_status VARCHAR(40) NOT NULL DEFAULT 'open',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS vacancies.vacancy (
   created_by_person_id INTEGER,
   updated_by_person_id INTEGER,
   CONSTRAINT vacancy_quantity_positive CHECK (quantity > 0),
+  CONSTRAINT vacancy_hired_quantity_check CHECK (hired_quantity >= 0 AND hired_quantity <= quantity),
   CONSTRAINT vacancy_operation_status_check CHECK (
     operation_status IN (
       'open', 'selected', 'requisition_sent', 'hired', 'closed', 'cancelled'

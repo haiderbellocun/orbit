@@ -252,6 +252,11 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     [filtered]
   );
 
+  const filteredHiredTotal = useMemo(
+    () => filtered.reduce((sum, v) => sum + (v.hiredQuantity ?? 0), 0),
+    [filtered]
+  );
+
   function resetFilters() {
     setStatusFilter('');
     setDateField('createdAt');
@@ -289,20 +294,36 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
         <div className="glass-card p-6 flex items-center gap-5">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-violet-50/80 text-violet-600 border border-violet-100/80 shadow-inner shrink-0">
             <BriefcaseIcon className="h-7 w-7" />
           </div>
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Total vacantes (cantidad)
+              Total solicitado
             </p>
             <p className="text-3xl font-bold text-slate-900 font-display tabular-nums">
               {loading ? '—' : numberFormatter.format(filteredQuantityTotal)}
             </p>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Suma del campo «Cant.» según filtros activos
+              Personas solicitadas en las vacantes visibles.
+            </p>
+          </div>
+        </div>
+        <div className="glass-card p-6 flex items-center gap-5">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-emerald-50/80 text-emerald-600 border border-emerald-100/80 shadow-inner shrink-0">
+            <BriefcaseIcon className="h-7 w-7" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Total contratado
+            </p>
+            <p className="text-3xl font-bold text-slate-900 font-display tabular-nums">
+              {loading ? '—' : numberFormatter.format(filteredHiredTotal)}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Personas efectivamente contratadas.
             </p>
           </div>
         </div>
@@ -488,17 +509,18 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         </div>
       ) : (
         <div className="glass-panel p-0 relative z-10 overflow-x-auto rounded-2xl w-full">
-          <table className="w-full min-w-[1080px] text-left text-[15px] table-fixed border-collapse">
+          <table className="w-full min-w-[1120px] text-left text-[15px] table-fixed border-collapse">
             <colgroup>
+              <col className="w-[9%]" />
               <col className="w-[10%]" />
               <col className="w-[11%]" />
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
               <col className="w-[11%]" />
-              <col className="w-[16%]" />
-              <col className="w-[4%]" />
-              <col className="w-[12%]" />
-              <col className="w-[14%]" />
+              <col className="w-[10%]" />
+              <col className="w-[15%]" />
+              <col className="w-[5%]" />
+              <col className="w-[5%]" />
+              <col className="w-[11%]" />
+              <col className="w-[13%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-slate-200/80 bg-slate-50/80 text-xs uppercase tracking-widest text-slate-500">
@@ -510,7 +532,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 <th className="py-3 px-4 font-bold">Escuela</th>
                 <th className="py-3 px-4 font-bold">Programa</th>
                 <th className="py-3 px-4 font-bold">Cargo</th>
-                <th className="py-3 px-4 font-bold text-center">Cant.</th>
+                <th className="py-3 px-4 font-bold text-center">Solic.</th>
+                <th className="py-3 px-4 font-bold text-center">Contr.</th>
                 <th className="py-3 px-4 font-bold whitespace-nowrap">Estado</th>
                 <th className="py-3 px-4 font-bold text-right whitespace-nowrap">Acciones</th>
               </tr>
@@ -518,7 +541,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-500 text-[15px]">
+                  <td colSpan={10} className="py-16 text-center text-slate-500 text-[15px]">
                     No hay vacantes para mostrar.
                   </td>
                 </tr>
@@ -576,6 +599,17 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     </td>
                     <td className="py-3 px-4 text-center text-slate-800 tabular-nums align-top">
                       {v.quantity}
+                    </td>
+                    <td className="py-3 px-4 text-center text-slate-800 tabular-nums align-top">
+                      <span
+                        title={
+                          v.hiredQuantity < v.quantity
+                            ? `${v.quantity - v.hiredQuantity} pendiente(s)`
+                            : 'Completamente contratado'
+                        }
+                      >
+                        {v.hiredQuantity ?? 0}
+                      </span>
                     </td>
                     <td className="py-3 px-4 align-top">
                       <span
