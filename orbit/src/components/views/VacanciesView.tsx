@@ -9,7 +9,7 @@ import {
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
-import type { Vacancy, Teacher, Coordinator } from '@/src/types';
+import type { Vacancy, Teacher, Coordinator, VacancyOperationStatus } from '@/src/types';
 import { getVacancies, getStoredCapabilities, deleteVacancy } from '@/src/lib/api';
 import {
   computeVacancyActiveDaysFromSent,
@@ -28,6 +28,16 @@ type ManagePanel =
   | null
   | { mode: 'create' }
   | { mode: 'edit'; vacancy: Vacancy };
+
+const STATUS_ORDER: VacancyOperationStatus[] = [
+  'open',
+  'selected',
+  'requisition_sent',
+  'hired',
+  'closed',
+  'cancelled',
+  'cancelled_by_capital',
+];
 
 interface VacanciesViewProps {
   onSelectVacancy: (v: Vacancy) => void;
@@ -57,6 +67,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const [managePanel, setManagePanel] = useState<ManagePanel>(null);
   const [deleteTarget, setDeleteTarget] = useState<Vacancy | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<VacancyOperationStatus | ''>('');
   const isVacancyAdmin = canVacancyAdmin(getStoredCapabilities());
 
   const refresh = useCallback(async (): Promise<Vacancy[]> => {
@@ -86,19 +97,39 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     return () => window.clearTimeout(t);
   }, [saveBanner]);
 
+  const statusOptions = useMemo(() => {
+    const counts = new Map<VacancyOperationStatus, number>();
+    for (const v of rows) {
+      counts.set(v.operationStatus, (counts.get(v.operationStatus) ?? 0) + 1);
+    }
+    return STATUS_ORDER.filter((s) => counts.has(s)).map((s) => ({
+      status: s,
+      count: counts.get(s) ?? 0,
+    }));
+  }, [rows]);
+
+  useEffect(() => {
+    if (!statusFilter) return;
+    if (!statusOptions.some((o) => o.status === statusFilter)) {
+      setStatusFilter('');
+    }
+  }, [statusFilter, statusOptions]);
+
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (v) =>
+    return rows.filter((v) => {
+      if (statusFilter && v.operationStatus !== statusFilter) return false;
+      if (!q) return true;
+      return (
         v.positionName.toLowerCase().includes(q) ||
         (v.programName ?? '').toLowerCase().includes(q) ||
         (v.areaName ?? '').toLowerCase().includes(q) ||
         (v.schoolName ?? '').toLowerCase().includes(q) ||
         v.id.toLowerCase().includes(q) ||
         (v.reqNumber ?? '').toLowerCase().includes(q)
-    );
-  }, [rows, searchQuery]);
+      );
+    });
+  }, [rows, searchQuery, statusFilter]);
 
   function openEdit(v: Vacancy) {
     setSaveBanner(null);
@@ -138,6 +169,22 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
               className="w-full bg-transparent border-none focus:ring-0 text-sm py-2"
             />
           </div>
+          {statusOptions.length > 0 && (
+            <select
+              className="glass-input py-2.5 text-sm min-w-[200px] max-w-[260px]"
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as VacancyOperationStatus | '')
+              }
+            >
+              <option value="">Todos los estados ({rows.length})</option>
+              {statusOptions.map(({ status, count }) => (
+                <option key={status} value={status}>
+                  {STATUS_LABEL[status]} ({count})
+                </option>
+              ))}
+            </select>
+          )}
           <button
             type="button"
             onClick={() => {

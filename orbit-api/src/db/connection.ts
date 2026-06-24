@@ -1,6 +1,8 @@
 import dotenv from "dotenv";
+import path from "path";
 import { Pool } from "pg";
 
+dotenv.config({ path: path.resolve(process.cwd(), "../.env") });
 dotenv.config({ override: true });
 
 const port = Number.parseInt(process.env.DB_PORT ?? "5432", 10);
