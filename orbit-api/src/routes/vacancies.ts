@@ -232,6 +232,20 @@ function numOrUndef(v: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+function hiredQuantityRangeError(hiredQty: number, quantity: number): string | null {
+  if (!Number.isFinite(hiredQty) || hiredQty < 0) {
+    return "hiredQuantity debe ser un número mayor o igual a 0.";
+  }
+  if (hiredQty > quantity) {
+    return "La cantidad contratada no puede superar la cantidad solicitada.";
+  }
+  return null;
+}
+
+function hiredQuantityRequiredForHiredError(): string {
+  return "Al marcar como contratado debe indicar cuántas personas se contrataron (mínimo 1).";
+}
+
 const CHANGE_LOG_ENTITY_NAME = "vacancy";
 
 /** Cumplimientos almacenados en vacancies.requisition (LEFT JOIN en listados). */
@@ -660,6 +674,7 @@ function mapVacancyRow(
       row.direct_manager_identification
     ),
     quantity: Number(row.quantity ?? 0),
+    hiredQuantity: Number(row.hired_quantity ?? 0),
     operationNotes,
     ...mapComplianceFields(row),
     operationStatus: String(row.operation_status ?? "open"),
@@ -780,6 +795,7 @@ router.get("/vacancies", async (req, res) => {
          v.position_name,
          v.curricular_line,
          v.quantity,
+         v.hired_quantity,
          v.operation_status,
          ${opNotesSql} AS operation_notes_json,
          ${SQL_REQUISITION_COMPLIANCE},
@@ -1006,6 +1022,47 @@ router.patch("/vacancies/:id/close", async (req, res) => {
       return;
     }
 
+    const currentRow = await pool.query(
+      `SELECT quantity, hired_quantity, operation_status FROM vacancies.vacancy WHERE id = $1`,
+      [id]
+    );
+    if (currentRow.rows.length === 0) {
+      res.status(404).json({ error: "Vacancy not found" });
+      return;
+    }
+    const current = currentRow.rows[0] as {
+      quantity?: unknown;
+      hired_quantity?: unknown;
+      operation_status?: unknown;
+    };
+    const currentQuantity = Number(current.quantity ?? 0);
+    const currentHired = Number(current.hired_quantity ?? 0);
+    const previousStatus = String(current.operation_status ?? "");
+
+    let hiredQuantityToSet: number | undefined;
+    if (statusIn === "hired") {
+      const incoming = numOrUndef(b.hiredQuantity);
+      if (incoming === undefined) {
+        if (previousStatus === "hired" && currentHired > 0) {
+          hiredQuantityToSet = currentHired;
+        } else {
+          res.status(400).json({ error: hiredQuantityRequiredForHiredError() });
+          return;
+        }
+      } else {
+        if (incoming < 1) {
+          res.status(400).json({ error: hiredQuantityRequiredForHiredError() });
+          return;
+        }
+        const rangeErr = hiredQuantityRangeError(incoming, currentQuantity);
+        if (rangeErr != null) {
+          res.status(400).json({ error: rangeErr });
+          return;
+        }
+        hiredQuantityToSet = incoming;
+      }
+    }
+
     const gate = await vacancyEditGate(id);
     if (gate === "missing") {
       res.status(404).json({ error: "Vacancy not found" });
@@ -1018,13 +1075,20 @@ router.patch("/vacancies/:id/close", async (req, res) => {
 
     const mode = await resolveCoreSchemaMode();
 
+    const closeUpdates = [`operation_status = $1`, `closed_at = now()`];
+    const closeValues: unknown[] = [statusIn];
+    if (hiredQuantityToSet !== undefined) {
+      closeUpdates.push(`hired_quantity = $${closeValues.length + 1}`);
+      closeValues.push(hiredQuantityToSet);
+    }
+    closeValues.push(id);
+
     const { rows } = await pool.query(
       `UPDATE vacancies.vacancy
-       SET operation_status = $1,
-           closed_at = now()
-       WHERE id = $2
+       SET ${closeUpdates.join(", ")}
+       WHERE id = $${closeValues.length}
        RETURNING *`,
-      [statusIn, id]
+      closeValues
     );
 
     if (rows.length === 0) {
@@ -1309,6 +1373,7 @@ router.post("/vacancies/:id/requisition", async (req, res) => {
          v.position_name,
          v.curricular_line,
          v.quantity,
+         v.hired_quantity,
          v.operation_status,
          ${opNotesSql} AS operation_notes_json,
          ${SQL_REQUISITION_COMPLIANCE},
@@ -1567,19 +1632,64 @@ router.patch("/vacancies/:id/admin-status", async (req, res) => {
     }
 
     const prev = await pool.query(
-      `SELECT operation_status FROM vacancies.vacancy WHERE id = $1`,
+      `SELECT operation_status, quantity, hired_quantity FROM vacancies.vacancy WHERE id = $1`,
       [id]
     );
     if (prev.rows.length === 0) {
       res.status(404).json({ error: "Vacancy not found" });
       return;
     }
-    const previousStatus = String(
-      (prev.rows[0] as { operation_status?: unknown }).operation_status ?? ""
-    );
+    const prevRow = prev.rows[0] as {
+      operation_status?: unknown;
+      quantity?: unknown;
+      hired_quantity?: unknown;
+    };
+    const previousStatus = String(prevRow.operation_status ?? "");
+    const currentQuantity = Number(prevRow.quantity ?? 0);
+    const currentHired = Number(prevRow.hired_quantity ?? 0);
+
+    let hiredQuantityToSet: number | undefined;
+    if (statusIn === "hired") {
+      const incoming = numOrUndef(b.hiredQuantity);
+      if (incoming === undefined) {
+        if (previousStatus === "hired" && currentHired > 0) {
+          hiredQuantityToSet = currentHired;
+        } else {
+          res.status(400).json({ error: hiredQuantityRequiredForHiredError() });
+          return;
+        }
+      } else {
+        if (incoming < 1) {
+          res.status(400).json({ error: hiredQuantityRequiredForHiredError() });
+          return;
+        }
+        const rangeErr = hiredQuantityRangeError(incoming, currentQuantity);
+        if (rangeErr != null) {
+          res.status(400).json({ error: rangeErr });
+          return;
+        }
+        hiredQuantityToSet = incoming;
+      }
+    } else if (b.hiredQuantity !== undefined) {
+      const incoming = numOrUndef(b.hiredQuantity);
+      if (incoming === undefined) {
+        res.status(400).json({ error: "hiredQuantity inválido." });
+        return;
+      }
+      const rangeErr = hiredQuantityRangeError(incoming, currentQuantity);
+      if (rangeErr != null) {
+        res.status(400).json({ error: rangeErr });
+        return;
+      }
+      hiredQuantityToSet = incoming;
+    }
 
     const updates = [`operation_status = $1`];
     const values: unknown[] = [statusIn];
+    if (hiredQuantityToSet !== undefined) {
+      updates.push(`hired_quantity = $${values.length + 1}`);
+      values.push(hiredQuantityToSet);
+    }
     if (FULLY_LOCKED_STATUSES.has(statusIn)) {
       updates.push(`closed_at = COALESCE(closed_at, now())`);
     }
@@ -1633,6 +1743,7 @@ router.patch("/vacancies/:id/admin-status", async (req, res) => {
          v.position_name,
          v.curricular_line,
          v.quantity,
+         v.hired_quantity,
          v.operation_status,
          ${opNotesSql} AS operation_notes_json,
          ${SQL_REQUISITION_COMPLIANCE},
@@ -1697,6 +1808,7 @@ router.get("/vacancies/:id", async (req, res) => {
          v.position_name,
          v.curricular_line,
          v.quantity,
+         v.hired_quantity,
          v.operation_status,
          ${opNotesSql} AS operation_notes_json,
          ${SQL_REQUISITION_COMPLIANCE},
@@ -1952,6 +2064,7 @@ router.patch("/vacancies/:id/requisition", async (req, res) => {
          v.position_name,
          v.curricular_line,
          v.quantity,
+         v.hired_quantity,
          v.operation_status,
          ${opNotesSql} AS operation_notes_json,
          ${SQL_REQUISITION_COMPLIANCE},
@@ -2008,6 +2121,19 @@ router.patch("/vacancies/:id", async (req, res) => {
     }
 
     const b = req.body as Record<string, unknown>;
+
+    const existingStateRes = await pool.query(
+      `SELECT quantity, hired_quantity, operation_status FROM vacancies.vacancy WHERE id = $1`,
+      [id]
+    );
+    const existingState = existingStateRes.rows[0] as {
+      quantity?: unknown;
+      hired_quantity?: unknown;
+      operation_status?: unknown;
+    };
+    const existingQuantity = Number(existingState.quantity ?? 0);
+    const existingHiredQuantity = Number(existingState.hired_quantity ?? 0);
+    const existingOperationStatus = String(existingState.operation_status ?? "open");
 
     const existingCcRow = await pool.query(
       `SELECT direct_manager_identification FROM vacancies.vacancy WHERE id = $1`,
@@ -2121,13 +2247,64 @@ router.patch("/vacancies/:id", async (req, res) => {
         res.status(400).json({ error: "quantity must be a positive number" });
         return;
       }
+      const hiredForCheck =
+        b.hiredQuantity !== undefined
+          ? numOrUndef(b.hiredQuantity)
+          : existingHiredQuantity;
+      if (hiredForCheck != null && hiredForCheck > n) {
+        res.status(400).json({
+          error:
+            "No puede reducir la cantidad solicitada por debajo de las personas ya contratadas.",
+        });
+        return;
+      }
       setCol("quantity", n);
+    }
+    if (b.hiredQuantity !== undefined) {
+      const n = numOrUndef(b.hiredQuantity);
+      if (n == null || n < 0) {
+        res.status(400).json({
+          error: "hiredQuantity debe ser un número mayor o igual a 0.",
+        });
+        return;
+      }
+      const qtyForHired =
+        b.quantity !== undefined ? (numOrUndef(b.quantity) ?? existingQuantity) : existingQuantity;
+      const rangeErr = hiredQuantityRangeError(n, qtyForHired);
+      if (rangeErr != null) {
+        res.status(400).json({ error: rangeErr });
+        return;
+      }
+      setCol("hired_quantity", n);
     }
     if (b.operationStatus !== undefined) {
       const s = String(b.operationStatus).trim();
       if (!OPERATION_STATUSES.has(s)) {
         res.status(400).json({ error: "Invalid operationStatus" });
         return;
+      }
+      if (s === "hired" && s !== existingOperationStatus) {
+        const incoming = numOrUndef(b.hiredQuantity);
+        if (incoming === undefined) {
+          res.status(400).json({ error: hiredQuantityRequiredForHiredError() });
+          return;
+        }
+        if (incoming < 1) {
+          res.status(400).json({ error: hiredQuantityRequiredForHiredError() });
+          return;
+        }
+        const qtyForHired =
+          b.quantity !== undefined
+            ? (numOrUndef(b.quantity) ?? existingQuantity)
+            : existingQuantity;
+        const rangeErr = hiredQuantityRangeError(incoming, qtyForHired);
+        if (rangeErr != null) {
+          res.status(400).json({ error: rangeErr });
+          return;
+        }
+        if (b.hiredQuantity === undefined) {
+          setCol("hired_quantity", incoming);
+        }
       }
       setCol("operation_status", s);
       if (FULLY_LOCKED_STATUSES.has(s)) {

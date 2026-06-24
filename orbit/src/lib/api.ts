@@ -528,6 +528,7 @@ export type PatchVacancyPayload = Partial<{
   curricularLine: string | null;
   directManagerIdentification?: string | null;
   quantity: number;
+  hiredQuantity?: number;
   operationStatus: VacancyOperationStatus;
   closedAt: string | null;
 }>;
@@ -644,6 +645,7 @@ export async function closeVacancy(
       | "closed"
       | "cancelled"
       | "cancelled_by_capital";
+    hiredQuantity?: number;
   }
 ): Promise<Vacancy> {
   const response = await authFetch(
@@ -674,7 +676,11 @@ export async function deleteVacancy(
 
 export async function patchVacancyAdminStatus(
   id: string,
-  body: { operationStatus: VacancyOperationStatus; confirmText: string }
+  body: {
+    operationStatus: VacancyOperationStatus;
+    confirmText: string;
+    hiredQuantity?: number;
+  }
 ): Promise<Vacancy> {
   const response = await authFetch(
     `${BASE_URL}/vacancies/${encodeURIComponent(id)}/admin-status`,

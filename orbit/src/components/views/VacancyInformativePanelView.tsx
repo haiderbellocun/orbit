@@ -24,6 +24,7 @@ const DETAIL_FIELD_LABELS: Record<string, string> = {
   schoolId: 'escuela',
   programId: 'programa',
   quantity: 'cantidad',
+  hiredQuantity: 'cantidad contratada',
   curricularLine: 'línea curricular',
   directManagerIdentification: 'jefe inmediato',
 };

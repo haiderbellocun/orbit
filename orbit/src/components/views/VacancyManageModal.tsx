@@ -76,6 +76,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
   const [line, setLine] = useState('');
   const [directManagerCc, setDirectManagerCc] = useState('');
   const [qty, setQty] = useState('1');
+  const [hiredQty, setHiredQty] = useState('0');
   const [initialOpNotes, setInitialOpNotes] = useState('');
   const [operationStatus, setOperationStatus] = useState<VacancyOperationStatus>('open');
   const [newOpNoteDraft, setNewOpNoteDraft] = useState('');
@@ -97,10 +98,16 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
   const coreLocked =
     editVacancy != null &&
     (isVacancyCoreFieldsLocked(editVacancy) || hiredRequisitionOnly);
+  const adminHiredQtyChange =
+    isVacancyAdmin &&
+    editVacancy != null &&
+    editVacancy.operationStatus === 'hired' &&
+    operationStatus === 'hired' &&
+    Number(hiredQty) !== (editVacancy.hiredQuantity ?? 0);
   const adminStatusChange =
     isVacancyAdmin &&
     editVacancy != null &&
-    operationStatus !== editVacancy.operationStatus;
+    (operationStatus !== editVacancy.operationStatus || adminHiredQtyChange);
   const ccLocked =
     editVacancy != null && Boolean((editVacancy.directManagerIdentification ?? '').trim());
   const hasExistingReq = Boolean(editVacancy?.reqAssignedAt);
@@ -113,6 +120,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
     setLine(v.curricularLine ?? '');
     setDirectManagerCc(v.directManagerIdentification ?? '');
     setQty(String(v.quantity));
+    setHiredQty(String(v.hiredQuantity ?? 0));
     setInitialOpNotes('');
     setOperationStatus(v.operationStatus);
     setOperationNotes(v.operationNotes ?? []);
@@ -141,6 +149,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
     setLine('');
     setDirectManagerCc('');
     setQty('1');
+    setHiredQty('0');
     setInitialOpNotes('');
     setOperationStatus('open');
     setOperationNotes([]);
@@ -230,12 +239,29 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
     );
   }, [programs, programId, editVacancy?.programName]);
 
+  const showHiredQuantityField =
+    operationStatus === 'hired' ||
+    (editVacancy != null && editVacancy.operationStatus === 'hired');
+
   function validateForm(): string | null {
     if (mode === 'create' || !coreLocked) {
       if (areaId === '') return 'Seleccione área.';
       if (!position.trim()) return 'El cargo es obligatorio.';
       const n = Number(qty);
       if (!Number.isFinite(n) || n <= 0) return 'La cantidad debe ser mayor a 0.';
+    }
+    if (showHiredQuantityField) {
+      const requested = Number(qty);
+      const hired = Number(hiredQty);
+      if (!Number.isFinite(hired) || hired < 0) {
+        return 'La cantidad contratada debe ser un número mayor o igual a 0.';
+      }
+      if (operationStatus === 'hired' && hired < 1) {
+        return 'Al marcar como contratado debe indicar al menos 1 persona contratada.';
+      }
+      if (Number.isFinite(requested) && hired > requested) {
+        return 'La cantidad contratada no puede superar la cantidad solicitada.';
+      }
     }
     return null;
   }
@@ -255,7 +281,10 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
   function hasVacancyPatchChanges(): boolean {
     if (mode === 'create') return true;
     if (!editVacancy) return false;
-    if (hiredRequisitionOnly && !isVacancyAdmin) return false;
+    if (hiredRequisitionOnly) {
+      if (!isVacancyAdmin) return false;
+      return Number(hiredQty) !== (editVacancy.hiredQuantity ?? 0);
+    }
     if (coreLocked) {
       if (isVacancyAdmin && operationStatus !== editVacancy.operationStatus) {
         return true;
@@ -263,6 +292,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
       if (hiredRequisitionOnly) return false;
       return (
         operationStatus !== editVacancy.operationStatus ||
+        Number(hiredQty) !== (editVacancy.hiredQuantity ?? 0) ||
         (!ccLocked && directManagerCc.trim() !== (editVacancy.directManagerIdentification ?? '').trim())
       );
     }
@@ -276,6 +306,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
       (line.trim() ? toUpperAscii(line) : null) !==
         (editVacancy.curricularLine?.trim() ? editVacancy.curricularLine : null) ||
       Number(qty) !== editVacancy.quantity ||
+      Number(hiredQty) !== (editVacancy.hiredQuantity ?? 0) ||
       operationStatus !== editVacancy.operationStatus ||
       (!ccLocked && ccTrim !== prevCc)
     );
@@ -285,9 +316,15 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
     if (!editVacancy) return {};
     const ccTrim = directManagerCc.trim();
     if (coreLocked) {
-      if (hiredRequisitionOnly) return {};
+      if (hiredRequisitionOnly) {
+        if (Number(hiredQty) !== (editVacancy.hiredQuantity ?? 0)) {
+          return { hiredQuantity: Number(hiredQty) };
+        }
+        return {};
+      }
       return {
         operationStatus,
+        ...(showHiredQuantityField ? { hiredQuantity: Number(hiredQty) } : {}),
         ...(!ccLocked && ccTrim ? { directManagerIdentification: ccTrim } : {}),
       };
     }
@@ -298,6 +335,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
       positionName: toUpperAscii(position),
       curricularLine: toUpperAsciiOrNull(line),
       quantity: Number(qty),
+      ...(showHiredQuantityField ? { hiredQuantity: Number(hiredQty) } : {}),
       operationStatus,
       ...(!ccLocked && ccTrim ? { directManagerIdentification: ccTrim } : {}),
     };
@@ -427,7 +465,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
         if (
           isVacancyAdmin &&
           editVacancy &&
-          operationStatus !== editVacancy.operationStatus
+          (operationStatus !== editVacancy.operationStatus || adminHiredQtyChange)
         ) {
           if (!confirmText) {
             setFormError('Se requiere confirmación para cambiar el estado.');
@@ -436,8 +474,15 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
           result = await patchVacancyAdminStatus(id, {
             operationStatus,
             confirmText,
+            ...(operationStatus === 'hired' || adminHiredQtyChange
+              ? { hiredQuantity: Number(hiredQty) }
+              : {}),
           });
-          messages.push('Estado actualizado (admin)');
+          messages.push(
+            adminHiredQtyChange && operationStatus === editVacancy.operationStatus
+              ? 'Cantidad contratada actualizada (admin)'
+              : 'Estado actualizado (admin)'
+          );
         } else if (hasVacancyPatchChanges()) {
           result = (await patchVacancy(id, buildVacancyPatch())) as Vacancy;
           messages.push(coreLocked ? 'Estado actualizado' : 'Vacante actualizada');
@@ -559,7 +604,10 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                   <SummaryRow label="Programa" value={programName} />
                   <SummaryRow label="Cargo" value={position.trim() || '—'} />
                   <SummaryRow label="Línea curricular" value={line.trim() || '—'} />
-                  <SummaryRow label="Cantidad" value={qty} />
+                  <SummaryRow label="Cantidad solicitada" value={qty} />
+                  {showHiredQuantityField && (
+                    <SummaryRow label="Cantidad contratada" value={hiredQty} />
+                  )}
                   <SummaryRow
                     label="Jefe inmediato"
                     value={directManagerCc.trim() || '—'}
@@ -695,7 +743,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                   onChange={(e) => setLine(e.target.value)}
                 />
               </Field>
-              <Field label="Cantidad *">
+              <Field label="Cantidad solicitada *">
                 <input
                   required
                   type="number"
@@ -706,6 +754,23 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                   onChange={(e) => setQty(e.target.value)}
                 />
               </Field>
+              {showHiredQuantityField && (
+                <Field label="Cantidad contratada *">
+                  <input
+                    required
+                    type="number"
+                    min={operationStatus === 'hired' ? 1 : 0}
+                    max={Number(qty) || undefined}
+                    className="glass-input py-2.5 text-sm w-full"
+                    value={hiredQty}
+                    onChange={(e) => setHiredQty(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Máximo {qty} (solicitadas). Pendientes:{' '}
+                    {Math.max(0, (Number(qty) || 0) - (Number(hiredQty) || 0))}.
+                  </p>
+                </Field>
+              )}
               <Field label="Nombre jefe inmediato (opcional)">
                 <input
                   type="text"
@@ -881,6 +946,23 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                   ))}
                 </select>
               </Field>
+              {operationStatus === 'hired' && (
+                <Field label="Cantidad contratada *">
+                  <input
+                    required
+                    type="number"
+                    min={1}
+                    max={Number(qty) || editVacancy?.quantity || undefined}
+                    className="glass-input py-2.5 text-sm w-full"
+                    value={hiredQty}
+                    onChange={(e) => setHiredQty(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Indique cuántas personas se contrataron (máximo{' '}
+                    {qty || editVacancy?.quantity || '—'} solicitadas).
+                  </p>
+                </Field>
+              )}
               <p className="text-xs text-slate-500">
                 Para cerrar/contratar/cancelar, seleccione el estado final aquí y guarde cambios.
               </p>
@@ -934,9 +1016,17 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
 
       <ConfirmTextModal
         open={adminConfirmOpen}
-        title="Confirmar cambio de estado"
-        description="Va a cambiar el estado de la vacante. Esta acción quedará registrada en el panel informativo."
-        confirmLabel="Cambiar estado"
+        title="Confirmar cambio"
+        description={
+          adminHiredQtyChange && editVacancy?.operationStatus === operationStatus
+            ? 'Va a actualizar la cantidad contratada de la vacante. Esta acción quedará registrada en el panel informativo.'
+            : 'Va a cambiar el estado de la vacante. Esta acción quedará registrada en el panel informativo.'
+        }
+        confirmLabel={
+          adminHiredQtyChange && editVacancy?.operationStatus === operationStatus
+            ? 'Actualizar cantidad'
+            : 'Cambiar estado'
+        }
         danger={false}
         loading={saving}
         onClose={() => {
