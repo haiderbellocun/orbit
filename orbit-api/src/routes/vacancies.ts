@@ -1684,15 +1684,23 @@ router.patch("/vacancies/:id/admin-status", async (req, res) => {
       hiredQuantityToSet = incoming;
     }
 
-    const updates = [`operation_status = $1`];
-    const values: unknown[] = [statusIn];
+    const updates: string[] = [];
+    const values: unknown[] = [];
+    let p = 1;
+
+    updates.push(`operation_status = $${p}`);
+    values.push(statusIn);
+    p += 1;
+
     if (hiredQuantityToSet !== undefined) {
-      updates.push(`hired_quantity = $${values.length + 1}`);
+      updates.push(`hired_quantity = $${p}`);
       values.push(hiredQuantityToSet);
+      p += 1;
     }
     if (FULLY_LOCKED_STATUSES.has(statusIn)) {
       updates.push(`closed_at = COALESCE(closed_at, now())`);
     }
+
     values.push(id);
 
     const mode = await resolveCoreSchemaMode();
@@ -1704,7 +1712,7 @@ router.patch("/vacancies/:id/admin-status", async (req, res) => {
     }
 
     const result = await pool.query(
-      `UPDATE vacancies.vacancy SET ${updates.join(", ")} WHERE id = $${values.length} RETURNING *`,
+      `UPDATE vacancies.vacancy SET ${updates.join(", ")} WHERE id = $${p} RETURNING *`,
       values
     );
 
