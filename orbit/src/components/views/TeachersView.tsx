@@ -1,26 +1,28 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   MagnifyingGlassIcon, 
-  PlusIcon, 
-  FunnelIcon, 
   RectangleGroupIcon, 
   UserCircleIcon, 
   EnvelopeIcon, 
   MapPinIcon, 
   ArrowRightIcon,
-  UserPlusIcon,
-  XMarkIcon,
   PencilSquareIcon,
-  PhoneIcon,
-  DocumentTextIcon,
-  CalendarIcon,
-  CheckCircleIcon
+  ArrowUpTrayIcon
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
+import {
+  PersonProfileModal,
+  type PersonProfile,
+} from '@/src/components/common/PersonProfileModal';
 import { cn } from '@/src/lib/utils';
 import { Teacher, View, Coordinator, Vacancy } from '@/src/types';
-import { getTeachers } from '@/src/lib/api';
+import {
+  getTeachers,
+  importTeachersExcel,
+  type ImportTeachersResponse,
+  type ImportStreamProgress,
+} from '@/src/lib/api';
 
 function mapTeacherFromApi(row: Record<string, unknown>): Teacher {
   const first = String(row.first_name ?? '');
@@ -61,6 +63,34 @@ function mapTeacherFromApi(row: Record<string, unknown>): Teacher {
   };
 }
 
+const IMPORT_PHASE_LABELS_ES: Record<string, string> = {
+  validate: 'Validación del archivo',
+  parse: 'Lectura del Excel',
+  hierarchy: 'Jerarquía académica',
+  core: 'Docentes y catálogo CORE',
+  academic: 'Carga académica',
+  carga_actual: 'Carga actual',
+  proyeccion: 'ACA Proyección',
+};
+
+function formatImportPhaseEs(phase: string): string {
+  return IMPORT_PHASE_LABELS_ES[phase] ?? phase.replace(/_/g, ' ');
+}
+
+function formatImportDurationEs(ms: number): string {
+  if (ms >= 60000) {
+    const min = Math.floor(ms / 60000);
+    const sec = Math.round((ms % 60000) / 1000);
+    return sec > 0 ? `${min} min ${sec} s` : `${min} min`;
+  }
+  if (ms >= 1000) {
+    const sec = ms / 1000;
+    const rounded = sec >= 10 ? Math.round(sec) : Math.round(sec * 10) / 10;
+    return `${String(rounded).replace('.', ',')} s`;
+  }
+  return `${ms} ms`;
+}
+
 interface TeachersViewProps {
   onSelectTeacher: (t: Teacher) => void;
   searchQuery?: string;
@@ -70,13 +100,16 @@ interface TeachersViewProps {
     vacancies: Vacancy[];
     coordinators: Coordinator[];
   } | null;
+  /** Oculta importación Excel (perfil LITE). */
+  hideBulkImport?: boolean;
 }
 
 export const TeachersView: React.FC<TeachersViewProps> = ({ 
   onSelectTeacher, 
   searchQuery = '', 
   setSearchQuery,
-  searchResults 
+  searchResults,
+  hideBulkImport = false,
 }) => {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,57 +118,63 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
   const [totalCount, setTotalCount] = useState(0);
   const listKeyRef = useRef<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'on-leave' | 'inactive'>('all');
-  const [showForm, setShowForm] = useState(false);
-  const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [profilePerson, setProfilePerson] = useState<PersonProfile | null>(
+    null
+  );
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<ImportTeachersResponse | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportStreamProgress | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const loadTeachersGenRef = useRef(0);
+
+  const loadTeachers = useCallback(async () => {
+    const gen = ++loadTeachersGenRef.current;
+    setLoading(true);
+    try {
+      const key = `${searchQuery}|${filter}`;
+      let pageToUse = currentPage;
+      if (listKeyRef.current !== key) {
+        if (listKeyRef.current !== null) {
+          pageToUse = 1;
+          if (currentPage !== 1) setCurrentPage(1);
+        }
+        listKeyRef.current = key;
+      }
+
+      const statusParam =
+        filter === 'all' || filter === 'on-leave' ? undefined : filter;
+      const res = await getTeachers({
+        search: searchQuery.trim() || undefined,
+        status: statusParam,
+        page: pageToUse,
+        limit: 50,
+      });
+      if (gen !== loadTeachersGenRef.current) return;
+      const list = Array.isArray(res.data)
+        ? res.data.map((r) =>
+            mapTeacherFromApi(r as Record<string, unknown>)
+          )
+        : [];
+      setTeachers(list);
+      setTotalCount(res.pagination?.total ?? 0);
+      setTotalPages(res.pagination?.totalPages ?? 0);
+    } catch {
+      if (gen !== loadTeachersGenRef.current) return;
+      setTeachers([]);
+      setTotalCount(0);
+      setTotalPages(0);
+    } finally {
+      if (gen === loadTeachersGenRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [currentPage, filter, searchQuery]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const key = `${searchQuery}|${filter}`;
-        let pageToUse = currentPage;
-        if (listKeyRef.current !== key) {
-          if (listKeyRef.current !== null) {
-            pageToUse = 1;
-            if (currentPage !== 1) setCurrentPage(1);
-          }
-          listKeyRef.current = key;
-        }
-
-        const statusParam =
-          filter === 'all' || filter === 'on-leave' ? undefined : filter;
-        const res = await getTeachers({
-          search: searchQuery.trim() || undefined,
-          status: statusParam,
-          page: pageToUse,
-          limit: 50,
-        });
-        if (!cancelled) {
-          const list = Array.isArray(res.data)
-            ? res.data.map((r) =>
-                mapTeacherFromApi(r as Record<string, unknown>)
-              )
-            : [];
-          setTeachers(list);
-          setTotalCount(res.pagination?.total ?? 0);
-          setTotalPages(res.pagination?.totalPages ?? 0);
-        }
-      } catch {
-        if (!cancelled) {
-          setTeachers([]);
-          setTotalCount(0);
-          setTotalPages(0);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentPage, searchQuery, filter]);
+    void loadTeachers();
+  }, [loadTeachers, reloadKey]);
 
   const filteredTeachers = useMemo(() => {
     if (filter === 'on-leave') {
@@ -151,39 +190,48 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
     { id: 'inactive', label: 'Inactivo' },
   ];
 
-  const handleSaveTeacher = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const teacherData: Partial<Teacher> = {
-      name: formData.get('name') as string,
-      email: formData.get('email') as string,
-      phone: formData.get('phone') as string,
-      program: formData.get('program') as string,
-      campus: formData.get('campus') as string,
-      status: formData.get('status') as any,
-      joinDate: formData.get('joinDate') as string || new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }),
-    };
-
-    if (editingTeacher) {
-      setTeachers(prev => prev.map(t => t.id === editingTeacher.id ? { ...t, ...teacherData } : t));
-    } else {
-      const newTeacher: Teacher = {
-        ...teacherData as Teacher,
-        id: Math.random().toString(36).substr(2, 9),
-      };
-      setTeachers(prev => [newTeacher, ...prev]);
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
-    }
-    
-    setShowForm(false);
-    setEditingTeacher(null);
-  };
-
   const openEdit = (e: React.MouseEvent, teacher: Teacher) => {
     e.stopPropagation();
-    setEditingTeacher(teacher);
-    setShowForm(true);
+    setProfilePerson({
+      id: teacher.id,
+      name: teacher.name,
+      document: teacher.document,
+      role: 'teacher',
+    });
+  };
+
+  const openImportPicker = () => {
+    if (isImporting) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImportError(null);
+    setImportResult(null);
+    setImportProgress(null);
+    setIsImporting(true);
+
+    try {
+      const result = await importTeachersExcel(file, {
+        onProgress: (e) => setImportProgress(e),
+      });
+      setImportResult(result);
+      if (result.success) {
+        setCurrentPage(1);
+        setReloadKey((prev) => prev + 1);
+      }
+    } catch (error) {
+      setImportError(
+        error instanceof Error ? error.message : 'Error al cargar el archivo.'
+      );
+    } finally {
+      setIsImporting(false);
+      setImportProgress(null);
+      event.target.value = '';
+    }
   };
 
   const containerVariants = {
@@ -238,17 +286,37 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
                 <RectangleGroupIcon className="h-4.5 w-4.5" />
                 <span>Vista: Cards</span>
               </button>
+              {!hideBulkImport && (
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportFile}
+                  className="hidden"
+                />
+              )}
             </div>
           </div>
+          {!hideBulkImport && (
+          <div className="flex flex-col items-stretch lg:items-end gap-1 w-full lg:w-auto">
           <motion.button 
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => { setEditingTeacher(null); setShowForm(true); }}
+            type="button"
+            onClick={openImportPicker}
+            disabled={isImporting}
             className="glass-button-primary px-8 py-4 h-fit text-sm font-bold tracking-tight w-full lg:w-auto flex justify-center items-center"
           >
-            <UserPlusIcon className="h-5 w-5" />
-            <span>Registrar Nuevo</span>
+            <ArrowUpTrayIcon className="h-5 w-5" />
+            <span>{isImporting ? 'Importando…' : 'Cargar Excel'}</span>
           </motion.button>
+          {isImporting && (
+            <p className="text-[10px] text-slate-500 text-center lg:text-right max-w-xs lg:max-w-[14rem] self-center lg:self-end">
+              Puede tardar varios minutos. No cierres la pestaña.
+            </p>
+          )}
+          </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2">
@@ -271,21 +339,100 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
         </div>
       </div>
 
-      <AnimatePresence>
-        {showSuccess && (
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-4 text-emerald-600"
-          >
-            <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
-              <CheckCircleIcon className="h-5 w-5" />
+      {!hideBulkImport && isImporting && (
+        <div className="glass-panel p-4 border border-violet-200/60 bg-white/40 space-y-2">
+          <div className="flex justify-between items-center gap-2">
+            <p className="text-xs font-semibold text-slate-800 leading-snug">
+              {importProgress?.label ?? 'Preparando importación…'}
+            </p>
+            {importProgress?.percent != null && (
+              <span className="text-[10px] font-mono text-violet-600 shrink-0">
+                {importProgress.percent}%
+              </span>
+            )}
+          </div>
+          {importProgress?.phase != null && importProgress.phase.length > 0 && (
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">
+              {formatImportPhaseEs(importProgress.phase)}
+            </p>
+          )}
+          <div className="h-2.5 rounded-full bg-slate-200/80 overflow-hidden">
+            {importProgress?.percent != null ? (
+              <div
+                className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-[width] duration-300 ease-out"
+                style={{ width: `${importProgress.percent}%` }}
+              />
+            ) : (
+              <div className="h-full w-full bg-gradient-to-r from-violet-400/40 via-violet-500/80 to-violet-400/40 animate-pulse" />
+            )}
+          </div>
+        </div>
+      )}
+
+      {!hideBulkImport && importError && (
+        <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-700 text-sm font-medium">
+          {importError}
+        </div>
+      )}
+
+      {!hideBulkImport && importResult && !importResult.success && (
+        <div className="glass-panel p-5 space-y-3 border border-amber-200 bg-amber-50/40">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-amber-800">
+              Importación con errores
+            </span>
+            <span className="text-xs text-slate-500">ID de importación: {importResult.importId}</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div className="rounded-xl bg-white/60 p-3">
+              <strong>Procesadas:</strong> {importResult.summary.processedRows}
             </div>
-            <p className="text-sm font-bold tracking-tight">Docente registrado exitosamente y agregado al listado.</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <div className="rounded-xl bg-white/60 p-3">
+              <strong>Errores (filas):</strong> {importResult.summary.errors.length}
+            </div>
+            <div className="rounded-xl bg-white/60 p-3">
+              <strong>Duración:</strong> {formatImportDurationEs(importResult.summary.duration_ms)}
+            </div>
+          </div>
+          {importResult.summary.errors[0] && (
+            <p className="text-xs text-amber-900 font-medium">
+              Detalle (ejemplo — fila {importResult.summary.errors[0].row}):{' '}
+              {importResult.summary.errors[0].reason}
+            </p>
+          )}
+        </div>
+      )}
+
+      {!hideBulkImport && importResult?.success && (
+        <div className="glass-panel p-5 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-bold uppercase tracking-widest text-emerald-600">Carga completada</span>
+            <span className="text-xs text-slate-500">ID de importación: {importResult.importId}</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div className="rounded-xl bg-white/60 p-3"><strong>Procesadas:</strong> {importResult.summary.processedRows}</div>
+            <div className="rounded-xl bg-white/60 p-3"><strong>Omitidas:</strong> {importResult.summary.skippedRows}</div>
+            <div className="rounded-xl bg-white/60 p-3"><strong>Creadas:</strong> {importResult.summary.created.persons}</div>
+            <div className="rounded-xl bg-white/60 p-3"><strong>Actualizadas:</strong> {importResult.summary.updated.persons}</div>
+          </div>
+          {importResult.summary.academicSourceRows != null && (
+            <p className="text-xs text-slate-600">
+              Hojas académicas leídas: Carga Actual{' '}
+              {importResult.summary.academicSourceRows.cargaActual} filas, ACA Proyección{' '}
+              {importResult.summary.academicSourceRows.proyeccion} filas (van aparte del conteo CORE
+              de docentes).
+            </p>
+          )}
+          <p className="text-xs text-slate-500">
+            Catálogos creados: contratos {importResult.summary.created.contractTypes}, roles {importResult.summary.created.roles}, escuelas {importResult.summary.created.schools}, programas {importResult.summary.created.programs}, ciudades {importResult.summary.created.cities}.
+          </p>
+          {importResult.summary.errors.length > 0 && (
+            <p className="text-xs text-amber-600">
+              Se registraron {importResult.summary.errors.length} errores por fila en la importación.
+            </p>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="glass-panel p-20 flex flex-col items-center justify-center text-center space-y-4">
@@ -319,7 +466,7 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
           variants={containerVariants}
           initial="hidden"
           animate="visible"
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-8"
         >
           <AnimatePresence mode="popLayout">
             {filteredTeachers.map((teacher) => (
@@ -417,196 +564,12 @@ export const TeachersView: React.FC<TeachersViewProps> = ({
         </div>
       )}
 
-      {/* Teacher Form Modal */}
-      <AnimatePresence>
-        {showForm && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowForm(false)}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-2xl glass-panel p-6 sm:p-8 relative z-10 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar"
-            >
-              <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-500"></div>
-              
-              <div className="flex justify-between items-center mb-8">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center text-violet-600">
-                    {editingTeacher ? <PencilSquareIcon className="h-6 w-6" /> : <UserPlusIcon className="h-6 w-6" />}
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-slate-900 font-display">
-                      {editingTeacher ? 'Editar Perfil' : 'Nuevo Registro'}
-                    </h2>
-                    <p className="text-xs text-slate-500 font-medium tracking-wide uppercase">
-                      Información académica y personal
-                    </p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setShowForm(false)}
-                  className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveTeacher} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Nombre Completo</label>
-                    <div className="relative">
-                      <UserCircleIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="name"
-                        type="text" 
-                        required
-                        defaultValue={editingTeacher?.name}
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="Ej: Dr. Alejandro Martínez"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Documento / ID</label>
-                    <div className="relative">
-                      <DocumentTextIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="document"
-                        type="text" 
-                        required
-                        defaultValue={editingTeacher?.document}
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="Número de identificación"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Correo Institucional</label>
-                    <div className="relative">
-                      <EnvelopeIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="email"
-                        type="email" 
-                        required
-                        defaultValue={editingTeacher?.email}
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="correo@orbit.edu"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Teléfono</label>
-                    <div className="relative">
-                      <PhoneIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="phone"
-                        type="text" 
-                        required
-                        defaultValue={editingTeacher?.phone}
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="+57 300 000 0000"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Programa Académico</label>
-                    <div className="relative">
-                      <RectangleGroupIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="program"
-                        type="text" 
-                        required
-                        defaultValue={editingTeacher?.program}
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="Ej: Ingeniería de Sistemas"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Sede / Campus</label>
-                    <div className="relative">
-                      <MapPinIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <select 
-                        name="campus"
-                        defaultValue={editingTeacher?.campus || 'Sede Norte'}
-                        className="glass-input pl-12 py-3 text-sm appearance-none"
-                      >
-                        <option value="Sede Norte">Sede Norte</option>
-                        <option value="Sede Centro">Sede Centro</option>
-                        <option value="Sede Sur">Sede Sur</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Estado</label>
-                    <div className="flex gap-3">
-                      {['active', 'on-leave', 'inactive'].map((s) => (
-                        <label key={s} className="flex-1 cursor-pointer">
-                          <input 
-                            type="radio" 
-                            name="status" 
-                            value={s} 
-                            defaultChecked={editingTeacher?.status === s || (!editingTeacher && s === 'active')}
-                            className="sr-only peer" 
-                          />
-                          <div className="w-full py-2.5 text-[10px] font-bold uppercase tracking-widest text-center rounded-xl border border-white/60 bg-white/40 text-slate-400 peer-checked:bg-violet-600 peer-checked:text-white peer-checked:border-violet-600 transition-all">
-                            {s === 'active' ? 'Activo' : s === 'on-leave' ? 'Licencia' : 'Inactivo'}
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Fecha de Ingreso</label>
-                    <div className="relative">
-                      <CalendarIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="joinDate"
-                        type="date" 
-                        defaultValue={editingTeacher?.joinDate || new Date().toISOString().split('T')[0]}
-                        className="glass-input pl-12 py-3 text-sm" 
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-4 pt-4">
-                  <button 
-                    type="button"
-                    onClick={() => setShowForm(false)}
-                    className="flex-1 glass-button-secondary py-4 text-xs font-bold uppercase tracking-widest"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit"
-                    className="flex-[2] glass-button-primary py-4 text-xs font-bold uppercase tracking-widest"
-                  >
-                    {editingTeacher ? 'Guardar Cambios' : 'Registrar Docente'}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <PersonProfileModal
+        open={!!profilePerson}
+        person={profilePerson}
+        onClose={() => setProfilePerson(null)}
+        onProfileUpdated={() => setReloadKey((k) => k + 1)}
+      />
     </div>
   );
 };

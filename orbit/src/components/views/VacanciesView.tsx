@@ -1,184 +1,89 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { 
-  PlusIcon, 
-  RectangleGroupIcon, 
-  MapPinIcon, 
-  ClockIcon,
-  MagnifyingGlassIcon,
-  XMarkIcon,
-  BriefcaseIcon,
-  UserIcon,
-  CalendarIcon,
-  ExclamationCircleIcon,
-  Bars2Icon
-} from '@heroicons/react/24/solid';
-import { 
-  DndContext, 
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-  DragStartEvent,
-  DragOverlay,
-  defaultDropAnimationSideEffects
-} from '@dnd-kit/core';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence } from 'motion/react';
 import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+  PlusIcon,
+  MagnifyingGlassIcon,
+  EyeIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  BriefcaseIcon,
+  QueueListIcon,
+} from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
-import { Vacancy, View, Teacher, Coordinator } from '@/src/types';
-import { getVacancies } from '@/src/lib/api';
+import type { Vacancy, Teacher, Coordinator, VacancyOperationStatus } from '@/src/types';
+import { getVacancies, getStoredCapabilities, deleteVacancy } from '@/src/lib/api';
+import {
+  computeVacancyActiveDaysFromSent,
+  formatVacancyActiveDaysLabel,
+  vacancyActiveDaysTooltip,
+} from '@/src/lib/vacancyActiveDays';
+import {
+  STATUS_LABEL,
+  canOpenVacancyManage,
+} from '@/src/lib/vacancyFormHelpers';
+import { canVacancyAdmin } from '@/src/lib/permissions';
+import { ConfirmTextModal } from '@/src/components/common/ConfirmTextModal';
+import { VacancyManageModal } from '@/src/components/views/VacancyManageModal';
 
-function dedicationToPriority(dedication: string): Vacancy['priority'] {
-  if (
-    dedication === 'Tiempo Completo (44 Horas)' ||
-    (dedication.includes('Tiempo Completo') && dedication.includes('44'))
-  ) {
-    return 'high';
-  }
-  if (
-    dedication === 'Medio Tiempo (22 Horas)' ||
-    (dedication.includes('Medio Tiempo') && dedication.includes('22'))
-  ) {
-    return 'medium';
-  }
-  return 'low';
+type ManagePanel =
+  | null
+  | { mode: 'create' }
+  | { mode: 'edit'; vacancy: Vacancy };
+
+const STATUS_ORDER: VacancyOperationStatus[] = [
+  'open',
+  'selected',
+  'requisition_sent',
+  'hired',
+  'closed',
+  'cancelled',
+  'cancelled_by_capital',
+];
+
+type VacancyDateField = 'createdAt' | 'sentToCapitalAt';
+
+const numberFormatter = new Intl.NumberFormat('es-CO');
+
+function vacancyDateValue(v: Vacancy, field: VacancyDateField): string | null {
+  const raw = field === 'createdAt' ? v.createdAt : v.sentToCapitalAt;
+  if (!raw?.trim()) return null;
+  return raw.slice(0, 10);
 }
 
-function mapVacancyFromApi(row: Record<string, unknown>): Vacancy {
-  const dedication = String(row.dedication ?? '');
-  const line = row.academic_line != null ? String(row.academic_line) : '';
-  const subj = row.subjects != null ? String(row.subjects) : '';
-  const titleSource = line || subj;
-  const title =
-    titleSource.trim().length > 0
-      ? titleSource.slice(0, 50)
-      : 'Vacante';
+function matchesDateRange(
+  v: Vacancy,
+  field: VacancyDateField,
+  from: string,
+  to: string
+): boolean {
+  const day = vacancyDateValue(v, field);
+  if (!day) return !from && !to;
+  if (from && day < from) return false;
+  if (to && day > to) return false;
+  return true;
+}
 
-  const rawStatus = String(row.status ?? 'open');
-  const status: Vacancy['status'] =
-    rawStatus === 'open' ||
-    rawStatus === 'in-progress' ||
-    rawStatus === 'filled' ||
-    rawStatus === 'cancelled'
-      ? rawStatus
-      : 'open';
-
-  let createdAt = '';
-  if (row.created_at != null) {
-    const s = String(row.created_at);
-    const d = new Date(s);
-    createdAt = Number.isNaN(d.getTime()) ? s.slice(0, 10) : d.toISOString().slice(0, 10);
+function uniqueSortedOptions(
+  rows: Vacancy[],
+  getLabel: (v: Vacancy) => string | null | undefined,
+  getValue: (v: Vacancy) => string
+): { value: string; label: string }[] {
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    const label = getLabel(row)?.trim();
+    if (!label) continue;
+    const value = getValue(row);
+    if (!map.has(value)) map.set(value, label);
   }
-
-  const periodStr = row.period != null ? String(row.period).trim() : '';
-
-  return {
-    id: String(row.id ?? ''),
-    title,
-    program: String(row.program ?? ''),
-    campus: String(row.campus ?? ''),
-    coordinator: String(row.coordinator_name ?? ''),
-    status,
-    createdAt,
-    priority: dedicationToPriority(dedication),
-    ...(periodStr !== '' ? { period: periodStr } : {}),
-  };
+  return [...map.entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'es'));
 }
-
-interface SortableVacancyCardProps {
-  vacancy: Vacancy;
-  onClick: () => void;
-}
-
-const SortableVacancyCard: React.FC<SortableVacancyCardProps> = ({ vacancy, onClick }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ id: vacancy.id });
-
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <motion.div 
-        layout
-        onClick={onClick}
-        className="glass-card p-4 hover:border-violet-200/50 cursor-grab active:cursor-grabbing group transition-all duration-300"
-      >
-        <div className="flex justify-between items-start mb-2 gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className={cn(
-              "text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md",
-              vacancy.priority === 'high' 
-                ? "bg-red-50 text-red-600 border border-red-100" 
-                : vacancy.priority === 'medium'
-                  ? "bg-amber-50 text-amber-600 border border-amber-100"
-                  : "bg-slate-50 text-slate-500 border border-slate-100"
-            )}>
-              {vacancy.priority}
-            </span>
-            {vacancy.period && (
-              <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-cyan-50 text-cyan-700 border border-cyan-100">
-                {vacancy.period}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-slate-400 font-bold font-mono">#{vacancy.id}</span>
-            <Bars2Icon className="h-3 w-3 text-slate-300 group-hover:text-violet-400 transition-colors" />
-          </div>
-        </div>
-        <h4 className="font-bold text-slate-900 text-sm mb-3 leading-tight group-hover:text-violet-600 transition-colors">
-          {vacancy.title}
-        </h4>
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-[11px] text-slate-500">
-            <RectangleGroupIcon className="h-3 w-3 text-violet-400" />
-            <span>{vacancy.program}</span>
-          </div>
-          <div className="flex items-center gap-2 text-[11px] text-slate-500">
-            <MapPinIcon className="h-3 w-3 text-cyan-400" />
-            <span>{vacancy.campus}</span>
-          </div>
-        </div>
-        <div className="mt-4 pt-3 border-t border-white/20 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-100 to-fuchsia-100 border-2 border-white flex items-center justify-center text-[8px] font-bold text-violet-600 shadow-sm">
-              {(vacancy.coordinator || ' ')
-                .split(' ')
-                .filter(Boolean)
-                .map((n) => n[0])
-                .join('') || '?'}
-            </div>
-            <span className="text-[10px] text-slate-400 font-medium">{vacancy.coordinator}</span>
-          </div>
-          <span className="text-[10px] text-slate-400 font-medium">{vacancy.createdAt}</span>
-        </div>
-      </motion.div>
-    </div>
-  );
-};
 
 interface VacanciesViewProps {
   onSelectVacancy: (v: Vacancy) => void;
+  onVacancySaved?: (v: Vacancy) => void;
   searchQuery?: string;
   setSearchQuery?: (q: string) => void;
   searchResults?: {
@@ -186,449 +91,633 @@ interface VacanciesViewProps {
     vacancies: Vacancy[];
     coordinators: Coordinator[];
   } | null;
+  onOpenVacancyFromNotification?: (vacancyId: string) => void;
 }
 
-export const VacanciesView: React.FC<VacanciesViewProps> = ({ 
+export const VacanciesView: React.FC<VacanciesViewProps> = ({
   onSelectVacancy,
-  searchQuery = '', 
+  onVacancySaved,
+  searchQuery = '',
   setSearchQuery,
-  searchResults 
+  searchResults,
+  onOpenVacancyFromNotification,
 }) => {
-  const [vacancies, setVacancies] = useState<Vacancy[]>([]);
+  const [rows, setRows] = useState<Vacancy[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
-  const listKeyRef = useRef<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [periodFilter, setPeriodFilter] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveBanner, setSaveBanner] = useState<string | null>(null);
+  const [managePanel, setManagePanel] = useState<ManagePanel>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Vacancy | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<VacancyOperationStatus | ''>('');
+  const [dateField, setDateField] = useState<VacancyDateField>('createdAt');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
+  const [schoolFilter, setSchoolFilter] = useState('');
+  const [programFilter, setProgramFilter] = useState('');
+  const isVacancyAdmin = canVacancyAdmin(getStoredCapabilities());
+
+  const refresh = useCallback(async (): Promise<Vacancy[]> => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const res = await getVacancies();
+      const list = Array.isArray(res.data) ? res.data : [];
+      setRows(list);
+      return list;
+    } catch (e) {
+      setRows([]);
+      setLoadError(e instanceof Error ? e.message : 'No se pudo cargar');
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const key = `${searchQuery}|${periodFilter}`;
-        let pageToUse = currentPage;
-        if (listKeyRef.current !== key) {
-          if (listKeyRef.current !== null) {
-            pageToUse = 1;
-            if (currentPage !== 1) setCurrentPage(1);
-          }
-          listKeyRef.current = key;
-        }
+    void refresh();
+  }, [refresh]);
 
-        const res = await getVacancies({
-          page: pageToUse,
-          limit: 50,
-          ...(periodFilter ? { period: periodFilter } : {}),
-        });
-        if (!cancelled) {
-          const list = Array.isArray(res.data)
-            ? res.data.map((r) =>
-                mapVacancyFromApi(r as Record<string, unknown>)
-              )
-            : [];
-          setVacancies(list);
-          setTotalCount(res.pagination?.total ?? 0);
-          setTotalPages(res.pagination?.totalPages ?? 0);
-        }
-      } catch {
-        if (!cancelled) {
-          setVacancies([]);
-          setTotalCount(0);
-          setTotalPages(0);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentPage, searchQuery, periodFilter]);
+  useEffect(() => {
+    if (!saveBanner) return;
+    const t = window.setTimeout(() => setSaveBanner(null), 4500);
+    return () => window.clearTimeout(t);
+  }, [saveBanner]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+  const areaOptions = useMemo(
+    () =>
+      uniqueSortedOptions(
+        rows,
+        (v) => v.areaName,
+        (v) => String(v.areaId)
+      ),
+    [rows]
   );
 
-  const filteredVacancies = useMemo(() => {
-    return vacancies.filter(v => 
-      v.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      v.program.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.id.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [searchQuery, vacancies]);
+  const schoolOptions = useMemo(
+    () =>
+      uniqueSortedOptions(
+        rows,
+        (v) => v.schoolName,
+        (v) => String(v.schoolId ?? '')
+      ).filter((o) => o.value !== ''),
+    [rows]
+  );
 
-  const columns = [
-    { id: 'open', label: 'Abiertas', color: 'bg-blue-500' },
-    { id: 'in-progress', label: 'En Proceso', color: 'bg-amber-500' },
-    { id: 'filled', label: 'Cubiertas', color: 'bg-emerald-500' },
-    { id: 'cancelled', label: 'Canceladas', color: 'bg-red-500' },
-  ];
+  const programOptions = useMemo(
+    () =>
+      uniqueSortedOptions(
+        rows,
+        (v) => v.programName,
+        (v) => String(v.programId ?? '')
+      ).filter((o) => o.value !== ''),
+    [rows]
+  );
 
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    
-    if (!over) return;
-
-    const activeId = active.id as string;
-    const overId = over.id as string;
-
-    // Check if dropped over a column or another card
-    const overColumn = columns.find(col => col.id === overId);
-    
-    if (overColumn) {
-      setVacancies(prev => prev.map(v => 
-        v.id === activeId ? { ...v, status: overColumn.id as any } : v
-      ));
-    } else {
-      // Dropped over another card
-      const overVacancy = vacancies.find(v => v.id === overId);
-      if (overVacancy && overVacancy.status !== vacancies.find(v => v.id === activeId)?.status) {
-        setVacancies(prev => prev.map(v => 
-          v.id === activeId ? { ...v, status: overVacancy.status } : v
-        ));
-      }
+  const statusOptions = useMemo(() => {
+    const counts = new Map<VacancyOperationStatus, number>();
+    for (const v of rows) {
+      counts.set(v.operationStatus, (counts.get(v.operationStatus) ?? 0) + 1);
     }
+    return STATUS_ORDER.filter((s) => counts.has(s)).map((s) => ({
+      status: s,
+      count: counts.get(s) ?? 0,
+    }));
+  }, [rows]);
 
-    setActiveId(null);
-  };
+  useEffect(() => {
+    if (!statusFilter) return;
+    if (!statusOptions.some((o) => o.status === statusFilter)) {
+      setStatusFilter('');
+    }
+  }, [statusFilter, statusOptions]);
 
-  const handleAddVacancy = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const newVacancy: Vacancy = {
-      id: `V${vacancies.length + 1}`,
-      title: formData.get('title') as string,
-      program: formData.get('program') as string,
-      campus: formData.get('campus') as string,
-      coordinator: formData.get('coordinator') as string,
-      status: formData.get('status') as any || 'open',
-      priority: formData.get('priority') as any || 'medium',
-      createdAt: new Date().toISOString().split('T')[0],
-    };
-    setVacancies(prev => [newVacancy, ...prev]);
-    setShowForm(false);
-  };
+  useEffect(() => {
+    if (!areaFilter) return;
+    if (!areaOptions.some((o) => o.value === areaFilter)) setAreaFilter('');
+  }, [areaFilter, areaOptions]);
 
-  const activeVacancy = activeId ? vacancies.find(v => v.id === activeId) : null;
+  useEffect(() => {
+    if (!schoolFilter) return;
+    if (!schoolOptions.some((o) => o.value === schoolFilter)) setSchoolFilter('');
+  }, [schoolFilter, schoolOptions]);
+
+  useEffect(() => {
+    if (!programFilter) return;
+    if (!programOptions.some((o) => o.value === programFilter)) setProgramFilter('');
+  }, [programFilter, programOptions]);
+
+  const hasActiveFilters =
+    statusFilter !== '' ||
+    dateFrom !== '' ||
+    dateTo !== '' ||
+    areaFilter !== '' ||
+    schoolFilter !== '' ||
+    programFilter !== '' ||
+    searchQuery.trim() !== '';
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return rows.filter((v) => {
+      if (statusFilter && v.operationStatus !== statusFilter) return false;
+      if (areaFilter && String(v.areaId) !== areaFilter) return false;
+      if (schoolFilter && String(v.schoolId ?? '') !== schoolFilter) return false;
+      if (programFilter && String(v.programId ?? '') !== programFilter) return false;
+      if (!matchesDateRange(v, dateField, dateFrom, dateTo)) return false;
+      if (!q) return true;
+      return (
+        v.positionName.toLowerCase().includes(q) ||
+        (v.programName ?? '').toLowerCase().includes(q) ||
+        (v.areaName ?? '').toLowerCase().includes(q) ||
+        (v.schoolName ?? '').toLowerCase().includes(q) ||
+        v.id.toLowerCase().includes(q) ||
+        (v.reqNumber ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [
+    rows,
+    searchQuery,
+    statusFilter,
+    areaFilter,
+    schoolFilter,
+    programFilter,
+    dateField,
+    dateFrom,
+    dateTo,
+  ]);
+
+  const filteredQuantityTotal = useMemo(
+    () => filtered.reduce((sum, v) => sum + (v.quantity ?? 0), 0),
+    [filtered]
+  );
+
+  const filteredHiredTotal = useMemo(
+    () => filtered.reduce((sum, v) => sum + (v.hiredQuantity ?? 0), 0),
+    [filtered]
+  );
+
+  function resetFilters() {
+    setStatusFilter('');
+    setDateField('createdAt');
+    setDateFrom('');
+    setDateTo('');
+    setAreaFilter('');
+    setSchoolFilter('');
+    setProgramFilter('');
+    setSearchQuery?.('');
+  }
+
+  function openEdit(v: Vacancy) {
+    setSaveBanner(null);
+    setManagePanel({ mode: 'edit', vacancy: v });
+  }
+
+  async function handleModalSaved(v: Vacancy, message: string) {
+    const list = await refresh();
+    const fresh = list.find((x) => x.id === v.id) ?? v;
+    onVacancySaved?.(fresh);
+    setSaveBanner(message);
+    setManagePanel(null);
+  }
 
   return (
     <div className="space-y-8 relative">
       <div className="absolute -top-20 -right-20 w-64 h-64 bg-violet-200/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 rounded-full blur-3xl pointer-events-none" />
 
-      <Header 
-        title="Gestión de Vacantes" 
-        subtitle="Pipeline de contratación y flujo operativo" 
+      <Header
+        title="Gestión de Vacantes"
+        subtitle="Creación y seguimiento operativo"
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         searchResults={searchResults}
+        onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-        <div className="flex flex-col md:flex-row gap-4 flex-1 lg:max-w-2xl">
-          <div className="glass-panel p-2 flex-1 flex items-center gap-3">
-            <MagnifyingGlassIcon className="ml-3 h-4.5 w-4.5 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Buscar vacantes por título o programa..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery?.(e.target.value)}
-              className="w-full bg-transparent border-none focus:ring-0 text-sm py-2"
-            />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
+        <div className="glass-card p-6 flex items-center gap-5">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-violet-50/80 text-violet-600 border border-violet-100/80 shadow-inner shrink-0">
+            <BriefcaseIcon className="h-7 w-7" />
           </div>
-          <button 
-            onClick={() => setShowForm(true)}
-            className="glass-button-primary flex items-center gap-2 px-8 py-3 whitespace-nowrap"
-          >
-            <PlusIcon className="h-5 w-5" />
-            <span>Nueva Vacante</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="glass-panel p-3 flex flex-col sm:flex-row sm:items-center gap-3 relative z-10">
-        <label
-          htmlFor="vacancy-period-filter"
-          className="text-[10px] font-bold text-slate-500 uppercase tracking-widest shrink-0"
-        >
-          Periodo
-        </label>
-        <select
-          id="vacancy-period-filter"
-          className="glass-input py-2.5 px-3 text-sm max-w-xs"
-          value={periodFilter}
-          onChange={(e) => setPeriodFilter(e.target.value)}
-        >
-          <option value="">Todos los periodos</option>
-          <option value="2026A">2026A</option>
-          <option value="2026B">2026B</option>
-          <option value="26V01">26V01</option>
-          <option value="26ES1">26ES1</option>
-          <option value="25V06">25V06</option>
-        </select>
-      </div>
-
-      {loading ? (
-        <div className="glass-panel p-20 flex flex-col items-center justify-center text-center space-y-4 relative z-10">
-          <div className="h-10 w-10 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
-          <p className="text-sm font-medium text-slate-600">Cargando...</p>
-        </div>
-      ) : filteredVacancies.length === 0 ? (
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-panel p-20 flex flex-col items-center justify-center text-center space-y-4"
-        >
-          <div className="w-20 h-20 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 border border-white/50 shadow-inner">
-            <MagnifyingGlassIcon className="h-10 w-10" />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-xl font-bold text-slate-900 font-display">No se encontraron vacantes</h3>
-            <p className="text-sm text-slate-500 max-w-xs mx-auto">
-              No pudimos encontrar vacantes que coincidan con tu búsqueda actual.
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Total solicitado
+            </p>
+            <p className="text-3xl font-bold text-slate-900 font-display tabular-nums">
+              {loading ? '—' : numberFormatter.format(filteredQuantityTotal)}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Personas solicitadas en las vacantes visibles.
             </p>
           </div>
-          <button 
-            onClick={() => setSearchQuery?.('')}
-            className="text-violet-600 font-bold text-xs uppercase tracking-widest hover:underline pt-4"
-          >
-            Ver todas las vacantes
-          </button>
-        </motion.div>
-      ) : (
-        <DndContext 
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10">
-            {columns.map((column) => (
-              <div key={column.id} className="space-y-4 flex flex-col h-full">
-                <div className="flex items-center justify-between px-2">
-                  <div className="flex items-center gap-2">
-                    <div className={cn("w-2 h-2 rounded-full", column.color)}></div>
-                    <h3 className="font-bold text-slate-700 font-display">{column.label}</h3>
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-400 bg-white/50 backdrop-blur-sm border border-white/20 px-2 py-0.5 rounded-full shadow-sm">
-                    {filteredVacancies.filter(v => v.status === column.id).length}
-                  </span>
-                </div>
-                
-                <div 
-                  id={column.id}
-                  className="space-y-4 flex-1 min-h-[500px] p-2 rounded-2xl bg-slate-50/30 border border-dashed border-slate-200/50 transition-colors"
-                >
-                  <SortableContext 
-                    items={filteredVacancies.filter(v => v.status === column.id).map(v => v.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {filteredVacancies.filter(v => v.status === column.id).map((vacancy) => (
-                      <SortableVacancyCard 
-                        key={vacancy.id} 
-                        vacancy={vacancy} 
-                        onClick={() => onSelectVacancy(vacancy)} 
-                      />
-                    ))}
-                  </SortableContext>
-                  
-                  <button 
-                    onClick={() => setShowForm(true)}
-                    className="w-full py-4 border-2 border-dashed border-slate-200/50 rounded-2xl text-slate-400 hover:text-violet-600 hover:border-violet-300/50 hover:bg-white/40 transition-all flex items-center justify-center gap-2 text-sm font-bold backdrop-blur-sm"
-                  >
-                    <PlusIcon className="h-4 w-4" />
-                    <span>Añadir</span>
-                  </button>
-                </div>
-              </div>
-            ))}
+        </div>
+        <div className="glass-card p-6 flex items-center gap-5">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-emerald-50/80 text-emerald-600 border border-emerald-100/80 shadow-inner shrink-0">
+            <BriefcaseIcon className="h-7 w-7" />
           </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Total contratado
+            </p>
+            <p className="text-3xl font-bold text-slate-900 font-display tabular-nums">
+              {loading ? '—' : numberFormatter.format(filteredHiredTotal)}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Personas efectivamente contratadas.
+            </p>
+          </div>
+        </div>
+        <div className="glass-card p-6 flex items-center gap-5">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-cyan-50/80 text-cyan-600 border border-cyan-100/80 shadow-inner shrink-0">
+            <QueueListIcon className="h-7 w-7" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Registros (filas)
+            </p>
+            <p className="text-3xl font-bold text-slate-900 font-display tabular-nums">
+              {loading ? '—' : numberFormatter.format(filtered.length)}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {hasActiveFilters
+                ? `De ${numberFormatter.format(rows.length)} en total`
+                : 'Filas de vacantes visibles'}
+            </p>
+          </div>
+        </div>
+      </div>
 
-          <DragOverlay dropAnimation={{
-            sideEffects: defaultDropAnimationSideEffects({
-              styles: {
-                active: {
-                  opacity: '0.5',
-                },
-              },
-            }),
-          }}>
-            {activeVacancy ? (
-              <div className="glass-card p-4 shadow-2xl border-violet-400/50 rotate-3 scale-105 pointer-events-none">
-                <h4 className="font-bold text-slate-900 text-sm mb-2">{activeVacancy.title}</h4>
-                <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                  <RectangleGroupIcon className="h-3 w-3 text-violet-400" />
-                  <span>{activeVacancy.program}</span>
-                </div>
+      <div className="relative z-10 flex flex-col gap-4">
+        <div className="glass-panel p-4 flex flex-col gap-3 w-full">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-end">
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[180px] flex-1">
+              Buscar
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="search"
+                  placeholder="Cargo, programa, área, REQ…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery?.(e.target.value)}
+                  className="glass-input w-full pl-9 py-2 text-sm font-normal normal-case tracking-normal"
+                />
               </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      )}
-
-      {!loading && totalCount > 0 && (
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 py-8 relative z-10">
+            </label>
+            {statusOptions.length > 0 && (
+              <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[160px]">
+                Estado
+                <select
+                  className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                  value={statusFilter}
+                  onChange={(e) =>
+                    setStatusFilter(e.target.value as VacancyOperationStatus | '')
+                  }
+                >
+                  <option value="">Todos ({rows.length})</option>
+                  {statusOptions.map(({ status, count }) => (
+                    <option key={status} value={status}>
+                      {STATUS_LABEL[status]} ({count})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {areaOptions.length > 0 && (
+              <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[140px]">
+                Área
+                <select
+                  className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                  value={areaFilter}
+                  onChange={(e) => setAreaFilter(e.target.value)}
+                >
+                  <option value="">Todas</option>
+                  {areaOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {schoolOptions.length > 0 && (
+              <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[140px]">
+                Escuela
+                <select
+                  className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                  value={schoolFilter}
+                  onChange={(e) => setSchoolFilter(e.target.value)}
+                >
+                  <option value="">Todas</option>
+                  {schoolOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-end border-t border-slate-100/80 pt-3">
+            {programOptions.length > 0 && (
+              <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[140px]">
+                Programa
+                <select
+                  className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                  value={programFilter}
+                  onChange={(e) => setProgramFilter(e.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {programOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[160px]">
+              Fecha según
+              <select
+                className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                value={dateField}
+                onChange={(e) => setDateField(e.target.value as VacancyDateField)}
+              >
+                <option value="createdAt">Fecha de creación</option>
+                <option value="sentToCapitalAt">Envío a capital</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest">
+              Desde
+              <input
+                type="date"
+                className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest">
+              Hasta
+              <input
+                type="date"
+                className="glass-input py-2 text-sm font-normal normal-case tracking-normal"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={resetFilters}
+              disabled={loading || !hasActiveFilters}
+              className="glass-button-secondary py-2.5 px-5 text-xs font-bold uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Reiniciar filtros
+            </button>
+          </div>
+        </div>
+        <div className="flex justify-end">
           <button
             type="button"
-            disabled={currentPage <= 1}
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            className="glass-button-secondary px-6 py-3 text-xs font-bold uppercase tracking-widest disabled:opacity-40 disabled:pointer-events-none"
+            onClick={() => {
+              setSaveBanner(null);
+              setManagePanel({ mode: 'create' });
+            }}
+            className="glass-button-primary inline-flex items-center gap-1.5 px-4 py-1.5 text-sm whitespace-nowrap"
           >
-            Anterior
-          </button>
-          <p className="text-sm font-medium text-slate-600">
-            Página {currentPage} de {Math.max(totalPages, 1)} ({totalCount}{" "}
-            vacantes)
-          </p>
-          <button
-            type="button"
-            disabled={currentPage >= totalPages || totalPages < 1}
-            onClick={() => setCurrentPage((p) => p + 1)}
-            className="glass-button-secondary px-6 py-3 text-xs font-bold uppercase tracking-widest disabled:opacity-40 disabled:pointer-events-none"
-          >
-            Siguiente
+            <PlusIcon className="h-4 w-4" />
+            <span>Nueva vacante</span>
           </button>
         </div>
-      )}
 
-      {/* New Vacancy Form Modal */}
-      <AnimatePresence>
-        {showForm && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowForm(false)}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-xl glass-panel p-6 sm:p-8 relative z-10 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar"
-            >
-              <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-cyan-500"></div>
-              
-              <div className="flex justify-between items-center mb-8">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-violet-50 flex items-center justify-center text-violet-600">
-                    <PlusIcon className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-slate-900 font-display">Nueva Vacante</h2>
-                    <p className="text-xs text-slate-500 font-medium tracking-wide uppercase">Registro de requerimiento docente</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setShowForm(false)}
-                  className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
-
-              <form onSubmit={handleAddVacancy} className="space-y-6">
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Título de la Vacante</label>
-                  <div className="relative">
-                    <BriefcaseIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <input 
-                      name="title"
-                      type="text" 
-                      required
-                      className="glass-input pl-12 py-3 text-sm" 
-                      placeholder="Ej: Docente Tiempo Completo - IA"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Programa</label>
-                    <div className="relative">
-                      <RectangleGroupIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="program"
-                        type="text" 
-                        required
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="Ej: Ingeniería"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Sede</label>
-                    <div className="relative">
-                      <MapPinIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <select name="campus" className="glass-input pl-12 py-3 text-sm appearance-none">
-                        <option value="Sede Norte">Sede Norte</option>
-                        <option value="Sede Centro">Sede Centro</option>
-                        <option value="Sede Sur">Sede Sur</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Coordinador Responsable</label>
-                    <div className="relative">
-                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <input 
-                        name="coordinator"
-                        type="text" 
-                        required
-                        className="glass-input pl-12 py-3 text-sm" 
-                        placeholder="Nombre del coordinador"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Prioridad</label>
-                    <select name="priority" className="glass-input py-3 text-sm appearance-none">
-                      <option value="low">Baja</option>
-                      <option value="medium">Media</option>
-                      <option value="high">Alta</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex gap-4 pt-4">
-                  <button 
-                    type="button"
-                    onClick={() => setShowForm(false)}
-                    className="flex-1 glass-button-secondary py-4 text-xs font-bold uppercase tracking-widest"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit"
-                    className="flex-[2] glass-button-primary py-4 text-xs font-bold uppercase tracking-widest"
-                  >
-                    Crear Vacante
-                  </button>
-                </div>
-              </form>
-            </motion.div>
+        {saveBanner && (
+          <div
+            role="status"
+            className="glass-panel px-4 py-3 text-sm font-medium text-emerald-900 bg-emerald-50/95 border border-emerald-200/80 rounded-2xl shadow-sm"
+          >
+            {saveBanner}
           </div>
         )}
+
+        {loadError && (
+          <div className="glass-panel p-4 text-sm text-rose-700 bg-rose-50/80 border border-rose-100">
+            {loadError}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="glass-panel p-20 flex flex-col items-center justify-center text-center space-y-4 overflow-hidden rounded-2xl w-full">
+            <div className="h-10 w-10 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+            <p className="text-sm font-medium text-slate-600">Cargando vacantes...</p>
+          </div>
+        ) : (
+          <div className="glass-panel p-0 overflow-x-auto rounded-2xl w-full">
+          <table className="w-full min-w-[1120px] text-left text-[15px] table-fixed border-collapse">
+            <colgroup>
+              <col className="w-[9%]" />
+              <col className="w-[10%]" />
+              <col className="w-[11%]" />
+              <col className="w-[11%]" />
+              <col className="w-[10%]" />
+              <col className="w-[15%]" />
+              <col className="w-[5%]" />
+              <col className="w-[5%]" />
+              <col className="w-[11%]" />
+              <col className="w-[13%]" />
+            </colgroup>
+            <thead>
+              <tr className="border-b border-slate-200/80 bg-slate-50/80 text-xs uppercase tracking-widest text-slate-500">
+                <th className="py-3 px-3 font-bold whitespace-nowrap text-left"># Requisición</th>
+                <th className="py-3 px-3 font-bold text-left leading-tight whitespace-normal">
+                  Tiempo activo
+                </th>
+                <th className="py-3 px-3 font-bold">Área</th>
+                <th className="py-3 px-4 font-bold">Escuela</th>
+                <th className="py-3 px-4 font-bold">Programa</th>
+                <th className="py-3 px-4 font-bold">Cargo</th>
+                <th className="py-3 px-4 font-bold text-center">Solic.</th>
+                <th className="py-3 px-4 font-bold text-center">Contr.</th>
+                <th className="py-3 px-4 font-bold whitespace-nowrap">Estado</th>
+                <th className="py-3 px-4 font-bold text-right whitespace-nowrap">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-16 text-center text-slate-500 text-[15px]">
+                    No hay vacantes para mostrar.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((v) => (
+                  <tr
+                    key={v.id}
+                    className="border-b border-slate-100/80 hover:bg-violet-50/30 transition-colors"
+                  >
+                    <td className="py-3 px-3 text-slate-700 text-sm align-top">
+                      {v.reqNumber?.trim() ? (
+                        <span
+                          className="block font-medium leading-snug break-words"
+                          title={v.reqNumber}
+                        >
+                          {v.reqNumber}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td
+                      className="py-3 px-3 text-slate-700 align-top"
+                      title={
+                        v.sentToCapitalAt
+                          ? vacancyActiveDaysTooltip(v.sentToCapitalAt)
+                          : 'SIN FECHA DE ENVÍO'
+                      }
+                    >
+                      <span className="block font-semibold text-violet-700 text-[11px] leading-snug uppercase tracking-wide whitespace-normal break-words">
+                        {v.sentToCapitalAt
+                          ? formatVacancyActiveDaysLabel(
+                              computeVacancyActiveDaysFromSent(v.sentToCapitalAt)
+                            )
+                          : 'SIN FECHA DE ENVÍO'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-slate-800 align-top">
+                      <span className="line-clamp-2" title={v.areaName ?? ''}>
+                        {v.areaName ?? '—'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-slate-800 align-top">
+                      <span className="line-clamp-2" title={v.schoolName ?? ''}>
+                        {v.schoolName ?? '—'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-slate-700 align-top">
+                      <span className="line-clamp-2" title={v.programName ?? ''}>
+                        {v.programName ?? '—'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 font-medium text-slate-900 align-top">
+                      <span className="line-clamp-2" title={v.positionName}>
+                        {v.positionName}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center text-slate-800 tabular-nums align-top">
+                      {v.quantity}
+                    </td>
+                    <td className="py-3 px-4 text-center text-slate-800 tabular-nums align-top">
+                      <span
+                        title={
+                          v.hiredQuantity < v.quantity
+                            ? `${v.quantity - v.hiredQuantity} pendiente(s)`
+                            : 'Completamente contratado'
+                        }
+                      >
+                        {v.hiredQuantity ?? 0}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 align-top">
+                      <span
+                        className={cn(
+                          'inline-flex px-2 py-0.5 rounded-md text-xs font-bold border',
+                          v.operationStatus === 'open' && 'bg-blue-50 text-blue-700 border-blue-100',
+                          v.operationStatus === 'selected' &&
+                            'bg-amber-50 text-amber-800 border-amber-100',
+                          v.operationStatus === 'requisition_sent' &&
+                            'bg-violet-50 text-violet-800 border-violet-100',
+                          v.operationStatus === 'hired' &&
+                            'bg-emerald-50 text-emerald-800 border-emerald-100',
+                          (v.operationStatus === 'closed' ||
+                            v.operationStatus === 'cancelled' ||
+                            v.operationStatus === 'cancelled_by_capital') &&
+                            'bg-slate-100 text-slate-600 border-slate-200'
+                        )}
+                      >
+                        {STATUS_LABEL[v.operationStatus]}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 align-top">
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        <button
+                          type="button"
+                          title="Ver detalle"
+                          onClick={() => onSelectVacancy(v)}
+                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200"
+                        >
+                          <EyeIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Gestionar vacante y requisición"
+                          disabled={!canOpenVacancyManage(v.operationStatus, isVacancyAdmin)}
+                          onClick={() => {
+                            if (!canOpenVacancyManage(v.operationStatus, isVacancyAdmin)) return;
+                            openEdit(v);
+                          }}
+                          className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:text-slate-600 disabled:hover:border-slate-200"
+                        >
+                          <PencilSquareIcon className="h-4 w-4" />
+                        </button>
+                        {isVacancyAdmin && (
+                          <button
+                            type="button"
+                            title="Eliminar vacante y requisición"
+                            onClick={() => setDeleteTarget(v)}
+                            className="p-1.5 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {managePanel && (
+          <VacancyManageModal
+            key={
+              managePanel.mode === 'create'
+                ? 'create'
+                : `edit-${managePanel.vacancy.id}-${managePanel.vacancy.updatedAt ?? ''}`
+            }
+            mode={managePanel.mode}
+            vacancy={managePanel.mode === 'edit' ? managePanel.vacancy : null}
+            onClose={() => setManagePanel(null)}
+            onSaved={(v, message) => void handleModalSaved(v, message)}
+            isVacancyAdmin={isVacancyAdmin}
+          />
+        )}
       </AnimatePresence>
+
+      <ConfirmTextModal
+        open={deleteTarget != null}
+        title="Eliminar vacante y requisición"
+        description="Se eliminará por completo la vacante y su requisición asociada. Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        loading={deleteLoading}
+        onClose={() => {
+          if (!deleteLoading) setDeleteTarget(null);
+        }}
+        onConfirm={async (confirmText) => {
+          if (!deleteTarget) return;
+          setDeleteLoading(true);
+          try {
+            await deleteVacancy(deleteTarget.id, { confirmText });
+            setDeleteTarget(null);
+            setSaveBanner('Vacante eliminada.');
+            await refresh();
+          } catch (e) {
+            setLoadError(
+              e instanceof Error ? e.message : 'No se pudo eliminar'
+            );
+          } finally {
+            setDeleteLoading(false);
+          }
+        }}
+      />
     </div>
   );
 };
