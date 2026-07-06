@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sidebar } from './components/layout/Sidebar';
 import { LoginView } from './components/views/LoginView';
@@ -17,25 +17,84 @@ import { CoordinatorsView } from './components/views/CoordinatorsView';
 import { LitesView } from './components/views/LitesView';
 import { AcademicLoadView } from './components/views/AcademicLoadView';
 import { AuditView } from './components/views/AuditView';
-import { ExportView } from './components/views/ExportView';
 import { ProgramsView } from './components/views/ProgramsView';
-import { View, Teacher, Vacancy } from './types';
+import { PersonalView } from './components/views/PersonalView';
+import { View, Teacher, Vacancy, NAV_ITEMS } from './types';
 import { VacancyDetailView } from './components/views/VacancyDetailView';
+import { VacancyInformativePanelView } from './components/views/VacancyInformativePanelView';
 import { MOCK_TEACHERS, MOCK_VACANCIES, MOCK_COORDINATORS } from './data/mockData';
 
 import { BRAND_CONFIG } from './config/brand';
 import { Logo } from './components/common/Logo';
+import {
+  clearOrbitSession,
+  getStoredCapabilities,
+  getStoredOrbitAccess,
+  getVacancy,
+  isStoredJwtValid,
+  type GoogleAuthResponse,
+  type OrbitAccess,
+} from "./lib/api";
+import {
+  canAccessView,
+  canBulkImportTeachers,
+  canManageVacancies,
+  filterNavItems,
+  getDefaultView,
+  hasCapability,
+  ORBIT_CAPABILITY,
+} from "./lib/permissions";
 
 export default function App() {
   const [view, setView] = useState<View>('login');
+  const [orbitAccess, setOrbitAccess] = useState<OrbitAccess | null>(null);
+  const [capabilities, setCapabilities] = useState<string[]>([]);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
   const [selectedVacancy, setSelectedVacancy] = useState<Vacancy | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const handleLogin = (email: string, id: string) => {
-    console.log('Logged in with:', email, id);
-    setView('home');
+  useEffect(() => {
+    const jwtPresent =
+      typeof localStorage !== "undefined" &&
+      Boolean(localStorage.getItem("orbit_jwt")?.trim());
+    if (jwtPresent && !isStoredJwtValid()) {
+      clearOrbitSession();
+      return;
+    }
+    if (!isStoredJwtValid()) return;
+    const caps = getStoredCapabilities();
+    setOrbitAccess(getStoredOrbitAccess() ?? "full");
+    setCapabilities(caps);
+    setView(getDefaultView(caps));
+  }, []);
+
+  useEffect(() => {
+    if (view === "login") return;
+    if (!canAccessView(view, capabilities)) {
+      setView(getDefaultView(capabilities));
+    }
+  }, [view, capabilities]);
+
+  const sidebarNavItems = useMemo(
+    () => filterNavItems(NAV_ITEMS, capabilities),
+    [capabilities]
+  );
+
+  const handleLogout = useCallback(() => {
+    clearOrbitSession();
+    setOrbitAccess(null);
+    setCapabilities([]);
+    setSelectedTeacher(null);
+    setSelectedVacancy(null);
+  }, []);
+
+  const handleLogin = (auth: GoogleAuthResponse) => {
+    const access: OrbitAccess = auth.user.orbitAccess ?? "full";
+    const caps = auth.user.capabilities ?? [];
+    setOrbitAccess(access);
+    setCapabilities(caps);
+    setView(getDefaultView(caps));
   };
 
   const handleSelectTeacher = (teacher: Teacher) => {
@@ -48,25 +107,98 @@ export default function App() {
     setView('vacancy-detail');
   };
 
+  const handleVacancySaved = useCallback((v: Vacancy) => {
+    setSelectedVacancy((prev) =>
+      prev?.id === v.id ? { ...prev, ...v } : prev
+    );
+  }, []);
+
+  const handleOpenVacancyFromNotification = useCallback(
+    async (vacancyId: string) => {
+      try {
+        const v = await getVacancy(vacancyId);
+        setSelectedVacancy(v);
+        setView("vacancy-detail");
+      } catch {
+        setView("vacancies");
+      }
+    },
+    []
+  );
+
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return null;
     const query = searchQuery.toLowerCase();
-    
-    const teachers = MOCK_TEACHERS.filter(t => t.name.toLowerCase().includes(query));
-    const vacancies = MOCK_VACANCIES.filter(v => v.title.toLowerCase().includes(query));
-    const coordinators = MOCK_COORDINATORS.filter(c => c.name.toLowerCase().includes(query));
-    
+
+    const teachers = MOCK_TEACHERS.filter((t) =>
+      t.name.toLowerCase().includes(query)
+    );
+    const canSearchVacancies = hasCapability(
+      capabilities,
+      ORBIT_CAPABILITY.VACANCIES
+    );
+    const canSearchCoordinators = hasCapability(
+      capabilities,
+      ORBIT_CAPABILITY.COORDINATORS
+    );
+    if (!canSearchVacancies && !canSearchCoordinators) {
+      return { teachers, vacancies: [], coordinators: [] };
+    }
+    const vacancies = canSearchVacancies
+      ? MOCK_VACANCIES.filter(
+          (v) =>
+            v.positionName.toLowerCase().includes(query) ||
+            (v.programName ?? "").toLowerCase().includes(query) ||
+            (v.areaName ?? "").toLowerCase().includes(query) ||
+            v.id.toLowerCase().includes(query)
+        )
+      : [];
+    const coordinators = canSearchCoordinators
+      ? MOCK_COORDINATORS.filter((c) =>
+          c.name.toLowerCase().includes(query)
+        )
+      : [];
+
     return { teachers, vacancies, coordinators };
-  }, [searchQuery]);
+  }, [searchQuery, capabilities]);
+
+  const hideBulkImport =
+    !canBulkImportTeachers(capabilities) ||
+    orbitAccess === "lite" ||
+    orbitAccess === "school";
+  const canVacancies = canManageVacancies(capabilities);
 
   const renderView = () => {
-    const commonProps = { searchQuery, setSearchQuery, searchResults };
+    const commonProps = {
+      searchQuery,
+      setSearchQuery,
+      searchResults,
+      onOpenVacancyFromNotification: handleOpenVacancyFromNotification,
+    };
     
     switch (view) {
       case 'home':
-        return <HomeView setView={setView} {...commonProps} />;
+        return (
+          <HomeView
+            setView={setView}
+            canBulkImport={
+              canBulkImportTeachers(capabilities) &&
+              orbitAccess !== "lite" &&
+              orbitAccess !== "school"
+            }
+            canManageVacancies={canVacancies}
+            isLiteUser={orbitAccess === "lite"}
+            {...commonProps}
+          />
+        );
       case 'teachers':
-        return <TeachersView onSelectTeacher={handleSelectTeacher} {...commonProps} />;
+        return (
+          <TeachersView
+            onSelectTeacher={handleSelectTeacher}
+            hideBulkImport={hideBulkImport}
+            {...commonProps}
+          />
+        );
       case 'teacher-detail':
         return selectedTeacher ? (
           <TeacherDetailView teacher={selectedTeacher} setView={setView} {...commonProps} />
@@ -74,12 +206,33 @@ export default function App() {
           <HomeView setView={setView} {...commonProps} />
         );
       case 'vacancies':
-        return <VacanciesView onSelectVacancy={handleSelectVacancy} {...commonProps} />;
+        return (
+          <VacanciesView
+            onSelectVacancy={handleSelectVacancy}
+            onVacancySaved={handleVacancySaved}
+            {...commonProps}
+          />
+        );
+      case 'vacancy-informative-panel':
+        return <VacancyInformativePanelView />;
       case 'vacancy-detail':
         return selectedVacancy ? (
-          <VacancyDetailView vacancy={selectedVacancy} setView={setView} {...commonProps} />
+          <VacancyDetailView
+            summary={selectedVacancy}
+            setView={setView}
+            onVacancySaved={handleVacancySaved}
+            onVacancyDeleted={() => {
+              setSelectedVacancy(null);
+              setView('vacancies');
+            }}
+            {...commonProps}
+          />
         ) : (
-          <VacanciesView onSelectVacancy={handleSelectVacancy} {...commonProps} />
+          <VacanciesView
+            onSelectVacancy={handleSelectVacancy}
+            onVacancySaved={handleVacancySaved}
+            {...commonProps}
+          />
         );
       case 'reinstatements':
         return <ReinstatementsView {...commonProps} />;
@@ -93,10 +246,10 @@ export default function App() {
         return <AcademicLoadView {...commonProps} />;
       case 'audit':
         return <AuditView {...commonProps} />;
-      case 'export':
-        return <ExportView {...commonProps} />;
       case 'programs':
         return <ProgramsView setView={setView} {...commonProps} />;
+      case 'personal':
+        return <PersonalView {...commonProps} />;
       default:
         return <HomeView setView={setView} {...commonProps} />;
     }
@@ -127,6 +280,8 @@ export default function App() {
         }} 
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        navItems={sidebarNavItems}
+        onLogout={handleLogout}
       />
       
       {/* Mobile Overlay */}
@@ -142,13 +297,13 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <main className="flex-1 md:ml-64 p-4 md:p-10 min-h-screen w-full relative">
+      <main className="flex-1 md:ml-64 p-3 md:p-5 xl:p-6 min-h-screen w-full relative">
         {/* Mobile Header Toggle */}
-        <div className="md:hidden sticky top-0 -mx-4 px-4 py-3 mb-6 bg-white/80 backdrop-blur-lg border-b border-slate-200/50 flex items-center justify-between z-40">
+        <motion.div className="md:hidden sticky top-0 -mx-4 px-4 py-3 mb-6 bg-white/80 backdrop-blur-lg border-b border-slate-200/50 flex items-center justify-between z-40">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 bg-white rounded-xl flex items-center justify-center text-white shadow-lg`}>
+            <motion.div className={`w-10 h-10 bg-white rounded-xl flex items-center justify-center text-white shadow-lg`}>
               <Logo className="h-6 w-6" />
-            </div>
+            </motion.div>
             <span className="font-bold text-xl tracking-tight text-slate-900 font-display">{BRAND_CONFIG.name}</span>
           </div>
           <button 
@@ -157,19 +312,19 @@ export default function App() {
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg>
           </button>
-        </div>
+        </motion.div>
 
         <AnimatePresence mode="wait">
-          <motion.div
-            key={view}
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-            className="max-w-7xl mx-auto"
-          >
-            {renderView()}
-          </motion.div>
+        <motion.div
+          key={view}
+          initial={{ opacity: 0, x: 10 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -10 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+          className="w-full max-w-none px-5"
+        >
+          {renderView()}
+        </motion.div>
         </AnimatePresence>
       </main>
     </div>

@@ -1,26 +1,33 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { 
-  BellIcon, 
-  ExclamationCircleIcon, 
-  CalendarIcon, 
-  ClockIcon, 
-  EllipsisHorizontalIcon, 
-  PlusIcon, 
-  MagnifyingGlassIcon, 
+import {
+  MagnifyingGlassIcon,
   FunnelIcon,
-  UserIcon,
-  InformationCircleIcon
+  InformationCircleIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
-import { NewsItem, Teacher, Vacancy, Coordinator } from '@/src/types';
-
-const MOCK_NEWS: NewsItem[] = [
-  { id: 'N1', teacherName: 'Elena Rodríguez', type: 'incapacity', severity: 'high', date: '2024-03-24', description: 'Incapacidad médica por 15 días debido a cirugía programada.' },
-  { id: 'N2', teacherName: 'Carlos Poveda', type: 'license', severity: 'medium', date: '2024-03-22', description: 'Licencia de paternidad solicitada para el mes de Abril.' },
-  { id: 'N3', teacherName: 'Sofía Herrera', type: 'other', severity: 'low', date: '2024-03-20', description: 'Cambio de horario solicitado para el bloque de los viernes.' },
-];
+import { Teacher, Vacancy, Coordinator } from '@/src/types';
+import { PersonSearchCombobox } from '@/src/components/common/PersonSearchCombobox';
+import { WorkforceEventStatusHistory } from '@/src/components/common/WorkforceEventStatusHistory';
+import {
+  createWorkforceEvent,
+  getCatalogAreas,
+  getCatalogSchools,
+  getWorkforceEventTypes,
+  getWorkforceEvents,
+  patchWorkforceEventStatus,
+  type WorkforceEvent,
+  type WorkforceEventStatus,
+  type WorkforceEventType,
+} from '@/src/lib/api';
+import type { PersonPick } from '@/src/components/common/PersonSearchCombobox';
+import {
+  WORKFORCE_EVENT_STATUS_LABELS,
+  WORKFORCE_EVENT_STATUS_OPTIONS,
+  formatWorkforceEventSchedule,
+  workforceStatusBadgeClass,
+} from '@/src/lib/workforceEventLabels';
 
 interface NewsViewProps {
   searchQuery?: string;
@@ -32,55 +39,170 @@ interface NewsViewProps {
   } | null;
 }
 
-export const NewsView: React.FC<NewsViewProps> = ({ 
-  searchQuery = '', 
+function formatEventDate(iso: string) {
+  return new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(iso));
+}
+
+export const NewsView: React.FC<NewsViewProps> = ({
+  searchQuery = '',
   setSearchQuery,
-  searchResults 
+  searchResults,
 }) => {
-  const [newsList, setNewsList] = React.useState<NewsItem[]>(MOCK_NEWS);
-  const [newReport, setNewReport] = React.useState({
-    teacherName: '',
-    type: 'other' as NewsItem['type'],
-    description: ''
-  });
+  const [feedSearch, setFeedSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<WorkforceEventStatus | ''>('');
+  const [typeFilter, setTypeFilter] = useState<string>('');
+  const [schoolFilter, setSchoolFilter] = useState<string>('');
+  const [areaFilter, setAreaFilter] = useState<string>('');
 
-  const filteredNews = useMemo(() => {
-    return newsList.filter(n => 
-      n.teacherName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      n.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      n.type.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [searchQuery, newsList]);
+  const [events, setEvents] = useState<WorkforceEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [eventTypes, setEventTypes] = useState<WorkforceEventType[]>([]);
+  const [schools, setSchools] = useState<Array<{ id: number; name: string }>>([]);
+  const [areas, setAreas] = useState<Array<{ id: number; name: string }>>([]);
 
-  const handleSaveReport = () => {
-    if (!newReport.teacherName || !newReport.description) {
-      alert('Por favor complete todos los campos.');
+  const [selectedPerson, setSelectedPerson] = useState<PersonPick | null>(null);
+  const [formTypeId, setFormTypeId] = useState('');
+  const [formStatus, setFormStatus] = useState<WorkforceEventStatus>('NOT_TAKEN');
+  const [formDescription, setFormDescription] = useState('');
+  const [formStartDate, setFormStartDate] = useState('');
+  const [formEndDate, setFormEndDate] = useState('');
+  const [formStartTime, setFormStartTime] = useState('');
+  const [formEndTime, setFormEndTime] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formMessage, setFormMessage] = useState<string | null>(null);
+
+  const loadEvents = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getWorkforceEvents({
+        limit: 100,
+        search: feedSearch.trim() || undefined,
+        status: statusFilter || undefined,
+        event_type_id: typeFilter ? Number.parseInt(typeFilter, 10) : undefined,
+        school_id: schoolFilter ? Number.parseInt(schoolFilter, 10) : undefined,
+        area_id: areaFilter ? Number.parseInt(areaFilter, 10) : undefined,
+      });
+      setEvents(res.data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar novedades');
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [feedSearch, statusFilter, typeFilter, schoolFilter, areaFilter]);
+
+  useEffect(() => {
+    void loadEvents();
+  }, [loadEvents]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [types, areasRes, schoolsRes] = await Promise.all([
+          getWorkforceEventTypes(),
+          getCatalogAreas(),
+          getCatalogSchools(
+            areaFilter ? { area_id: Number.parseInt(areaFilter, 10) } : undefined
+          ),
+        ]);
+        if (!cancelled) {
+          setEventTypes(types);
+          setAreas(areasRes.map((a) => ({ id: a.id, name: a.name })));
+          setSchools(schoolsRes.map((s) => ({ id: s.id, name: s.name })));
+          if (types.length > 0 && !formTypeId) {
+            setFormTypeId(String(types[0].id));
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setEventTypes([]);
+          setAreas([]);
+          setSchools([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [areaFilter]);
+
+  const criticalCount = useMemo(
+    () => events.filter((e) => e.status === 'NOT_TAKEN' || e.status === 'PENDING').length,
+    [events]
+  );
+
+  const handleSaveReport = async () => {
+    const hasSchedule =
+      formStartDate.trim() !== '' ||
+      formEndDate.trim() !== '' ||
+      formStartTime.trim() !== '' ||
+      formEndTime.trim() !== '';
+
+    if (!selectedPerson) {
+      setFormMessage('Seleccione una persona de la lista.');
       return;
     }
+    if (!formDescription.trim() && !hasSchedule) {
+      setFormMessage('Describa la novedad o indique al menos una fecha u hora.');
+      return;
+    }
+    const typeId = Number.parseInt(formTypeId, 10);
+    if (!Number.isFinite(typeId)) {
+      setFormMessage('Seleccione un tipo de novedad.');
+      return;
+    }
+    setSaving(true);
+    setFormMessage(null);
+    try {
+      await createWorkforceEvent({
+        event_type_id: typeId,
+        person_id: selectedPerson.id,
+        observation: formDescription.trim() || null,
+        start_date: formStartDate.trim() || null,
+        end_date: formEndDate.trim() || null,
+        start_time: formStartTime.trim() || null,
+        end_time: formEndTime.trim() || null,
+        status: formStatus,
+      });
+      setFormDescription('');
+      setFormStatus('NOT_TAKEN');
+      setFormStartDate('');
+      setFormEndDate('');
+      setFormStartTime('');
+      setFormEndTime('');
+      setSelectedPerson(null);
+      setFormMessage('Novedad registrada.');
+      await loadEvents();
+    } catch (e) {
+      setFormMessage(e instanceof Error ? e.message : 'No se pudo guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    const newItem: NewsItem = {
-      id: `N${newsList.length + 1}`,
-      teacherName: newReport.teacherName,
-      type: newReport.type,
-      severity: newReport.type === 'incapacity' ? 'high' : newReport.type === 'license' ? 'medium' : 'low',
-      date: new Date().toISOString().split('T')[0],
-      description: newReport.description
-    };
-
-    setNewsList([newItem, ...newsList]);
-    setNewReport({ teacherName: '', type: 'other', description: '' });
-    alert('Novedad registrada exitosamente.');
+  const handleStatusChange = async (id: string, status: WorkforceEventStatus) => {
+    try {
+      const updated = await patchWorkforceEventStatus(id, status);
+      setEvents((prev) => prev.map((e) => (e.id === id ? updated : e)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo actualizar');
+    }
   };
 
   return (
     <div className="space-y-8 relative">
-      {/* Decorative background elements */}
       <div className="absolute -top-20 -right-20 w-64 h-64 bg-violet-200/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 rounded-full blur-3xl pointer-events-none" />
 
-      <Header 
-        title="Novedades y Reportes" 
-        subtitle="Seguimiento de cambios y alertas operativas" 
+      <Header
+        title="Novedades y Reportes"
+        subtitle="Seguimiento de novedades por escuela o área"
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         searchResults={searchResults}
@@ -89,73 +211,184 @@ export const NewsView: React.FC<NewsViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-10">
         <div className="lg:col-span-8 space-y-6">
           <div className="glass-panel p-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-              <h3 className="text-lg font-bold text-slate-900 font-display">Feed de Novedades</h3>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <div className="glass-panel p-1 flex items-center gap-2 flex-1 sm:flex-none">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <h3 className="text-lg font-bold text-slate-900 font-display">
+                Feed de Novedades
+              </h3>
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <div className="glass-panel p-1 flex items-center gap-2 flex-1 min-w-[140px] sm:flex-none">
                   <MagnifyingGlassIcon className="ml-2 h-3.5 w-3.5 text-slate-400" />
-                  <input 
-                    type="text" 
-                    placeholder="Buscar novedades..." 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery?.(e.target.value)}
+                  <input
+                    type="text"
+                    placeholder="Buscar…"
+                    value={feedSearch}
+                    onChange={(e) => setFeedSearch(e.target.value)}
                     className="bg-transparent border-none focus:ring-0 text-xs py-1 w-full sm:w-40"
                   />
                 </div>
-                <button className="glass-button-secondary p-2 shrink-0">
+                <select
+                  className="glass-input py-1.5 text-xs max-w-[130px]"
+                  value={statusFilter}
+                  onChange={(e) =>
+                    setStatusFilter(e.target.value as WorkforceEventStatus | '')
+                  }
+                >
+                  <option value="">Estado</option>
+                  {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
+                    <option key={st} value={st}>
+                      {WORKFORCE_EVENT_STATUS_LABELS[st]}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="glass-input py-1.5 text-xs max-w-[120px]"
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                >
+                  <option value="">Tipo</option>
+                  {eventTypes.map((t) => (
+                    <option key={t.id} value={String(t.id)}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                {areas.length > 0 ? (
+                  <select
+                    className="glass-input py-1.5 text-xs max-w-[120px]"
+                    value={areaFilter}
+                    onChange={(e) => {
+                      setAreaFilter(e.target.value);
+                      setSchoolFilter('');
+                    }}
+                  >
+                    <option value="">Área</option>
+                    {areas.map((a) => (
+                      <option key={a.id} value={String(a.id)}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                {schools.length > 0 ? (
+                  <select
+                    className="glass-input py-1.5 text-xs max-w-[140px]"
+                    value={schoolFilter}
+                    onChange={(e) => setSchoolFilter(e.target.value)}
+                  >
+                    <option value="">Escuela</option>
+                    {schools.map((s) => (
+                      <option key={s.id} value={String(s.id)}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                <button
+                  type="button"
+                  className="glass-button-secondary p-2 shrink-0"
+                  title="Aplicar filtros"
+                  onClick={() => void loadEvents()}
+                >
                   <FunnelIcon className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
+            {error ? (
+              <p className="mb-4 text-sm text-red-600">{error}</p>
+            ) : null}
+
             <div className="space-y-6">
-              {filteredNews.length === 0 ? (
+              {loading ? (
+                <p className="py-12 text-center text-sm text-slate-500">
+                  Cargando novedades…
+                </p>
+              ) : events.length === 0 ? (
                 <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
                   <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 border border-white/50 shadow-inner">
                     <MagnifyingGlassIcon className="h-8 w-8" />
                   </div>
                   <div className="space-y-1">
-                    <h3 className="text-lg font-bold text-slate-900 font-display">No se encontraron novedades</h3>
+                    <h3 className="text-lg font-bold text-slate-900 font-display">
+                      No hay novedades
+                    </h3>
                     <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                      No pudimos encontrar novedades que coincidan con tu búsqueda actual.
+                      Registre una novedad o ajuste los filtros de búsqueda.
                     </p>
                   </div>
                 </div>
               ) : (
-                filteredNews.map((news) => (
-                  <motion.div 
+                events.map((news) => (
+                  <motion.div
                     key={news.id}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     className="relative pl-6 border-l-2 border-slate-200/50 hover:border-violet-400 transition-colors group"
                   >
-                    <div className={cn(
-                      "absolute -left-[9px] top-0 w-4 h-4 rounded-full border-4 border-white shadow-sm",
-                      news.severity === 'high' ? "bg-red-500" : 
-                      news.severity === 'medium' ? "bg-amber-500" : "bg-blue-500"
-                    )}></div>
-                    
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h4 className="font-bold text-slate-900 group-hover:text-violet-600 transition-colors">{news.teacherName}</h4>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">{news.date}</span>
-                          <span className={cn(
-                            "text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border",
-                            news.type === 'incapacity' ? "bg-red-50 text-red-600 border-red-100" : 
-                            news.type === 'license' ? "bg-blue-50 text-blue-600 border-blue-100" : "bg-slate-50 text-slate-600 border-slate-100"
-                          )}>
-                            {news.type}
+                    <div
+                      className={cn(
+                        'absolute -left-[9px] top-0 w-4 h-4 rounded-full border-4 border-white shadow-sm',
+                        news.status === 'NOT_TAKEN' || news.status === 'PENDING'
+                          ? 'bg-amber-500'
+                          : news.status === 'TAKEN' || news.status === 'APPROVED'
+                            ? 'bg-emerald-500'
+                            : 'bg-blue-500'
+                      )}
+                    />
+
+                    <div className="flex justify-between items-start mb-2 gap-4">
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-slate-900 group-hover:text-violet-600 transition-colors truncate">
+                          {news.person.name}
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
+                            {formatEventDate(news.created_at)}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border bg-violet-50 text-violet-600 border-violet-100">
+                            {news.event_type_name}
+                          </span>
+                          <span
+                            className={cn(
+                              'text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border',
+                              workforceStatusBadgeClass(news.status)
+                            )}
+                          >
+                            {WORKFORCE_EVENT_STATUS_LABELS[news.status]}
                           </span>
                         </div>
+                        {news.person.school_name ? (
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {news.person.school_name}
+                          </p>
+                        ) : null}
                       </div>
-                      <button className="glass-button-secondary p-1">
-                        <EllipsisHorizontalIcon className="h-4.5 w-4.5" />
-                      </button>
+                      <select
+                        className="glass-input shrink-0 py-1 text-xs max-w-[130px]"
+                        value={news.status}
+                        onChange={(e) =>
+                          void handleStatusChange(
+                            news.id,
+                            e.target.value as WorkforceEventStatus
+                          )
+                        }
+                      >
+                        {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
+                          <option key={st} value={st}>
+                            {WORKFORCE_EVENT_STATUS_LABELS[st]}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <p className="text-sm text-slate-600 leading-relaxed font-medium">
-                      {news.description}
+                      {news.observation ?? '—'}
                     </p>
+                    {formatWorkforceEventSchedule(news) ? (
+                      <p className="text-xs text-slate-400 mt-1">
+                        {formatWorkforceEventSchedule(news)}
+                      </p>
+                    ) : null}
+                    <WorkforceEventStatusHistory eventId={news.id} />
                   </motion.div>
                 ))
               )}
@@ -164,66 +397,126 @@ export const NewsView: React.FC<NewsViewProps> = ({
         </div>
 
         <div className="lg:col-span-4 space-y-6">
-          <div className="glass-panel p-6 bg-white border-white/50 shadow-xl overflow-hidden relative group">
-            {/* Subtle pattern background */}
-            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#8B5CF6 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
-            
-            {/* Decorative glows / Sparkles */}
-            <div className="absolute -top-10 -right-10 w-32 h-32 bg-violet-500/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-fuchsia-500/5 rounded-full blur-2xl" />
-            
+          <div className="glass-panel p-6 bg-white border-white/50 shadow-xl overflow-hidden relative">
             <div className="relative z-10">
-              <h3 className="font-bold mb-4 font-display text-lg text-slate-900">Registrar Novedad</h3>
-              <p className="text-xs text-slate-500 mb-6 font-medium">Complete el formulario para reportar una novedad operativa en el sistema.</p>
+              <h3 className="font-bold mb-4 font-display text-lg text-slate-900">
+                Registrar Novedad
+              </h3>
+              <p className="text-xs text-slate-500 mb-6 font-medium">
+                Busque la persona y complete el reporte.
+              </p>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Docente</label>
-                  <input 
-                    type="text"
-                    placeholder="Nombre del docente..."
-                    value={newReport.teacherName}
-                    onChange={(e) => setNewReport({...newReport, teacherName: e.target.value})}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400 focus:bg-white transition-all"
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">
+                    Persona
+                  </label>
+                  <PersonSearchCombobox
+                    value={selectedPerson}
+                    onChange={setSelectedPerson}
+                    placeholder="Escriba nombre o documento…"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Tipo de Novedad</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { id: 'incapacity', label: 'Incapacidad' },
-                      { id: 'license', label: 'Licencia' },
-                      { id: 'resignation', label: 'Renuncia' },
-                      { id: 'other', label: 'Otro' }
-                    ].map((type) => (
-                      <button 
-                        key={type.id} 
-                        onClick={() => setNewReport({...newReport, type: type.id as NewsItem['type']})}
-                        className={cn(
-                          "p-2 border rounded-lg text-[10px] font-bold transition-all",
-                          newReport.type === type.id 
-                            ? "bg-violet-500 border-violet-500 text-white shadow-lg shadow-violet-500/20" 
-                            : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100"
-                        )}
-                      >
-                        {type.label}
-                      </button>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">
+                    Tipo
+                  </label>
+                  <select
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                    value={formTypeId}
+                    onChange={(e) => setFormTypeId(e.target.value)}
+                  >
+                    {eventTypes.map((t) => (
+                      <option key={t.id} value={String(t.id)}>
+                        {t.name}
+                      </option>
                     ))}
-                  </div>
+                  </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">Descripción</label>
-                  <textarea 
-                    value={newReport.description}
-                    onChange={(e) => setNewReport({...newReport, description: e.target.value})}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400 focus:bg-white transition-all h-24 resize-none"
-                    placeholder="Detalles de la novedad..."
-                  ></textarea>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">
+                    Estado
+                  </label>
+                  <select
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                    value={formStatus}
+                    onChange={(e) =>
+                      setFormStatus(e.target.value as WorkforceEventStatus)
+                    }
+                  >
+                    {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
+                      <option key={st} value={st}>
+                        {WORKFORCE_EVENT_STATUS_LABELS[st]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <button 
-                  onClick={handleSaveReport}
-                  className="glass-button-primary w-full py-3 text-sm font-bold tracking-widest uppercase shadow-lg shadow-violet-500/20"
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">
+                    Descripción
+                  </label>
+                  <textarea
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400 h-24 resize-none"
+                    placeholder="Detalles de la novedad…"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      Fecha inicio
+                    </label>
+                    <input
+                      type="date"
+                      value={formStartDate}
+                      onChange={(e) => setFormStartDate(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      Fecha fin
+                    </label>
+                    <input
+                      type="date"
+                      value={formEndDate}
+                      onChange={(e) => setFormEndDate(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      Hora inicio
+                    </label>
+                    <input
+                      type="time"
+                      value={formStartTime}
+                      onChange={(e) => setFormStartTime(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                      Hora fin
+                    </label>
+                    <input
+                      type="time"
+                      value={formEndTime}
+                      onChange={(e) => setFormEndTime(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                {formMessage ? (
+                  <p className="text-xs text-violet-600 font-medium">{formMessage}</p>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void handleSaveReport()}
+                  className="glass-button-primary w-full py-3 text-sm font-bold tracking-widest uppercase disabled:opacity-50"
                 >
-                  Guardar Reporte
+                  {saving ? 'Guardando…' : 'Guardar reporte'}
                 </button>
               </div>
             </div>
@@ -232,20 +525,20 @@ export const NewsView: React.FC<NewsViewProps> = ({
           <div className="glass-panel p-6">
             <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2 font-display">
               <InformationCircleIcon className="h-4.5 w-4.5 text-violet-500" />
-              Impacto Operativo
+              Resumen
             </h3>
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-red-50/50 border border-red-100/50">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Clases Afectadas</span>
-                <span className="text-lg font-bold text-red-600">12</span>
+              <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50/50 border border-amber-100/50">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Pendientes / no tomados
+                </span>
+                <span className="text-lg font-bold text-amber-600">{criticalCount}</span>
               </div>
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50/50 border border-slate-100/50">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Docentes en Reemplazo</span>
-                <span className="text-lg font-bold text-slate-900">4</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50/50 border border-amber-100/50">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Horas por Cubrir</span>
-                <span className="text-lg font-bold text-amber-600">48h</span>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Total en lista
+                </span>
+                <span className="text-lg font-bold text-slate-900">{events.length}</span>
               </div>
             </div>
           </div>

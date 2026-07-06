@@ -22,9 +22,16 @@ interface AcademicLoadRow {
 }
 
 function mapRow(r: Record<string, unknown>): AcademicLoadRow {
-  const mod = String(r.modality ?? '').trim();
+  const modRaw = String(r.modality ?? '').trim();
+  const modNorm = modRaw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  let mod = modRaw;
+  if (/^P\b|^PRES/i.test(modNorm)) mod = 'P';
+  else if (/^V\b|^VIR/i.test(modNorm)) mod = 'V';
   const modalityLabel =
-    mod === 'P' ? 'Presencial' : mod === 'V' ? 'Virtual' : mod || '—';
+    mod === 'P' ? 'Presencial' : mod === 'V' ? 'Virtual' : modRaw || '—';
   const creditsVal = r.credits;
   const credits =
     creditsVal != null && creditsVal !== ''
@@ -221,8 +228,8 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
             onChange={(e) => setModalityFilter(e.target.value)}
           >
             <option value="">Todos</option>
-            <option value="P">P (Presencial)</option>
-            <option value="V">V (Virtual)</option>
+            <option value="P">Presencial / P</option>
+            <option value="V">Virtual / V</option>
           </select>
         </div>
       </div>
