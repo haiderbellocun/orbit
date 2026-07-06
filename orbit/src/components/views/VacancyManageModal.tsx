@@ -283,7 +283,10 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
     if (!editVacancy) return false;
     if (hiredRequisitionOnly) {
       if (!isVacancyAdmin) return false;
-      return Number(hiredQty) !== (editVacancy.hiredQuantity ?? 0);
+      return (
+        operationStatus !== editVacancy.operationStatus ||
+        Number(hiredQty) !== (editVacancy.hiredQuantity ?? 0)
+      );
     }
     if (coreLocked) {
       if (isVacancyAdmin && operationStatus !== editVacancy.operationStatus) {
@@ -471,13 +474,23 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
             setFormError('Se requiere confirmación para cambiar el estado.');
             return;
           }
-          result = await patchVacancyAdminStatus(id, {
+          const adminStatusBody: Parameters<typeof patchVacancyAdminStatus>[1] = {
             operationStatus,
             confirmText,
-            ...(operationStatus === 'hired' || adminHiredQtyChange
-              ? { hiredQuantity: Number(hiredQty) }
-              : {}),
-          });
+          };
+          if (operationStatus === 'hired') {
+            adminStatusBody.hiredQuantity = Number(hiredQty);
+          } else if (
+            editVacancy.operationStatus === 'hired' &&
+            (operationStatus === 'cancelled' ||
+              operationStatus === 'cancelled_by_capital' ||
+              operationStatus === 'closed')
+          ) {
+            adminStatusBody.hiredQuantity = 0;
+          } else if (adminHiredQtyChange) {
+            adminStatusBody.hiredQuantity = Number(hiredQty);
+          }
+          result = await patchVacancyAdminStatus(id, adminStatusBody);
           messages.push(
             adminHiredQtyChange && operationStatus === editVacancy.operationStatus
               ? 'Cantidad contratada actualizada (admin)'
