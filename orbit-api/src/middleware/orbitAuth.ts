@@ -2,7 +2,9 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import {
   hasCapability,
+  isEmailOnOrbitAllowlist,
   ORBIT_CAPABILITY,
+  SUPER_ADMIN_CAPABILITIES,
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
@@ -40,27 +42,6 @@ declare global {
 function asNum(v: unknown, fallback = 0): number {
   const n = typeof v === "number" ? v : Number.parseInt(String(v), 10);
   return Number.isFinite(n) ? n : fallback;
-}
-
-function parseProgramIds(v: unknown): number[] {
-  if (!Array.isArray(v)) return [];
-  const out: number[] = [];
-  for (const x of v) {
-    const n = typeof x === "number" ? x : Number.parseInt(String(x), 10);
-    if (Number.isFinite(n)) out.push(n);
-  }
-  return [...new Set(out)];
-}
-
-function parseCapabilities(v: unknown): OrbitCapability[] {
-  if (!Array.isArray(v)) return [];
-  const out: OrbitCapability[] = [];
-  for (const x of v) {
-    if (typeof x === "string" && x.trim() !== "") {
-      out.push(x.trim() as OrbitCapability);
-    }
-  }
-  return [...new Set(out)];
 }
 
 function extractBearerToken(req: Request): string | null {
@@ -121,18 +102,19 @@ export function orbitAuthMiddleware(
       res.status(401).json({ error: "Token inválido o expirado" });
       return;
     }
-    const orbitAccess = decoded.orbitAccess;
-    const capabilities = parseCapabilities(decoded.capabilities);
-    if (capabilities.length === 0) {
-      res.status(401).json({ error: "Token inválido o expirado" });
+
+    const email = String(decoded.email ?? "").trim().toLowerCase();
+    if (!isEmailOnOrbitAllowlist(email)) {
+      res.status(401).json({
+        error:
+          "ORBIT está en reestructuración. Tu cuenta aún no tiene acceso autorizado.",
+      });
       return;
     }
 
-    const schoolIdRaw = decoded.schoolId;
-    const schoolId =
-      schoolIdRaw != null && schoolIdRaw !== ""
-        ? asNum(schoolIdRaw, NaN)
-        : null;
+    // Reborn: allowlist = acceso total (ignora capabilities antiguas del JWT).
+    const orbitAccess: OrbitAccess = "full";
+    const capabilities: OrbitCapability[] = [...SUPER_ADMIN_CAPABILITIES];
 
     const roleIdRaw = decoded.roleId;
     const roleId =
@@ -143,7 +125,7 @@ export function orbitAuthMiddleware(
     req.orbitUser = {
       userId: asNum(decoded.userId, 0),
       personId: asNum(decoded.personId, 0),
-      email: String(decoded.email ?? ""),
+      email,
       name: String(decoded.name ?? ""),
       picture:
         decoded.picture != null ? String(decoded.picture) : undefined,
@@ -152,10 +134,8 @@ export function orbitAuthMiddleware(
       roleId: Number.isFinite(roleId) ? roleId : null,
       orbitAccess,
       capabilities,
-      schoolId:
-        (orbitAccess === "lite" || orbitAccess === "school") && Number.isFinite(schoolId)
-          ? schoolId
-          : null,
+      // Acceso total en reborn: sin recorte por escuela ni programa.
+      schoolId: null,
       areaId: (() => {
         const aid =
           typeof decoded.areaId === "number"
@@ -163,7 +143,7 @@ export function orbitAuthMiddleware(
             : Number.parseInt(String(decoded.areaId ?? ""), 10);
         return Number.isFinite(aid) && aid > 0 ? aid : null;
       })(),
-      programIds: orbitAccess === "lite" ? parseProgramIds(decoded.programIds) : [],
+      programIds: [],
     };
     next();
   } catch {

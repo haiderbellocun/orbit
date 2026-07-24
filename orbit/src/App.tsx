@@ -181,11 +181,6 @@ export default function App() {
         return (
           <HomeView
             setView={setView}
-            canBulkImport={
-              canBulkImportTeachers(capabilities) &&
-              orbitAccess !== "lite" &&
-              orbitAccess !== "school"
-            }
             canManageVacancies={canVacancies}
             isLiteUser={orbitAccess === "lite"}
             {...commonProps}
