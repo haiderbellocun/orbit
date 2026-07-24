@@ -8,7 +8,8 @@ import {
   UserGroupIcon,
   ShieldCheckIcon,
   FolderIcon,
-  BookOpenIcon
+  BookOpenIcon,
+  BuildingOffice2Icon,
 } from '@heroicons/react/24/solid';
 import { BrandConfig } from '../types';
 
@@ -60,5 +61,6 @@ export const APP_ICONS = {
   programs: BookOpenIcon,
   'academic-load': AcademicCapIcon,
   personal: UserGroupIcon,
+  'planta-activa': BuildingOffice2Icon,
   lites: UserGroupIcon,
 };

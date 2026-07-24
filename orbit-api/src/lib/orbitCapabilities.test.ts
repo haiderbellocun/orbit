@@ -179,6 +179,7 @@ test("allowlist default includes camilo", () => {
     assert.equal(admin.orbitAccess, "full");
     assert.deepEqual(admin.capabilities, [...SUPER_ADMIN_CAPABILITIES]);
     assert.equal(admin.capabilities.includes(ORBIT_CAPABILITY.PERSONAL), true);
+    assert.equal(admin.capabilities.includes(ORBIT_CAPABILITY.PLANTA_ACTIVA), true);
     assert.equal(admin.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN), true);
   } finally {
     if (prev === undefined) delete process.env.ORBIT_ACCESS_ALLOWLIST;

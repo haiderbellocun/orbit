@@ -216,6 +216,8 @@ export function orbitCapabilityByPathMiddleware(
   if (path.startsWith("/dashboard")) required = ORBIT_CAPABILITY.HOME;
   else if (path.startsWith("/teachers")) required = ORBIT_CAPABILITY.TEACHERS;
   else if (path.startsWith("/personal")) required = ORBIT_CAPABILITY.PERSONAL;
+  else if (path.startsWith("/planta-activa"))
+    required = ORBIT_CAPABILITY.PLANTA_ACTIVA;
   else if (path.startsWith("/vacancies")) required = ORBIT_CAPABILITY.VACANCIES;
   else if (path.startsWith("/coordinators")) required = ORBIT_CAPABILITY.COORDINATORS;
   else if (path.startsWith("/reinstatements")) required = ORBIT_CAPABILITY.VACANCIES;

@@ -19,6 +19,7 @@ import { AcademicLoadView } from './components/views/AcademicLoadView';
 import { AuditView } from './components/views/AuditView';
 import { ProgramsView } from './components/views/ProgramsView';
 import { PersonalView } from './components/views/PersonalView';
+import { PlantaActivaView } from './components/views/PlantaActivaView';
 import { View, Teacher, Vacancy, NAV_ITEMS } from './types';
 import { VacancyDetailView } from './components/views/VacancyDetailView';
 import { VacancyInformativePanelView } from './components/views/VacancyInformativePanelView';
@@ -91,10 +92,11 @@ export default function App() {
 
   const handleLogin = (auth: GoogleAuthResponse) => {
     const access: OrbitAccess = auth.user.orbitAccess ?? "full";
-    const caps = auth.user.capabilities ?? [];
+    // Tras guardar sesión, merge allowlist (incluye Planta Activa aunque el JWT sea viejo).
+    const caps = getStoredCapabilities();
     setOrbitAccess(access);
-    setCapabilities(caps);
-    setView(getDefaultView(caps));
+    setCapabilities(caps.length > 0 ? caps : (auth.user.capabilities ?? []));
+    setView(getDefaultView(caps.length > 0 ? caps : (auth.user.capabilities ?? [])));
   };
 
   const handleSelectTeacher = (teacher: Teacher) => {
@@ -245,6 +247,8 @@ export default function App() {
         return <ProgramsView setView={setView} {...commonProps} />;
       case 'personal':
         return <PersonalView {...commonProps} />;
+      case 'planta-activa':
+        return <PlantaActivaView {...commonProps} />;
       default:
         return <HomeView setView={setView} {...commonProps} />;
     }

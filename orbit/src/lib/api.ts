@@ -205,12 +205,91 @@ export function isStoredJwtValid(): boolean {
 
 export function getStoredCapabilities(): string[] {
   const fromUser = parseStoredUserCapabilities();
-  if (fromUser && fromUser.length > 0) return fromUser;
   const token = getStoredJwt();
   const p = token ? parseJwtPayload(token) : null;
-  if (p?.capabilities && p.capabilities.length > 0) return p.capabilities;
-  return [];
+  const base =
+    fromUser && fromUser.length > 0
+      ? fromUser
+      : p?.capabilities && p.capabilities.length > 0
+        ? p.capabilities
+        : [];
+
+  // Reborn: allowlist admin ve todas las capabilities aunque el JWT sea anterior.
+  if (isStoredEmailOnOrbitAllowlist()) {
+    return [...new Set([...ORBIT_ALLOWLIST_ADMIN_CAPABILITIES, ...base])];
+  }
+  return base;
 }
+
+/** Email de sesión (orbit_user o JWT). */
+export function getStoredUserEmail(): string | null {
+  if (typeof localStorage !== "undefined") {
+    try {
+      const raw = localStorage.getItem(ORBIT_USER_STORAGE_KEY);
+      if (raw) {
+        const u = JSON.parse(raw) as { email?: unknown };
+        if (typeof u.email === "string" && u.email.trim()) {
+          return u.email.trim().toLowerCase();
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const token = getStoredJwt();
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+    const payload = JSON.parse(atob(b64 + pad)) as { email?: unknown };
+    if (typeof payload.email === "string" && payload.email.trim()) {
+      return payload.email.trim().toLowerCase();
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+const DEFAULT_ORBIT_ACCESS_ALLOWLIST = ["camilo_quintero@cun.edu.co"] as const;
+
+/** Misma allowlist de reborn que el API (default Camilo). Override: VITE_ORBIT_ACCESS_ALLOWLIST */
+function getOrbitAccessAllowlist(): string[] {
+  const raw = (
+    (import.meta.env.VITE_ORBIT_ACCESS_ALLOWLIST as string | undefined) ?? ""
+  ).trim();
+  if (!raw) return [...DEFAULT_ORBIT_ACCESS_ALLOWLIST];
+  const emails = raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0);
+  return emails.length > 0
+    ? [...new Set(emails)]
+    : [...DEFAULT_ORBIT_ACCESS_ALLOWLIST];
+}
+
+function isStoredEmailOnOrbitAllowlist(): boolean {
+  const email = getStoredUserEmail();
+  if (!email) return false;
+  return getOrbitAccessAllowlist().includes(email);
+}
+
+/** Capabilities de bootstrap admin (alineadas con SUPER_ADMIN del API). */
+const ORBIT_ALLOWLIST_ADMIN_CAPABILITIES: readonly string[] = [
+  "view:home",
+  "view:teachers",
+  "view:academic_load",
+  "view:coordinators",
+  "view:lites",
+  "view:vacancies",
+  "vacancies:informative_panel",
+  "vacancies:admin",
+  "view:personal",
+  "view:planta_activa",
+  "view:news",
+];
 
 export function getStoredOrbitAccess(): OrbitAccess | null {
   if (typeof localStorage !== "undefined") {
@@ -857,6 +936,77 @@ export async function updatePersonalProfile(
   data: UpdatePersonalPayload
 ): Promise<unknown> {
   const response = await authFetch(`${BASE_URL}/personal/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify(data),
+  });
+  return handleJson(response);
+}
+
+export type PlantaActivaFilters = {
+  search?: string;
+  area_id?: number;
+  school_id?: number;
+  program_id?: number;
+  role_id?: number;
+  without_school?: boolean;
+  without_program?: boolean;
+  without_role?: boolean;
+  without_edu_email?: boolean;
+  page?: number;
+  limit?: number;
+};
+
+export type UpdatePlantaPersonPayload = {
+  full_name?: string;
+  document?: string;
+  email?: string | null;
+  edu_email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  area_id?: number | null;
+  school_id?: number | null;
+  program_id?: number | null;
+  role_id?: number | null;
+  is_active?: boolean;
+};
+
+export async function getPlantaActiva(
+  params?: PlantaActivaFilters
+): Promise<PaginatedResponse> {
+  const url = new URL(`${BASE_URL}/planta-activa`);
+  if (params?.search) url.searchParams.set("search", params.search);
+  if (params?.area_id != null)
+    url.searchParams.set("area_id", String(params.area_id));
+  if (params?.school_id != null)
+    url.searchParams.set("school_id", String(params.school_id));
+  if (params?.program_id != null)
+    url.searchParams.set("program_id", String(params.program_id));
+  if (params?.role_id != null)
+    url.searchParams.set("role_id", String(params.role_id));
+  if (params?.without_school) url.searchParams.set("without_school", "1");
+  if (params?.without_program) url.searchParams.set("without_program", "1");
+  if (params?.without_role) url.searchParams.set("without_role", "1");
+  if (params?.without_edu_email)
+    url.searchParams.set("without_edu_email", "1");
+  if (params?.page != null) url.searchParams.set("page", String(params.page));
+  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
+  return handleJson(response);
+}
+
+export async function getPlantaPerson(id: number): Promise<unknown> {
+  const response = await authFetch(`${BASE_URL}/planta-activa/${id}`, {
+    headers: jsonHeaders,
+  });
+  return handleJson(response);
+}
+
+export async function updatePlantaPerson(
+  id: number,
+  data: UpdatePlantaPersonPayload
+): Promise<unknown> {
+  const response = await authFetch(`${BASE_URL}/planta-activa/${id}`, {
     method: "PATCH",
     headers: jsonHeaders,
     body: JSON.stringify(data),

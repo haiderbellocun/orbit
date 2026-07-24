@@ -14,7 +14,28 @@ export type View =
   | 'audit' 
   | 'export'
   | 'programs'
-  | 'personal';
+  | 'personal'
+  | 'planta-activa';
+
+export interface PlantaPerson {
+  id: string;
+  document: string;
+  type_document?: string;
+  name: string;
+  email: string;
+  edu_email: string;
+  phone: string;
+  address?: string;
+  area_id: number | null;
+  area: string;
+  school_id: number | null;
+  school: string;
+  program_id: number | null;
+  program: string;
+  role_id: number | null;
+  role_name: string;
+  status: 'active' | 'inactive';
+}
 
 export interface Teacher {
   id: string;
@@ -203,6 +224,7 @@ export interface BrandConfig {
 
 export const NAV_ITEMS = [
   { id: 'home', label: 'Command Center', iconKey: 'dashboard' },
+  { id: 'planta-activa', label: 'Planta Activa', iconKey: 'planta-activa' },
   { id: 'teachers', label: 'Docentes', iconKey: 'teachers' },
   { id: 'academic-load', label: 'Carga Académica', iconKey: 'academic-load' },
   { id: 'coordinators', label: 'Coordinadores', iconKey: 'coordinators' },

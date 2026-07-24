@@ -10,6 +10,7 @@ export const ORBIT_CAPABILITY = {
   VACANCIES_INFORMATIVE_PANEL: "vacancies:informative_panel",
   VACANCIES_ADMIN: "vacancies:admin",
   PERSONAL: "view:personal",
+  PLANTA_ACTIVA: "view:planta_activa",
   NEWS: "view:news",
 } as const;
 
@@ -25,6 +26,7 @@ const NAV_ID_TO_CAPABILITY: Record<string, OrbitCapability> = {
   vacancies: ORBIT_CAPABILITY.VACANCIES,
   "vacancy-informative-panel": ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL,
   personal: ORBIT_CAPABILITY.PERSONAL,
+  "planta-activa": ORBIT_CAPABILITY.PLANTA_ACTIVA,
   news: ORBIT_CAPABILITY.NEWS,
 };
 
@@ -43,6 +45,7 @@ const VIEW_TO_CAPABILITY: Partial<Record<View, OrbitCapability>> = {
   audit: ORBIT_CAPABILITY.HOME,
   programs: ORBIT_CAPABILITY.HOME,
   personal: ORBIT_CAPABILITY.PERSONAL,
+  "planta-activa": ORBIT_CAPABILITY.PLANTA_ACTIVA,
   login: ORBIT_CAPABILITY.HOME,
   export: ORBIT_CAPABILITY.HOME,
 };

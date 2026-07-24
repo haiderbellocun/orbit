@@ -19,6 +19,7 @@ export const ORBIT_CAPABILITY = {
   /** Administración de vacantes: eliminar y cambio de estado forzado (rol 38). */
   VACANCIES_ADMIN: "vacancies:admin",
   PERSONAL: "view:personal",
+  PLANTA_ACTIVA: "view:planta_activa",
   NEWS: "view:news",
 } as const;
 
@@ -46,6 +47,7 @@ export const SUPER_ADMIN_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL,
   ORBIT_CAPABILITY.VACANCIES_ADMIN,
   ORBIT_CAPABILITY.PERSONAL,
+  ORBIT_CAPABILITY.PLANTA_ACTIVA,
   ORBIT_CAPABILITY.NEWS,
 ];
 
