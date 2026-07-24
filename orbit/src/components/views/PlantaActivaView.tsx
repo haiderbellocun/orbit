@@ -9,6 +9,7 @@ import {
   EnvelopeIcon,
   IdentificationIcon,
   BuildingOffice2Icon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -95,6 +96,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
 }) => {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<PlantaPerson[]>([]);
   const [total, setTotal] = useState(0);
@@ -237,7 +239,6 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
-    if (applied.search.trim()) n++;
     if (applied.areaId) n++;
     if (applied.schoolId) n++;
     if (applied.programId) n++;
@@ -376,170 +377,209 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
-      <div className="glass-panel p-6 space-y-4">
-        <div className="flex items-center gap-2 text-slate-700">
-          <FunnelIcon className="h-5 w-5 text-violet-600" />
-          <h3 className="font-display font-bold text-lg">Filtros</h3>
-          {activeFilterCount > 0 && (
-            <span className="text-[10px] font-bold uppercase tracking-widest bg-violet-100 text-violet-700 px-2 py-1 rounded-lg">
-              {activeFilterCount} activo{activeFilterCount === 1 ? '' : 's'}
-            </span>
+      <div className="glass-panel p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+          <div className="relative flex-1">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input
+              value={filters.search}
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, search: e.target.value }))
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') applyFilters();
+              }}
+              placeholder="Buscar por nombre, correo o cédula…"
+              className={cn(selectClass, 'pl-10')}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((o) => !o)}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors',
+                filtersOpen || activeFilterCount > 0
+                  ? 'bg-violet-50 border-violet-200 text-violet-700'
+                  : 'bg-white/80 border-slate-200/80 text-slate-600 hover:bg-slate-50'
+              )}
+              aria-expanded={filtersOpen}
+            >
+              <FunnelIcon className="h-4 w-4" />
+              Filtros
+              {activeFilterCount > 0 && (
+                <span className="min-w-5 h-5 px-1.5 rounded-md bg-violet-600 text-white text-[10px] flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+              <ChevronDownIcon
+                className={cn(
+                  'h-4 w-4 transition-transform',
+                  filtersOpen && 'rotate-180'
+                )}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={applyFilters}
+              className="glass-button-primary px-4 py-2.5 text-sm font-bold"
+            >
+              Buscar
+            </button>
+          </div>
+        </div>
+
+        <AnimatePresence initial={false}>
+          {filtersOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="pt-3 border-t border-slate-100 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Área
+                    </span>
+                    <select
+                      value={filters.areaId}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          areaId: e.target.value,
+                          schoolId: '',
+                          programId: '',
+                        }))
+                      }
+                      className={selectClass}
+                    >
+                      <option value="">Todas</option>
+                      {areas.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Escuela
+                    </span>
+                    <select
+                      value={filters.schoolId}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          schoolId: e.target.value,
+                          programId: '',
+                        }))
+                      }
+                      className={selectClass}
+                    >
+                      <option value="">Todas</option>
+                      {schools.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Programa
+                    </span>
+                    <select
+                      value={filters.programId}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, programId: e.target.value }))
+                      }
+                      className={selectClass}
+                    >
+                      <option value="">Todos</option>
+                      {programs.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Rol
+                    </span>
+                    <select
+                      value={filters.roleId}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, roleId: e.target.value }))
+                      }
+                      className={selectClass}
+                    >
+                      <option value="">Todos</option>
+                      {roles.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap gap-4">
+                  {(
+                    [
+                      ['withoutSchool', 'Sin escuela'],
+                      ['withoutProgram', 'Sin programa'],
+                      ['withoutRole', 'Sin rol'],
+                      ['withoutEduEmail', 'Sin correo institucional'],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label
+                      key={key}
+                      className="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filters[key]}
+                        onChange={(e) =>
+                          setFilters((f) => ({ ...f, [key]: e.target.checked }))
+                        }
+                        className="rounded border-slate-300 text-violet-600 focus:ring-violet-400"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={applyFilters}
+                    className="glass-button-primary px-4 py-2 text-sm font-bold"
+                  >
+                    Aplicar filtros
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearFilters();
+                      setFiltersOpen(false);
+                    }}
+                    className="glass-button-secondary px-4 py-2 text-sm font-bold"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <label className="space-y-1.5 md:col-span-2 xl:col-span-3">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Nombre, correo o identificación
-            </span>
-            <div className="relative">
-              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                value={filters.search}
-                onChange={(e) =>
-                  setFilters((f) => ({ ...f, search: e.target.value }))
-                }
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') applyFilters();
-                }}
-                placeholder="Buscar por nombre, correo o cédula…"
-                className={cn(selectClass, 'pl-10')}
-              />
-            </div>
-          </label>
-
-          <label className="space-y-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Área
-            </span>
-            <select
-              value={filters.areaId}
-              onChange={(e) =>
-                setFilters((f) => ({
-                  ...f,
-                  areaId: e.target.value,
-                  schoolId: '',
-                  programId: '',
-                }))
-              }
-              className={selectClass}
-            >
-              <option value="">Todas</option>
-              {areas.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="space-y-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Escuela
-            </span>
-            <select
-              value={filters.schoolId}
-              onChange={(e) =>
-                setFilters((f) => ({
-                  ...f,
-                  schoolId: e.target.value,
-                  programId: '',
-                }))
-              }
-              className={selectClass}
-            >
-              <option value="">Todas</option>
-              {schools.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="space-y-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Programa
-            </span>
-            <select
-              value={filters.programId}
-              onChange={(e) =>
-                setFilters((f) => ({ ...f, programId: e.target.value }))
-              }
-              className={selectClass}
-            >
-              <option value="">Todos</option>
-              {programs.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="space-y-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Rol
-            </span>
-            <select
-              value={filters.roleId}
-              onChange={(e) =>
-                setFilters((f) => ({ ...f, roleId: e.target.value }))
-              }
-              className={selectClass}
-            >
-              <option value="">Todos</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="flex flex-wrap gap-4 pt-1">
-          {(
-            [
-              ['withoutSchool', 'Sin escuela'],
-              ['withoutProgram', 'Sin programa'],
-              ['withoutRole', 'Sin rol'],
-              ['withoutEduEmail', 'Sin correo institucional'],
-            ] as const
-          ).map(([key, label]) => (
-            <label
-              key={key}
-              className="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                checked={filters[key]}
-                onChange={(e) =>
-                  setFilters((f) => ({ ...f, [key]: e.target.checked }))
-                }
-                className="rounded border-slate-300 text-violet-600 focus:ring-violet-400"
-              />
-              {label}
-            </label>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-3 pt-2">
-          <button
-            type="button"
-            onClick={applyFilters}
-            className="glass-button-primary px-5 py-2.5 text-sm font-bold"
-          >
-            Aplicar filtros
-          </button>
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="glass-button-secondary px-5 py-2.5 text-sm font-bold"
-          >
-            Limpiar
-          </button>
-        </div>
+        </AnimatePresence>
       </div>
 
       <div className="flex items-center justify-between gap-4">
