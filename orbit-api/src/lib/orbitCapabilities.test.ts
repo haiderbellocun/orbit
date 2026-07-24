@@ -6,9 +6,12 @@ import {
   ROLE_51_STAFF_ROLE_ID,
   ROLE_9_OPERATIONS_CAPABILITIES,
   SCHOOL_COORDINATOR_ROLE_IDS,
+  SUPER_ADMIN_CAPABILITIES,
   VACANCIES_ADMIN_CAPABILITIES,
   ROLE_37_VACANCIES_CAPABILITIES,
   VACANCIES_ONLY_CAPABILITIES,
+  isEmailOnOrbitAllowlist,
+  resolveAllowlistAdminAccess,
   resolveOrbitAccess,
 } from "./orbitCapabilities";
 
@@ -130,7 +133,6 @@ test("LITE by configured role id (not 9)", () => {
     assert.deepEqual(r.capabilities, [
       ORBIT_CAPABILITY.HOME,
       ORBIT_CAPABILITY.TEACHERS,
-      ORBIT_CAPABILITY.NEWS,
     ]);
   } finally {
     if (prev === undefined) delete process.env.ORBIT_LITE_ROLE_ID;
@@ -164,6 +166,37 @@ test("unknown role is denied", () => {
     roleName: "OTRO ROL",
   });
   assert.equal(r, null);
+});
+
+test("allowlist default includes camilo", () => {
+  const prev = process.env.ORBIT_ACCESS_ALLOWLIST;
+  delete process.env.ORBIT_ACCESS_ALLOWLIST;
+  try {
+    assert.equal(isEmailOnOrbitAllowlist("camilo_quintero@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("CAMILO_QUINTERO@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("otro@cun.edu.co"), false);
+    const admin = resolveAllowlistAdminAccess();
+    assert.equal(admin.orbitAccess, "full");
+    assert.deepEqual(admin.capabilities, [...SUPER_ADMIN_CAPABILITIES]);
+    assert.equal(admin.capabilities.includes(ORBIT_CAPABILITY.PERSONAL), true);
+    assert.equal(admin.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN), true);
+  } finally {
+    if (prev === undefined) delete process.env.ORBIT_ACCESS_ALLOWLIST;
+    else process.env.ORBIT_ACCESS_ALLOWLIST = prev;
+  }
+});
+
+test("allowlist env override", () => {
+  const prev = process.env.ORBIT_ACCESS_ALLOWLIST;
+  process.env.ORBIT_ACCESS_ALLOWLIST = "a@cun.edu.co, b@cun.edu.co";
+  try {
+    assert.equal(isEmailOnOrbitAllowlist("a@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("b@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("camilo_quintero@cun.edu.co"), false);
+  } finally {
+    if (prev === undefined) delete process.env.ORBIT_ACCESS_ALLOWLIST;
+    else process.env.ORBIT_ACCESS_ALLOWLIST = prev;
+  }
 });
 
 console.log("orbitCapabilities tests passed");

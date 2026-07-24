@@ -37,13 +37,24 @@ Respuesta:
 - `JWT_SECRET`: secreto para firmar JWT.
 - `JWT_EXPIRES_IN` (opcional): por defecto `7d`.
 - `ORBIT_LITE_ROLE_ID` (opcional): id del rol LITE en `role`; por defecto `9`.
-- `ORBIT_FULL_ACCESS_ROLE_IDS` (opcional): ids con acceso total separados por coma; por defecto `1,13,19,43,44,45,46`.
+- `ORBIT_ACCESS_ALLOWLIST` (reborn): correos con acceso; por defecto `camilo_quintero@cun.edu.co`.
+- `ORBIT_FULL_ACCESS_ROLE_IDS` (opcional, en pausa): ids con acceso total separados por coma; por defecto `1,13,19,43,44,45,46`.
 
 ### Dominio de correo
 
 Solo cuentas **`@cun.edu.co`** verificadas por Google. Si el email no cumple, el endpoint responde **403**.
 
-### Autorización ORBIT (lista cerrada)
+### Autorización ORBIT (reborn — allowlist)
+
+Durante la reestructuración, el acceso **no** se resuelve por rol. Solo correos en `ORBIT_ACCESS_ALLOWLIST` pueden entrar; reciben `orbitAccess: "full"` y **todas** las capabilities (incl. Personal y admin de vacantes).
+
+- Por defecto: `camilo_quintero@cun.edu.co`
+- Override: `ORBIT_ACCESS_ALLOWLIST=a@cun.edu.co,b@cun.edu.co`
+- Cualquier otra cuenta (aunque tenga rol autorizado histórico) recibe **403** en login y **401** en APIs (sesión inválida).
+
+La resolución por `role_id` (`resolveOrbitAccess`) queda en el código para cuando se reactive el modelo de roles.
+
+### Autorización ORBIT por roles (histórico / próximo)
 
 Debe existir una fila activa en `person` cuyo `email` o `edu_email` coincida con el del token, y el rol debe estar explícitamente autorizado:
 

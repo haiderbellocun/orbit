@@ -26,10 +26,13 @@ async function hasLegacyTeachersTable(): Promise<boolean> {
 
 type TrendType = "up" | "down" | "flat";
 
+/** `trendUnit` define el formato en UI; `trendGood` si la dirección es favorable. */
 type SummaryMetric = {
   value: number;
   trend: number;
   trendType: TrendType;
+  trendUnit: "percent" | "absolute" | "none";
+  trendGood: boolean;
   detail: string;
 };
 
@@ -39,12 +42,69 @@ type DashboardSummaryResponse = {
   };
   openVacancies: SummaryMetric & {
     averageDaysToClose: number | null;
+    positionsOpen: number;
+  };
+  monthlyHires: SummaryMetric & {
+    positionsFilled: number;
+  };
+  timeToHire: SummaryMetric & {
+    sampleSize: number;
+  };
+  agingVacancies: SummaryMetric & {
+    oldestDays: number | null;
   };
   todayNews: SummaryMetric & {
     criticalCount: number;
   };
   updatedAt: string;
 };
+
+const FLAT_TREND = { trend: 0, trendType: "flat" as TrendType };
+
+/** Variación absoluta entre dos periodos; `higherIsBetter` decide el color en UI. */
+function absoluteTrend(
+  current: number,
+  previous: number,
+  higherIsBetter: boolean
+): Pick<SummaryMetric, "trend" | "trendType" | "trendUnit" | "trendGood"> {
+  const delta = current - previous;
+  const trendType: TrendType = delta === 0 ? "flat" : delta > 0 ? "up" : "down";
+  return {
+    trend: delta,
+    trendType,
+    trendUnit: "absolute",
+    trendGood: delta === 0 || (delta > 0) === higherIsBetter,
+  };
+}
+
+function percentTrend(
+  current: number,
+  previous: number,
+  higherIsBetter: boolean
+): Pick<SummaryMetric, "trend" | "trendType" | "trendUnit" | "trendGood"> {
+  if (previous <= 0) {
+    return {
+      ...FLAT_TREND,
+      trendUnit: "percent",
+      trendGood: true,
+    };
+  }
+  const pct = ((current - previous) / previous) * 100;
+  const rounded = Math.round(pct * 10) / 10;
+  const trendType: TrendType =
+    rounded === 0 ? "flat" : rounded > 0 ? "up" : "down";
+  return {
+    trend: rounded,
+    trendType,
+    trendUnit: "percent",
+    trendGood: rounded === 0 || rounded > 0 === higherIsBetter,
+  };
+}
+
+const NO_TREND: Pick<
+  SummaryMetric,
+  "trend" | "trendType" | "trendUnit" | "trendGood"
+> = { ...FLAT_TREND, trendUnit: "none", trendGood: true };
 
 async function getActiveTeachersCount(req: Request): Promise<number> {
   const useLegacy = await hasLegacyTeachersTable();
@@ -194,30 +254,193 @@ async function getTodayNewsMetrics(req: Request): Promise<{
   };
 }
 
+/** Etapas en las que la vacante sigue viva (no contratada ni cancelada). */
+const IN_PROCESS_STATUSES = ["open", "selected", "requisition_sent"];
+
+type VacancyMetrics = {
+  openVacancies: DashboardSummaryResponse["openVacancies"];
+  monthlyHires: DashboardSummaryResponse["monthlyHires"];
+  timeToHire: DashboardSummaryResponse["timeToHire"];
+  agingVacancies: DashboardSummaryResponse["agingVacancies"];
+};
+
+function emptyVacancyMetrics(detail: string): VacancyMetrics {
+  return {
+    openVacancies: { value: 0, ...NO_TREND, detail, averageDaysToClose: null, positionsOpen: 0 },
+    monthlyHires: { value: 0, ...NO_TREND, detail, positionsFilled: 0 },
+    timeToHire: { value: 0, ...NO_TREND, detail, sampleSize: 0 },
+    agingVacancies: { value: 0, ...NO_TREND, detail, oldestDays: null },
+  };
+}
+
+async function getVacancyMetrics(req: Request): Promise<VacancyMetrics> {
+  const u = req.orbitUser;
+  if (!u || !hasCapability(u.capabilities, ORBIT_CAPABILITY.VACANCIES)) {
+    return emptyVacancyMetrics("Sin acceso al módulo de vacantes");
+  }
+
+  const reg = await pool.query(
+    `SELECT to_regclass('vacancies.vacancy') AS table_name`
+  );
+  if (reg.rows[0]?.table_name == null) {
+    return emptyVacancyMetrics("Módulo de vacantes no disponible");
+  }
+
+  const schoolScope = schoolScopeFromRequest(req);
+  const scopeClause = schoolScope ? `WHERE v.school_id = $1` : "";
+  const scopeValues = schoolScope ? [schoolScope.schoolId] : [];
+
+  const inProcess = IN_PROCESS_STATUSES.map((s) => `'${s}'`).join(", ");
+
+  const { rows } = await pool.query(
+    `WITH scoped AS (SELECT v.* FROM vacancies.vacancy v ${scopeClause})
+     SELECT
+       COUNT(*) FILTER (WHERE operation_status IN (${inProcess}))::int AS in_process,
+       COUNT(*) FILTER (WHERE operation_status = 'open')::int AS stage_open,
+       COUNT(*) FILTER (WHERE operation_status = 'selected')::int AS stage_selected,
+       COUNT(*) FILTER (WHERE operation_status = 'requisition_sent')::int AS stage_requisition,
+       COALESCE(SUM(quantity) FILTER (WHERE operation_status IN (${inProcess})), 0)::int AS positions_open,
+       COUNT(*) FILTER (
+         WHERE operation_status IN (${inProcess})
+           AND created_at < now() - interval '30 days'
+       )::int AS aging_count,
+       MAX(EXTRACT(EPOCH FROM (now() - created_at)) / 86400)
+         FILTER (WHERE operation_status IN (${inProcess})) AS oldest_open_days,
+       COUNT(*) FILTER (WHERE created_at >= now() - interval '30 days')::int AS created_30d,
+       COUNT(*) FILTER (WHERE closed_at >= now() - interval '30 days')::int AS closed_30d,
+       COUNT(*) FILTER (
+         WHERE operation_status = 'hired'
+           AND closed_at >= date_trunc('month', now())
+       )::int AS hires_current_month,
+       COUNT(*) FILTER (
+         WHERE operation_status = 'hired'
+           AND closed_at >= date_trunc('month', now()) - interval '1 month'
+           AND closed_at < date_trunc('month', now())
+       )::int AS hires_previous_month,
+       COALESCE(SUM(hired_quantity) FILTER (
+         WHERE operation_status = 'hired'
+           AND closed_at >= date_trunc('month', now())
+       ), 0)::int AS positions_filled_month,
+       AVG(EXTRACT(EPOCH FROM (closed_at - created_at)) / 86400) FILTER (
+         WHERE operation_status = 'hired'
+           AND closed_at >= now() - interval '90 days'
+       ) AS avg_days_current,
+       COUNT(*) FILTER (
+         WHERE operation_status = 'hired'
+           AND closed_at >= now() - interval '90 days'
+       )::int AS sample_current,
+       AVG(EXTRACT(EPOCH FROM (closed_at - created_at)) / 86400) FILTER (
+         WHERE operation_status = 'hired'
+           AND closed_at >= now() - interval '180 days'
+           AND closed_at < now() - interval '90 days'
+       ) AS avg_days_previous
+     FROM scoped`,
+    scopeValues
+  );
+
+  const r = (rows[0] ?? {}) as Record<string, unknown>;
+  const num = (key: string): number => Number(r[key] ?? 0) || 0;
+  const nullableNum = (key: string): number | null => {
+    const raw = r[key];
+    if (raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const inProcessCount = num("in_process");
+  const stageOpen = num("stage_open");
+  const stageSelected = num("stage_selected");
+  const stageRequisition = num("stage_requisition");
+  const positionsOpen = num("positions_open");
+  const agingCount = num("aging_count");
+  const oldestOpenDays = nullableNum("oldest_open_days");
+  const created30d = num("created_30d");
+  const closed30d = num("closed_30d");
+  const hiresCurrentMonth = num("hires_current_month");
+  const hiresPreviousMonth = num("hires_previous_month");
+  const positionsFilledMonth = num("positions_filled_month");
+  const avgDaysCurrent = nullableNum("avg_days_current");
+  const avgDaysPrevious = nullableNum("avg_days_previous");
+  const sampleCurrent = num("sample_current");
+
+  const roundedAvgCurrent =
+    avgDaysCurrent != null ? Math.round(avgDaysCurrent) : null;
+  const roundedAvgPrevious =
+    avgDaysPrevious != null ? Math.round(avgDaysPrevious) : null;
+
+  const stageParts: string[] = [];
+  if (stageOpen > 0) stageParts.push(`${stageOpen} abierta(s)`);
+  if (stageSelected > 0) stageParts.push(`${stageSelected} en selección`);
+  if (stageRequisition > 0) {
+    stageParts.push(`${stageRequisition} en requisición`);
+  }
+
+  return {
+    openVacancies: {
+      value: inProcessCount,
+      // Flujo neto del mes: entradas menos cierres. Menos vacantes abiertas es mejor.
+      ...absoluteTrend(created30d, closed30d, false),
+      detail:
+        stageParts.length > 0
+          ? stageParts.join(" · ")
+          : "Sin vacantes en proceso",
+      averageDaysToClose: roundedAvgCurrent,
+      positionsOpen,
+    },
+    monthlyHires: {
+      value: hiresCurrentMonth,
+      ...absoluteTrend(hiresCurrentMonth, hiresPreviousMonth, true),
+      detail:
+        positionsFilledMonth > 0
+          ? `${positionsFilledMonth} plaza(s) cubierta(s) este mes`
+          : "Sin contrataciones este mes",
+      positionsFilled: positionsFilledMonth,
+    },
+    timeToHire: {
+      value: roundedAvgCurrent ?? 0,
+      ...(roundedAvgCurrent != null && roundedAvgPrevious != null
+        ? percentTrend(roundedAvgCurrent, roundedAvgPrevious, false)
+        : NO_TREND),
+      detail:
+        sampleCurrent > 0
+          ? `Promedio sobre ${sampleCurrent} cierre(s) en 90 días`
+          : "Sin cierres en los últimos 90 días",
+      sampleSize: sampleCurrent,
+    },
+    agingVacancies: {
+      value: agingCount,
+      ...NO_TREND,
+      trendGood: agingCount === 0,
+      detail:
+        oldestOpenDays != null && agingCount > 0
+          ? `La más antigua lleva ${Math.round(oldestOpenDays)} días`
+          : "Ninguna supera los 30 días",
+      oldestDays: oldestOpenDays != null ? Math.round(oldestOpenDays) : null,
+    },
+  };
+}
+
 router.get("/dashboard/summary", async (req, res) => {
   try {
     const activeTeachers = await getActiveTeachersCount(req);
     const todayNewsMetrics = await getTodayNewsMetrics(req);
+    const vacancyMetrics = await getVacancyMetrics(req);
 
     const payload: DashboardSummaryResponse = {
       activeTeachers: {
         value: activeTeachers,
-        trend: 0,
-        trendType: "flat",
-        detail: "Capacidad total no configurada",
+        ...NO_TREND,
+        detail: "Docentes activos en planta",
         capacityPercentage: null,
       },
-      openVacancies: {
-        value: 0,
-        trend: 0,
-        trendType: "flat",
-        detail: "Métrica temporalmente en 0",
-        averageDaysToClose: null,
-      },
+      openVacancies: vacancyMetrics.openVacancies,
+      monthlyHires: vacancyMetrics.monthlyHires,
+      timeToHire: vacancyMetrics.timeToHire,
+      agingVacancies: vacancyMetrics.agingVacancies,
       todayNews: {
         value: todayNewsMetrics.value,
-        trend: 0,
-        trendType: "flat",
+        ...NO_TREND,
+        trendGood: todayNewsMetrics.criticalCount === 0,
         detail: todayNewsMetrics.detail,
         criticalCount: todayNewsMetrics.criticalCount,
       },

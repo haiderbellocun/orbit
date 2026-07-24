@@ -35,6 +35,43 @@ export const ALL_ORBIT_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.NEWS,
 ];
 
+/** Todas las capabilities existentes (reborn / bootstrap admin). */
+export const SUPER_ADMIN_CAPABILITIES: readonly OrbitCapability[] = [
+  ORBIT_CAPABILITY.HOME,
+  ORBIT_CAPABILITY.TEACHERS,
+  ORBIT_CAPABILITY.ACADEMIC_LOAD,
+  ORBIT_CAPABILITY.COORDINATORS,
+  ORBIT_CAPABILITY.LITES,
+  ORBIT_CAPABILITY.VACANCIES,
+  ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL,
+  ORBIT_CAPABILITY.VACANCIES_ADMIN,
+  ORBIT_CAPABILITY.PERSONAL,
+  ORBIT_CAPABILITY.NEWS,
+];
+
+/**
+ * Allowlist temporal de acceso a ORBIT (reborn).
+ * Por defecto solo camilo_quintero@cun.edu.co.
+ * Override: ORBIT_ACCESS_ALLOWLIST=a@cun.edu.co,b@cun.edu.co
+ */
+const DEFAULT_ACCESS_ALLOWLIST = ["camilo_quintero@cun.edu.co"] as const;
+
+export function getOrbitAccessAllowlist(): string[] {
+  const raw = (process.env.ORBIT_ACCESS_ALLOWLIST ?? "").trim();
+  if (!raw) return [...DEFAULT_ACCESS_ALLOWLIST];
+  const emails = raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0);
+  return emails.length > 0 ? [...new Set(emails)] : [...DEFAULT_ACCESS_ALLOWLIST];
+}
+
+export function isEmailOnOrbitAllowlist(email: string | null | undefined): boolean {
+  const norm = (email ?? "").trim().toLowerCase();
+  if (!norm) return false;
+  return getOrbitAccessAllowlist().includes(norm);
+}
+
 const LITE_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.HOME,
   ORBIT_CAPABILITY.TEACHERS,
@@ -133,8 +170,17 @@ export type ResolvedOrbitAccess = {
   capabilities: OrbitCapability[];
 };
 
+/** Acceso total para correos en la allowlist de reborn. */
+export function resolveAllowlistAdminAccess(): ResolvedOrbitAccess {
+  return {
+    orbitAccess: "full",
+    capabilities: [...SUPER_ADMIN_CAPABILITIES],
+  };
+}
+
 /**
  * Resuelve acceso ORBIT por `role_id` (lista cerrada). `null` = no autorizado.
+ * Nota: en reborn el login usa allowlist; esta función queda para el modelo por roles.
  */
 export function resolveOrbitAccess(input: {
   roleId: number | null;
