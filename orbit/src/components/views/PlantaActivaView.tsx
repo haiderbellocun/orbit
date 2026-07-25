@@ -22,11 +22,13 @@ import {
   getCatalogSchools,
   getCatalogPrograms,
   getCatalogRoles,
+  getStoredPlantaActivaAccess,
   type CatalogArea,
   type CatalogSchool,
   type CatalogProgram,
   type CatalogRole,
 } from '@/src/lib/api';
+import { canEditPlantaPersonArea } from '@/src/lib/plantaActivaAccess';
 
 function mapPlantaFromApi(row: Record<string, unknown>): PlantaPerson {
   const st = String(row.status ?? 'active');
@@ -53,6 +55,8 @@ function mapPlantaFromApi(row: Record<string, unknown>): PlantaPerson {
     role_id: numOrNull(row.role_id),
     role_name: String(row.role_name ?? ''),
     status: st === 'inactive' ? 'inactive' : 'active',
+    can_edit:
+      typeof row.can_edit === 'boolean' ? row.can_edit : undefined,
   };
 }
 
@@ -94,8 +98,30 @@ const EMPTY_FILTERS: Filters = {
 export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   onOpenVacancyFromNotification,
 }) => {
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
+  const plantaAccess = useMemo(() => getStoredPlantaActivaAccess(), []);
+  const editableAreaIds = plantaAccess?.editAreaIds ?? null;
+  const viewableAreaIds = plantaAccess?.viewAreaIds ?? null;
+  /** Filtros de catálogo alineados al alcance de vista. */
+  const catalogAreaIds = viewableAreaIds;
+  const lockedAreaId =
+    catalogAreaIds != null && catalogAreaIds.length === 1
+      ? String(catalogAreaIds[0])
+      : '';
+
+  const [filters, setFilters] = useState<Filters>(() => {
+    const locked =
+      catalogAreaIds != null && catalogAreaIds.length === 1
+        ? String(catalogAreaIds[0])
+        : '';
+    return { ...EMPTY_FILTERS, areaId: locked };
+  });
+  const [applied, setApplied] = useState<Filters>(() => {
+    const locked =
+      catalogAreaIds != null && catalogAreaIds.length === 1
+        ? String(catalogAreaIds[0])
+        : '';
+    return { ...EMPTY_FILTERS, areaId: locked };
+  });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<PlantaPerson[]>([]);
@@ -154,10 +180,45 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     const areaId = filters.areaId ? Number(filters.areaId) : undefined;
     (async () => {
       try {
-        const s = await getCatalogSchools(
-          areaId != null && Number.isFinite(areaId) ? { area_id: areaId } : undefined
-        );
-        if (!cancelled) setSchools(Array.isArray(s) ? s : []);
+        let list: CatalogSchool[] = [];
+
+        if (areaId != null && Number.isFinite(areaId)) {
+          if (
+            catalogAreaIds != null &&
+            !catalogAreaIds.includes(areaId)
+          ) {
+            list = [];
+          } else {
+            const s = await getCatalogSchools({ area_id: areaId });
+            list = Array.isArray(s) ? s : [];
+          }
+        } else if (catalogAreaIds != null && catalogAreaIds.length > 0) {
+          const chunks = await Promise.all(
+            catalogAreaIds.map((id) => getCatalogSchools({ area_id: id }))
+          );
+          const byId = new Map<number, CatalogSchool>();
+          for (const chunk of chunks) {
+            for (const school of Array.isArray(chunk) ? chunk : []) {
+              byId.set(school.id, school);
+            }
+          }
+          list = [...byId.values()].sort((a, b) =>
+            a.name.localeCompare(b.name, 'es')
+          );
+        } else {
+          const s = await getCatalogSchools();
+          list = Array.isArray(s) ? s : [];
+        }
+
+        if (!cancelled) {
+          setSchools(list);
+          setFilters((f) => {
+            if (!f.schoolId) return f;
+            const sid = Number(f.schoolId);
+            if (list.some((s) => s.id === sid)) return f;
+            return { ...f, schoolId: '', programId: '' };
+          });
+        }
       } catch {
         if (!cancelled) setSchools([]);
       }
@@ -165,19 +226,48 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [filters.areaId]);
+  }, [filters.areaId, catalogAreaIds]);
 
   useEffect(() => {
     let cancelled = false;
     const schoolId = filters.schoolId ? Number(filters.schoolId) : undefined;
     (async () => {
       try {
-        const p = await getCatalogPrograms(
-          schoolId != null && Number.isFinite(schoolId)
-            ? { school_id: schoolId }
-            : undefined
-        );
-        if (!cancelled) setPrograms(Array.isArray(p) ? p : []);
+        let list: CatalogProgram[] = [];
+
+        if (schoolId != null && Number.isFinite(schoolId)) {
+          const p = await getCatalogPrograms({ school_id: schoolId });
+          list = Array.isArray(p) ? p : [];
+        } else if (catalogAreaIds != null && catalogAreaIds.length === 1) {
+          const p = await getCatalogPrograms({ area_id: catalogAreaIds[0] });
+          list = Array.isArray(p) ? p : [];
+        } else if (catalogAreaIds != null && catalogAreaIds.length > 1) {
+          const chunks = await Promise.all(
+            catalogAreaIds.map((id) => getCatalogPrograms({ area_id: id }))
+          );
+          const byId = new Map<number, CatalogProgram>();
+          for (const chunk of chunks) {
+            for (const prog of Array.isArray(chunk) ? chunk : []) {
+              byId.set(prog.id, prog);
+            }
+          }
+          list = [...byId.values()].sort((a, b) =>
+            a.name.localeCompare(b.name, 'es')
+          );
+        } else {
+          const p = await getCatalogPrograms();
+          list = Array.isArray(p) ? p : [];
+        }
+
+        if (!cancelled) {
+          setPrograms(list);
+          setFilters((f) => {
+            if (!f.programId) return f;
+            const pid = Number(f.programId);
+            if (list.some((p) => p.id === pid)) return f;
+            return { ...f, programId: '' };
+          });
+        }
       } catch {
         if (!cancelled) setPrograms([]);
       }
@@ -185,7 +275,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [filters.schoolId]);
+  }, [filters.schoolId, catalogAreaIds]);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -232,8 +322,12 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   };
 
   const clearFilters = () => {
-    setFilters(EMPTY_FILTERS);
-    setApplied(EMPTY_FILTERS);
+    const next: Filters = {
+      ...EMPTY_FILTERS,
+      areaId: lockedAreaId,
+    };
+    setFilters(next);
+    setApplied(next);
     setPage(1);
   };
 
@@ -250,7 +344,26 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return n;
   }, [applied]);
 
+  const areasForEdit = useMemo(() => {
+    if (editableAreaIds == null) return areas;
+    return areas.filter((a) => editableAreaIds.includes(a.id));
+  }, [areas, editableAreaIds]);
+
+  const areasForFilter = useMemo(() => {
+    if (catalogAreaIds == null) return areas;
+    return areas.filter((a) => catalogAreaIds.includes(a.id));
+  }, [areas, catalogAreaIds]);
+
+  const rowCanEdit = useCallback(
+    (row: PlantaPerson) => {
+      if (typeof row.can_edit === 'boolean') return row.can_edit;
+      return canEditPlantaPersonArea(plantaAccess, row.area_id);
+    },
+    [plantaAccess]
+  );
+
   const openEdit = async (row: PlantaPerson) => {
+    if (!rowCanEdit(row)) return;
     setFormError(null);
     setEditing(row);
     setEditForm({
@@ -455,10 +568,16 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                           programId: '',
                         }))
                       }
-                      className={selectClass}
+                      disabled={Boolean(lockedAreaId)}
+                      className={cn(
+                        selectClass,
+                        lockedAreaId && 'opacity-70 cursor-not-allowed'
+                      )}
                     >
-                      <option value="">Todas</option>
-                      {areas.map((a) => (
+                      {!lockedAreaId && (
+                        <option value="">Todas</option>
+                      )}
+                      {areasForFilter.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.name}
                         </option>
@@ -691,14 +810,18 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     </span>
                   </td>
                   <td className="px-5 py-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => void openEdit(row)}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-600 hover:text-violet-800"
-                    >
-                      <PencilSquareIcon className="h-4 w-4" />
-                      Gestionar
-                    </button>
+                    {rowCanEdit(row) ? (
+                      <button
+                        type="button"
+                        onClick={() => void openEdit(row)}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-600 hover:text-violet-800"
+                      >
+                        <PencilSquareIcon className="h-4 w-4" />
+                        Gestionar
+                      </button>
+                    ) : (
+                      <span className="text-xs text-slate-400">Solo lectura</span>
+                    )}
                   </td>
                 </motion.tr>
               ))}
@@ -840,8 +963,10 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       }
                       className={selectClass}
                     >
-                      <option value="">Sin área</option>
-                      {areas.map((a) => (
+                      {editableAreaIds == null && (
+                        <option value="">Sin área</option>
+                      )}
+                      {areasForEdit.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.name}
                         </option>

@@ -35,6 +35,8 @@ export interface PlantaPerson {
   role_id: number | null;
   role_name: string;
   status: 'active' | 'inactive';
+  /** Si el usuario actual puede editar esta persona (API). */
+  can_edit?: boolean;
 }
 
 export interface Teacher {

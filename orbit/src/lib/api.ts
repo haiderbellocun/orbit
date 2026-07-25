@@ -6,6 +6,7 @@ import type {
   VacancyOperationStatus,
   OrbitNotification,
 } from "@/src/types";
+import { getPlantaActivaGrantByEmail } from "@/src/lib/plantaActivaAccess";
 
 const DEFAULT_API_BASE = "http://localhost:4000/api";
 
@@ -321,6 +322,41 @@ export function getStoredOrbitAccess(): OrbitAccess | null {
   return null;
 }
 
+/** Alcance de Planta Activa (grants). `null` editAreaIds = admin sin límite. */
+export function getStoredPlantaActivaAccess(): {
+  viewAreaIds: number[] | null;
+  editAreaIds: number[] | null;
+} | null {
+  if (typeof localStorage !== "undefined") {
+    try {
+      const raw = localStorage.getItem(ORBIT_USER_STORAGE_KEY);
+      if (raw) {
+        const u = JSON.parse(raw) as {
+          email?: string;
+          plantaActivaAccess?: {
+            viewAreaIds?: number[] | null;
+            editAreaIds?: number[] | null;
+          };
+        };
+        if (u.plantaActivaAccess) {
+          return {
+            viewAreaIds: u.plantaActivaAccess.viewAreaIds ?? null,
+            editAreaIds: u.plantaActivaAccess.editAreaIds ?? null,
+          };
+        }
+        // Fallback por email (misma tabla que el API) si el JWT es anterior.
+        const grant = getPlantaActivaGrantByEmail(
+          typeof u.email === "string" ? u.email : getStoredUserEmail()
+        );
+        if (grant) return grant;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
 async function fetchWithTimeout(
   input: string,
   init: RequestInit,
@@ -430,6 +466,10 @@ export type GoogleAuthResponse = {
     roleName?: string | null;
     orbitAccess?: OrbitAccess;
     capabilities?: string[];
+    plantaActivaAccess?: {
+      viewAreaIds: number[] | null;
+      editAreaIds: number[] | null;
+    };
   };
 };
 
@@ -1143,9 +1183,13 @@ export async function getCatalogRoles(): Promise<CatalogRole[]> {
 
 export async function getCatalogPrograms(params?: {
   school_id?: number;
+  area_id?: number;
 }): Promise<CatalogProgram[]> {
   const url = new URL(`${BASE_URL}/catalog/programs`);
-  if (params?.school_id != null) url.searchParams.set("school_id", String(params.school_id));
+  if (params?.school_id != null)
+    url.searchParams.set("school_id", String(params.school_id));
+  if (params?.area_id != null)
+    url.searchParams.set("area_id", String(params.area_id));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });
   return handleJson(response);
 }

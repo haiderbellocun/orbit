@@ -2,12 +2,15 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import {
   hasCapability,
+  isEmailAuthorizedForOrbit,
   isEmailOnOrbitAllowlist,
   ORBIT_CAPABILITY,
+  PLANTA_ACTIVA_ONLY_CAPABILITIES,
   SUPER_ADMIN_CAPABILITIES,
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
+import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
 export {
   schoolScopeFromRequest,
   vacancyAllowedForSchoolScope,
@@ -28,6 +31,10 @@ export type OrbitJwtUser = {
   schoolId: number | null;
   areaId: number | null;
   programIds: number[];
+  /** `null` = sin recorte de vista (admin o ver todas). */
+  plantaViewAreaIds: number[] | null;
+  /** `null` = puede editar cualquier área (admin). */
+  plantaEditAreaIds: number[] | null;
 };
 
 declare global {
@@ -104,7 +111,7 @@ export function orbitAuthMiddleware(
     }
 
     const email = String(decoded.email ?? "").trim().toLowerCase();
-    if (!isEmailOnOrbitAllowlist(email)) {
+    if (!isEmailAuthorizedForOrbit(email)) {
       res.status(401).json({
         error:
           "ORBIT está en reestructuración. Tu cuenta aún no tiene acceso autorizado.",
@@ -112,9 +119,27 @@ export function orbitAuthMiddleware(
       return;
     }
 
-    // Reborn: allowlist = acceso total (ignora capabilities antiguas del JWT).
-    const orbitAccess: OrbitAccess = "full";
-    const capabilities: OrbitCapability[] = [...SUPER_ADMIN_CAPABILITIES];
+    let orbitAccess: OrbitAccess = "full";
+    let capabilities: OrbitCapability[];
+    let plantaViewAreaIds: number[] | null = null;
+    let plantaEditAreaIds: number[] | null = null;
+
+    if (isEmailOnOrbitAllowlist(email)) {
+      // Allowlist admin = acceso total (ignora capabilities antiguas del JWT).
+      capabilities = [...SUPER_ADMIN_CAPABILITIES];
+    } else {
+      const grant = getPlantaActivaGrant(email);
+      if (!grant) {
+        res.status(401).json({
+          error:
+            "ORBIT está en reestructuración. Tu cuenta aún no tiene acceso autorizado.",
+        });
+        return;
+      }
+      capabilities = [...PLANTA_ACTIVA_ONLY_CAPABILITIES];
+      plantaViewAreaIds = grant.viewAreaIds;
+      plantaEditAreaIds = [...grant.editAreaIds];
+    }
 
     const roleIdRaw = decoded.roleId;
     const roleId =
@@ -134,7 +159,7 @@ export function orbitAuthMiddleware(
       roleId: Number.isFinite(roleId) ? roleId : null,
       orbitAccess,
       capabilities,
-      // Acceso total en reborn: sin recorte por escuela ni programa.
+      // Acceso total / planta grant: sin recorte por escuela ni programa.
       schoolId: null,
       areaId: (() => {
         const aid =
@@ -144,6 +169,8 @@ export function orbitAuthMiddleware(
         return Number.isFinite(aid) && aid > 0 ? aid : null;
       })(),
       programIds: [],
+      plantaViewAreaIds,
+      plantaEditAreaIds,
     };
     next();
   } catch {

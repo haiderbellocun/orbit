@@ -3,11 +3,14 @@ import jwt, { type SignOptions } from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { pool } from "../db/connection";
 import {
+  isEmailAuthorizedForOrbit,
   isEmailOnOrbitAllowlist,
   resolveAllowlistAdminAccess,
+  resolvePlantaActivaGrantAccess,
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
+import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
 
 const router = Router();
 
@@ -175,6 +178,10 @@ type OrbitGate =
       schoolId: number | null;
       areaId: number | null;
       programIds: number[];
+      /** `null` = sin recorte (admin) o ver todas. */
+      plantaViewAreaIds: number[] | null;
+      /** `null` = puede editar cualquier área (admin). */
+      plantaEditAreaIds: number[] | null;
     }
   | { ok: false; status: number; error: string };
 
@@ -185,11 +192,11 @@ async function gateOrbitRoleAndLite(
   const emailNorm = loginEmail.trim().toLowerCase();
   const personEmailNorm = (person.email ?? "").trim().toLowerCase();
 
-  // Reborn: solo correos en ORBIT_ACCESS_ALLOWLIST (default: camilo_quintero@cun.edu.co).
-  if (
-    !isEmailOnOrbitAllowlist(emailNorm) &&
-    !isEmailOnOrbitAllowlist(personEmailNorm)
-  ) {
+  // Reborn: allowlist admin (acceso total) o grant acotado de Planta Activa.
+  const authorized =
+    isEmailAuthorizedForOrbit(emailNorm) ||
+    isEmailAuthorizedForOrbit(personEmailNorm);
+  if (!authorized) {
     return {
       ok: false,
       status: 403,
@@ -198,7 +205,26 @@ async function gateOrbitRoleAndLite(
     };
   }
 
-  const { orbitAccess, capabilities } = resolveAllowlistAdminAccess();
+  if (
+    isEmailOnOrbitAllowlist(emailNorm) ||
+    isEmailOnOrbitAllowlist(personEmailNorm)
+  ) {
+    const { orbitAccess, capabilities } = resolveAllowlistAdminAccess();
+    return {
+      ok: true,
+      orbitAccess,
+      capabilities,
+      schoolId: null,
+      areaId: null,
+      programIds: [],
+      plantaViewAreaIds: null,
+      plantaEditAreaIds: null,
+    };
+  }
+
+  const grant =
+    getPlantaActivaGrant(emailNorm) ?? getPlantaActivaGrant(personEmailNorm);
+  const { orbitAccess, capabilities } = resolvePlantaActivaGrantAccess();
   return {
     ok: true,
     orbitAccess,
@@ -206,6 +232,8 @@ async function gateOrbitRoleAndLite(
     schoolId: null,
     areaId: null,
     programIds: [],
+    plantaViewAreaIds: grant?.viewAreaIds ?? null,
+    plantaEditAreaIds: grant?.editAreaIds ?? [],
   };
 }
 
@@ -331,6 +359,11 @@ type AuthSuccessBody = {
     roleName: string | null;
     orbitAccess: OrbitAccess;
     capabilities: OrbitCapability[];
+    /** Presente en grants de Planta Activa; admin no lo necesita. */
+    plantaActivaAccess?: {
+      viewAreaIds: number[] | null;
+      editAreaIds: number[] | null;
+    };
   };
 };
 
@@ -341,6 +374,8 @@ async function buildTokenResponse(params: {
   schoolId: number | null;
   areaId: number | null;
   programIds: number[];
+  plantaViewAreaIds: number[] | null;
+  plantaEditAreaIds: number[] | null;
   email: string;
   displayName: string;
   picture: string;
@@ -359,6 +394,8 @@ async function buildTokenResponse(params: {
     schoolId,
     areaId,
     programIds,
+    plantaViewAreaIds,
+    plantaEditAreaIds,
     email,
     displayName,
     picture,
@@ -387,10 +424,20 @@ async function buildTokenResponse(params: {
         orbitAccess === "lite" || orbitAccess === "school" ? schoolId : null,
       areaId: areaId != null && Number.isFinite(areaId) ? areaId : null,
       programIds: orbitAccess === "lite" ? programIds : [],
+      plantaViewAreaIds,
+      plantaEditAreaIds,
     },
     jwtSecret,
     signOptions
   );
+
+  const plantaActivaAccess =
+    plantaEditAreaIds != null
+      ? {
+          viewAreaIds: plantaViewAreaIds,
+          editAreaIds: plantaEditAreaIds,
+        }
+      : undefined;
 
   return {
     token,
@@ -405,6 +452,7 @@ async function buildTokenResponse(params: {
       roleName: person.role_name ?? null,
       orbitAccess,
       capabilities,
+      ...(plantaActivaAccess ? { plantaActivaAccess } : {}),
     },
   };
 }
@@ -478,6 +526,8 @@ async function completeGoogleSignInWithIdToken(
       schoolId: gate.schoolId,
       areaId: gate.areaId,
       programIds: gate.programIds,
+      plantaViewAreaIds: gate.plantaViewAreaIds,
+      plantaEditAreaIds: gate.plantaEditAreaIds,
       email,
       displayName: name,
       picture,
@@ -618,6 +668,8 @@ router.post("/auth/local-email", async (req, res) => {
       schoolId: gate.schoolId,
       areaId: gate.areaId,
       programIds: gate.programIds,
+      plantaViewAreaIds: gate.plantaViewAreaIds,
+      plantaEditAreaIds: gate.plantaEditAreaIds,
       email: canonicalEmail,
       displayName: person.full_name || canonicalEmail,
       picture: "",

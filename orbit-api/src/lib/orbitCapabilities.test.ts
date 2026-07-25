@@ -10,10 +10,16 @@ import {
   VACANCIES_ADMIN_CAPABILITIES,
   ROLE_37_VACANCIES_CAPABILITIES,
   VACANCIES_ONLY_CAPABILITIES,
+  isEmailAuthorizedForOrbit,
   isEmailOnOrbitAllowlist,
   resolveAllowlistAdminAccess,
   resolveOrbitAccess,
 } from "./orbitCapabilities";
+import {
+  canEditPlantaArea,
+  canViewPlantaArea,
+  getPlantaActivaGrant,
+} from "./plantaActivaAccess";
 
 function test(name: string, fn: () => void): void {
   try {
@@ -198,6 +204,42 @@ test("allowlist env override", () => {
     if (prev === undefined) delete process.env.ORBIT_ACCESS_ALLOWLIST;
     else process.env.ORBIT_ACCESS_ALLOWLIST = prev;
   }
+});
+
+test("planta activa grants: sara/leidy/tania", () => {
+  const sara = getPlantaActivaGrant("sara_murillofo@cun.edu.co");
+  assert.ok(sara);
+  assert.equal(sara!.viewAreaIds, null);
+  assert.deepEqual(sara!.editAreaIds, [2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(canViewPlantaArea(sara, 1), true);
+  assert.equal(canEditPlantaArea(sara, 1), false);
+  assert.equal(canEditPlantaArea(sara, 3), true);
+
+  const leidy = getPlantaActivaGrant("LEIDY_BERNAL@cun.edu.co");
+  assert.ok(leidy);
+  assert.deepEqual(leidy!.viewAreaIds, [1]);
+  assert.equal(canViewPlantaArea(leidy, 1), true);
+  assert.equal(canViewPlantaArea(leidy, 2), false);
+  assert.equal(canEditPlantaArea(leidy, 1), true);
+  assert.equal(canEditPlantaArea(leidy, 2), false);
+
+  const tania = getPlantaActivaGrant("tania_rocha@cun.edu.co");
+  assert.ok(tania);
+  assert.deepEqual(tania!.viewAreaIds, [9]);
+  assert.equal(canViewPlantaArea(tania, 9), true);
+  assert.equal(canViewPlantaArea(tania, 2), false);
+  assert.equal(canEditPlantaArea(tania, 9), true);
+  assert.equal(canEditPlantaArea(tania, 1), false);
+
+  assert.equal(getPlantaActivaGrant("camilo_quintero@cun.edu.co"), null);
+});
+
+test("isEmailAuthorizedForOrbit includes planta grants", () => {
+  assert.equal(isEmailAuthorizedForOrbit("sara_murillofo@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("leidy_bernal@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("tania_rocha@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("otro@cun.edu.co"), false);
+  assert.equal(isEmailAuthorizedForOrbit("camilo_quintero@cun.edu.co"), true);
 });
 
 console.log("orbitCapabilities tests passed");

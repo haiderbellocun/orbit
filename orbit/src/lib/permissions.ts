@@ -129,6 +129,7 @@ export function getStoredRoleId(): number | null {
 }
 
 const LANDING_VIEW_ORDER: View[] = [
+  "planta-activa",
   "personal",
   "news",
   "teachers",
@@ -143,7 +144,7 @@ export function getDefaultView(capabilities: readonly string[]): View {
   if (canAccessView("home", capabilities)) return "home";
   // Si no hay acceso a Command Center, ir a Vacantes.
   if (canAccessView("vacancies", capabilities)) return "vacancies";
-  // Si tampoco hay Vacantes, usamos el orden restante.
+  // Si tampoco hay Vacantes, usamos el orden restante (incluye Planta Activa).
   for (const v of LANDING_VIEW_ORDER) {
     if (canAccessView(v, capabilities)) return v;
   }
