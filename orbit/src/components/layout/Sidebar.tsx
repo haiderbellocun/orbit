@@ -34,10 +34,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
       isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
     )}>
       <div className="p-8 flex items-center justify-between">
-        <motion.div 
+        <motion.button
+          type="button"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="flex items-center gap-4"
+          whileTap={{ scale: 0.98 }}
+          onClick={() => {
+            setView('home');
+            onClose?.();
+          }}
+          className="flex items-center gap-4 cursor-pointer"
+          aria-label="Volver al Command Center"
         >
           <motion.div 
             whileHover={{ rotate: 180 }}
@@ -47,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Logo className="h-7 w-7" />
           </motion.div>
           <span className="font-bold text-2xl tracking-tight text-slate-900 font-display">{BRAND_CONFIG.name}</span>
-        </motion.div>
+        </motion.button>
         <button 
           onClick={onClose}
           className="md:hidden p-2 text-slate-400 hover:text-slate-600"

@@ -4,6 +4,7 @@
 
 import { getLiteRoleId } from "./orbitRoles";
 import { isNewsAreaRoleId } from "./newsScope";
+import { isEmailOnPlantaActivaGrant } from "./plantaActivaAccess";
 
 export type OrbitAccess = "lite" | "full" | "school";
 
@@ -72,6 +73,27 @@ export function isEmailOnOrbitAllowlist(email: string | null | undefined): boole
   const norm = (email ?? "").trim().toLowerCase();
   if (!norm) return false;
   return getOrbitAccessAllowlist().includes(norm);
+}
+
+/**
+ * Puede iniciar sesión en ORBIT: allowlist admin (acceso total) o grant de Planta Activa.
+ */
+export function isEmailAuthorizedForOrbit(
+  email: string | null | undefined
+): boolean {
+  return isEmailOnOrbitAllowlist(email) || isEmailOnPlantaActivaGrant(email);
+}
+
+/** Solo Planta Activa (usuarios con grant acotado). */
+export const PLANTA_ACTIVA_ONLY_CAPABILITIES: readonly OrbitCapability[] = [
+  ORBIT_CAPABILITY.PLANTA_ACTIVA,
+];
+
+export function resolvePlantaActivaGrantAccess(): ResolvedOrbitAccess {
+  return {
+    orbitAccess: "full",
+    capabilities: [...PLANTA_ACTIVA_ONLY_CAPABILITIES],
+  };
 }
 
 const LITE_CAPABILITIES: readonly OrbitCapability[] = [

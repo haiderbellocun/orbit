@@ -3,6 +3,11 @@ import { pool } from "../db/connection";
 import {
   resolveCoreSchemaMode,
 } from "../lib/coreSchema";
+import {
+  canEditPlantaArea,
+  canViewPlantaArea,
+  type PlantaActivaGrant,
+} from "../lib/plantaActivaAccess";
 import { schoolScopeFromRequest } from "../middleware/orbitAuth";
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
 
@@ -20,6 +25,23 @@ function parseBoolFlag(raw: unknown): boolean {
     .trim()
     .toLowerCase();
   return s === "1" || s === "true" || s === "yes";
+}
+
+/** Grant de Planta Activa del usuario; `null` = admin sin recorte. */
+function plantaGrantFromRequest(req: Request): PlantaActivaGrant | null {
+  const u = req.orbitUser;
+  if (!u) return null;
+  // Admin allowlist: plantaEditAreaIds === null → sin grant / sin recorte.
+  if (u.plantaEditAreaIds == null) return null;
+  return {
+    email: u.email,
+    viewAreaIds: u.plantaViewAreaIds,
+    editAreaIds: u.plantaEditAreaIds,
+  };
+}
+
+function effectiveAreaSql(aliasP = "p", aliasS = "s"): string {
+  return `COALESCE(${aliasP}.area_id, ${aliasS}.area_id)`;
 }
 
 /** GET /planta-activa — todas las personas activas (is_active). */
@@ -59,6 +81,7 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
     const offset = (pageNum - 1) * limitNum;
 
     const schoolScope = schoolScopeFromRequest(req);
+    const plantaGrant = plantaGrantFromRequest(req);
     const conditions: string[] = [sqlPersonIsActive("p")];
     const values: unknown[] = [];
     let i = 1;
@@ -73,8 +96,22 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
       i++;
     }
 
+    // Recorte de vista por grant (si aplica).
+    if (plantaGrant?.viewAreaIds != null && plantaGrant.viewAreaIds.length > 0) {
+      if (areaId != null && !plantaGrant.viewAreaIds.includes(areaId)) {
+        res.json({
+          data: [],
+          pagination: { total: 0, page: pageNum, limit: limitNum, totalPages: 0 },
+        });
+        return;
+      }
+      conditions.push(`${effectiveAreaSql()} = ANY($${i}::int[])`);
+      values.push(plantaGrant.viewAreaIds);
+      i++;
+    }
+
     if (areaId != null) {
-      conditions.push(`COALESCE(p.area_id, s.area_id) = $${i}`);
+      conditions.push(`${effectiveAreaSql()} = $${i}`);
       values.push(areaId);
       i++;
     }
@@ -137,6 +174,7 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
          r.id AS role_id,
          COALESCE(r.name, '') AS role_name,
          ${sqlPersonStatusText("p")} AS status,
+         ${effectiveAreaSql()} AS effective_area_id,
          COUNT(*) OVER() AS total_count
        FROM ${prefix}person p
        LEFT JOIN ${prefix}role r ON r.id = p.role_id
@@ -152,8 +190,16 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
     const total =
       result.rows.length > 0 ? Number(result.rows[0].total_count) : 0;
     const data = result.rows.map((row: Record<string, unknown>) => {
-      const { total_count: _tc, ...rest } = row;
-      return rest;
+      const {
+        total_count: _tc,
+        effective_area_id: ea,
+        ...rest
+      } = row;
+      const effectiveArea = ea != null ? Number(ea) : null;
+      return {
+        ...rest,
+        can_edit: canEditPlantaArea(plantaGrant, effectiveArea),
+      };
     });
 
     res.json({
@@ -187,6 +233,7 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
     }
     const prefix = mode === "core" ? "core." : "";
     const schoolScope = schoolScopeFromRequest(req);
+    const plantaGrant = plantaGrantFromRequest(req);
 
     const { rows } = await pool.query(
       `SELECT
@@ -206,7 +253,8 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
          COALESCE(pr.name, '') AS program,
          r.id AS role_id,
          COALESCE(r.name, '') AS role_name,
-         ${sqlPersonStatusText("p")} AS status
+         ${sqlPersonStatusText("p")} AS status,
+         ${effectiveAreaSql()} AS effective_area_id
        FROM ${prefix}person p
        LEFT JOIN ${prefix}role r ON r.id = p.role_id
        LEFT JOIN ${prefix}school s ON s.id = p.school_id
@@ -230,7 +278,18 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
       return;
     }
 
-    res.json(row);
+    const effectiveArea =
+      row.effective_area_id != null ? Number(row.effective_area_id) : null;
+    if (!canViewPlantaArea(plantaGrant, effectiveArea)) {
+      res.status(403).json({ error: "No tienes permiso para este recurso" });
+      return;
+    }
+
+    const { effective_area_id: _ea, ...rest } = row;
+    res.json({
+      ...rest,
+      can_edit: canEditPlantaArea(plantaGrant, effectiveArea),
+    });
   } catch (e) {
     console.error("GET /planta-activa/:id failed:", e);
     res.status(500).json({ error: "Internal server error" });
@@ -253,9 +312,17 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
     }
     const prefix = mode === "core" ? "core." : "";
     const schoolScope = schoolScopeFromRequest(req);
+    const plantaGrant = plantaGrantFromRequest(req);
 
     const existing = await pool.query(
-      `SELECT id, school_id, document FROM ${prefix}person WHERE id = $1`,
+      `SELECT
+         p.id,
+         p.school_id,
+         p.document,
+         ${effectiveAreaSql()} AS effective_area_id
+       FROM ${prefix}person p
+       LEFT JOIN ${prefix}school s ON s.id = p.school_id
+       WHERE p.id = $1`,
       [id]
     );
     if (existing.rows.length === 0) {
@@ -266,6 +333,7 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
     const current = existing.rows[0] as {
       school_id: number | null;
       document: string | null;
+      effective_area_id: number | null;
     };
     if (
       schoolScope != null &&
@@ -273,6 +341,17 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
         Number(current.school_id) !== schoolScope.schoolId)
     ) {
       res.status(403).json({ error: "No tienes permiso para este recurso" });
+      return;
+    }
+
+    const currentArea =
+      current.effective_area_id != null
+        ? Number(current.effective_area_id)
+        : null;
+    if (!canEditPlantaArea(plantaGrant, currentArea)) {
+      res.status(403).json({
+        error: "No tienes permiso para editar personal de esta área",
+      });
       return;
     }
 
@@ -363,6 +442,15 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
       if (!(key in b)) continue;
       if (sets.some((s) => s.startsWith(`${col} =`))) continue;
       const n = parsePositiveInt(b[key]);
+      if (col === "area_id" && plantaGrant != null) {
+        // No permitir mover a un área fuera del alcance de edición.
+        if (!canEditPlantaArea(plantaGrant, n)) {
+          res.status(403).json({
+            error: "No puedes asignar personal a un área fuera de tu alcance",
+          });
+          return;
+        }
+      }
       sets.push(`${col} = $${i}`);
       values.push(n);
       i++;
