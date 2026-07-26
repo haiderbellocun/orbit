@@ -6,6 +6,7 @@ import {
 } from "../lib/coreSchema";
 import {
   newsScopeFromRequest,
+  newsScopeSql,
   type NewsScope,
 } from "../lib/newsScope";
 import { hasCapability, ORBIT_CAPABILITY } from "../lib/orbitCapabilities";
@@ -56,21 +57,7 @@ function scopeSql(
   aliasS: string,
   startIdx: number
 ): { clause: string; values: unknown[]; nextIdx: number } {
-  if (scope.kind === "school") {
-    return {
-      clause: `${aliasAp}.school_id = $${startIdx}`,
-      values: [scope.schoolId],
-      nextIdx: startIdx + 1,
-    };
-  }
-  if (scope.kind === "area") {
-    return {
-      clause: `COALESCE(${aliasAp}.area_id, ${aliasS}.area_id) = $${startIdx}`,
-      values: [scope.areaId],
-      nextIdx: startIdx + 1,
-    };
-  }
-  return { clause: "TRUE", values: [], nextIdx: startIdx };
+  return newsScopeSql(scope, aliasAp, aliasS, startIdx);
 }
 
 function numOrNull(v: unknown): number | null {

@@ -316,6 +316,15 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     void loadList();
   }, [loadList]);
 
+  useEffect(() => {
+    if (filters.search === applied.search) return;
+    const t = setTimeout(() => {
+      setPage(1);
+      setApplied((prev) => ({ ...prev, search: filters.search }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [filters.search, applied.search]);
+
   const applyFilters = () => {
     setPage(1);
     setApplied({ ...filters });

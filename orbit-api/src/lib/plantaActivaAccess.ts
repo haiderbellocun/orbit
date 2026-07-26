@@ -29,19 +29,20 @@ const GRANTS: readonly PlantaActivaGrant[] = [
       "view:home",
       "view:vacancies",
       "vacancies:informative_panel",
+      "view:news",
     ],
   },
   {
     email: "leidy_bernal@cun.edu.co",
     viewAreaIds: [1],
     editAreaIds: [1],
-    extraCapabilities: ["view:academic_load"],
+    extraCapabilities: ["view:academic_load", "view:news"],
   },
   {
     email: "tania_rocha@cun.edu.co",
     viewAreaIds: [9],
     editAreaIds: [9],
-    extraCapabilities: ["view:academic_load"],
+    extraCapabilities: ["view:academic_load", "view:news"],
   },
 ];
 
