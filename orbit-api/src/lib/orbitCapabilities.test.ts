@@ -14,6 +14,7 @@ import {
   isEmailOnOrbitAllowlist,
   resolveAllowlistAdminAccess,
   resolveOrbitAccess,
+  resolvePlantaActivaGrantAccess,
 } from "./orbitCapabilities";
 import {
   canEditPlantaArea,
@@ -66,7 +67,7 @@ test("role 9 all panels + full data scope (not LITE login)", () => {
   }
 });
 
-test("role 51 personal + vacancies school scope", () => {
+test("role 51 vacancies + news school scope", () => {
   const r = resolveOrbitAccess({
     roleId: ROLE_51_STAFF_ROLE_ID,
     roleCode: null,
@@ -75,7 +76,7 @@ test("role 51 personal + vacancies school scope", () => {
   assert.ok(r);
   assert.equal(r.orbitAccess, "school");
   assert.deepEqual(r.capabilities, [...ROLE_51_STAFF_CAPABILITIES]);
-  assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.PERSONAL), true);
+  assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.NEWS), true);
   assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.VACANCIES), true);
   assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.HOME), false);
 });
@@ -138,7 +139,6 @@ test("LITE by configured role id (not 9)", () => {
     assert.equal(r.orbitAccess, "lite");
     assert.deepEqual(r.capabilities, [
       ORBIT_CAPABILITY.HOME,
-      ORBIT_CAPABILITY.TEACHERS,
     ]);
   } finally {
     if (prev === undefined) delete process.env.ORBIT_LITE_ROLE_ID;
@@ -184,7 +184,6 @@ test("allowlist default includes camilo", () => {
     const admin = resolveAllowlistAdminAccess();
     assert.equal(admin.orbitAccess, "full");
     assert.deepEqual(admin.capabilities, [...SUPER_ADMIN_CAPABILITIES]);
-    assert.equal(admin.capabilities.includes(ORBIT_CAPABILITY.PERSONAL), true);
     assert.equal(admin.capabilities.includes(ORBIT_CAPABILITY.PLANTA_ACTIVA), true);
     assert.equal(admin.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN), true);
   } finally {
@@ -211,25 +210,52 @@ test("planta activa grants: sara/leidy/tania", () => {
   assert.ok(sara);
   assert.equal(sara!.viewAreaIds, null);
   assert.deepEqual(sara!.editAreaIds, [2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(sara!.extraCapabilities, [
+    "view:home",
+    "view:vacancies",
+    "vacancies:informative_panel",
+  ]);
   assert.equal(canViewPlantaArea(sara, 1), true);
   assert.equal(canEditPlantaArea(sara, 1), false);
   assert.equal(canEditPlantaArea(sara, 3), true);
+  const saraAccess = resolvePlantaActivaGrantAccess(sara);
+  assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.PLANTA_ACTIVA), true);
+  assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.HOME), true);
+  assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.VACANCIES), true);
+  assert.equal(
+    saraAccess.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL),
+    true
+  );
 
   const leidy = getPlantaActivaGrant("LEIDY_BERNAL@cun.edu.co");
   assert.ok(leidy);
   assert.deepEqual(leidy!.viewAreaIds, [1]);
+  assert.deepEqual(leidy!.extraCapabilities, ["view:academic_load"]);
   assert.equal(canViewPlantaArea(leidy, 1), true);
   assert.equal(canViewPlantaArea(leidy, 2), false);
   assert.equal(canEditPlantaArea(leidy, 1), true);
   assert.equal(canEditPlantaArea(leidy, 2), false);
+  assert.equal(
+    resolvePlantaActivaGrantAccess(leidy).capabilities.includes(
+      ORBIT_CAPABILITY.ACADEMIC_LOAD
+    ),
+    true
+  );
 
   const tania = getPlantaActivaGrant("tania_rocha@cun.edu.co");
   assert.ok(tania);
   assert.deepEqual(tania!.viewAreaIds, [9]);
+  assert.deepEqual(tania!.extraCapabilities, ["view:academic_load"]);
   assert.equal(canViewPlantaArea(tania, 9), true);
   assert.equal(canViewPlantaArea(tania, 2), false);
   assert.equal(canEditPlantaArea(tania, 9), true);
   assert.equal(canEditPlantaArea(tania, 1), false);
+  assert.equal(
+    resolvePlantaActivaGrantAccess(tania).capabilities.includes(
+      ORBIT_CAPABILITY.ACADEMIC_LOAD
+    ),
+    true
+  );
 
   assert.equal(getPlantaActivaGrant("camilo_quintero@cun.edu.co"), null);
 });

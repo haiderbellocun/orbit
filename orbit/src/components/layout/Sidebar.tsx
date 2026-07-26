@@ -1,10 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/solid';
-import {
-  UserGroupIcon as UserGroupOutlineIcon,
-  AcademicCapIcon as AcademicCapOutlineIcon,
-} from '@heroicons/react/24/outline';
+import { AcademicCapIcon as AcademicCapOutlineIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/src/lib/utils';
 import { View, NAV_ITEMS, type NavItem } from '@/src/types';
 import { BRAND_CONFIG, APP_ICONS } from '@/src/config/brand';
@@ -15,7 +12,6 @@ interface SidebarProps {
   setView: (v: View) => void;
   isOpen?: boolean;
   onClose?: () => void;
-  /** Por defecto `NAV_ITEMS` completo. */
   navItems?: NavItem[];
   onLogout?: () => void;
 }
@@ -46,7 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className="flex items-center gap-4 cursor-pointer"
           aria-label="Volver al Command Center"
         >
-          <motion.div 
+          <motion.div
             whileHover={{ rotate: 180 }}
             transition={{ duration: 0.6 }}
             className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-white shadow-xl shadow-violet-500/20"
@@ -55,7 +51,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </motion.div>
           <span className="font-bold text-2xl tracking-tight text-slate-900 font-display">{BRAND_CONFIG.name}</span>
         </motion.button>
-        <button 
+        <button
           onClick={onClose}
           className="md:hidden p-2 text-slate-400 hover:text-slate-600"
         >
@@ -67,11 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {navItems.map((item, i) => {
           const isActive = currentView === item.id || (currentView.startsWith(item.id.split('-')[0]) && item.id !== 'home');
           const OutlineIcon =
-            item.id === 'lites'
-              ? UserGroupOutlineIcon
-              : item.id === 'academic-load'
-                ? AcademicCapOutlineIcon
-                : null;
+            item.id === 'academic-load' ? AcademicCapOutlineIcon : null;
           const Icon = OutlineIcon
             ? null
             : APP_ICONS[item.iconKey as keyof typeof APP_ICONS];
@@ -87,8 +79,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => setView(item.id as View)}
               className={cn(
                 "w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all duration-300 group relative",
-                isActive 
-                  ? "bg-white shadow-xl shadow-slate-200/50 border border-white/50 text-violet-600 font-semibold" 
+                isActive
+                  ? "bg-white shadow-xl shadow-slate-200/50 border border-white/50 text-violet-600 font-semibold"
                   : "text-slate-500 hover:text-violet-600 hover:bg-white/40"
               )}
             >
@@ -107,15 +99,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   "relative h-[22px] w-[22px] shrink-0 transition-transform duration-300 group-hover:scale-110 flex items-center justify-center",
                   isActive ? "text-violet-600" : "text-slate-400 group-hover:text-violet-500"
                 )}>
-                  <Icon 
-                    className="h-full w-full" 
+                  <Icon
+                    className="h-full w-full"
                     style={{ fill: isActive ? 'url(#icon-gradient)' : 'currentColor' }}
                   />
                 </div>
               )}
               <span className="text-sm tracking-wide">{item.label}</span>
               {isActive && (
-                <motion.div 
+                <motion.div
                   layoutId="active-indicator"
                   className="absolute left-0 w-1.5 h-6 bg-gradient-to-b from-violet-500 to-fuchsia-500 rounded-r-full"
                 />
@@ -126,7 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       <div className="p-6 border-t border-white/30">
-        <button 
+        <button
           onClick={() => {
             onLogout?.();
             setView('login');

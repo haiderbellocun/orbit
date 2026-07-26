@@ -224,7 +224,7 @@ async function gateOrbitRoleAndLite(
 
   const grant =
     getPlantaActivaGrant(emailNorm) ?? getPlantaActivaGrant(personEmailNorm);
-  const { orbitAccess, capabilities } = resolvePlantaActivaGrantAccess();
+  const { orbitAccess, capabilities } = resolvePlantaActivaGrantAccess(grant);
   return {
     ok: true,
     orbitAccess,

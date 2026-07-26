@@ -10,16 +10,12 @@ export type OrbitAccess = "lite" | "full" | "school";
 
 export const ORBIT_CAPABILITY = {
   HOME: "view:home",
-  TEACHERS: "view:teachers",
   ACADEMIC_LOAD: "view:academic_load",
-  COORDINATORS: "view:coordinators",
-  LITES: "view:lites",
   VACANCIES: "view:vacancies",
   /** Panel informativo de vacantes (bitácora de cambios). */
   VACANCIES_INFORMATIVE_PANEL: "vacancies:informative_panel",
   /** Administración de vacantes: eliminar y cambio de estado forzado (rol 38). */
   VACANCIES_ADMIN: "vacancies:admin",
-  PERSONAL: "view:personal",
   PLANTA_ACTIVA: "view:planta_activa",
   NEWS: "view:news",
 } as const;
@@ -29,10 +25,7 @@ export type OrbitCapability =
 
 export const ALL_ORBIT_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.HOME,
-  ORBIT_CAPABILITY.TEACHERS,
   ORBIT_CAPABILITY.ACADEMIC_LOAD,
-  ORBIT_CAPABILITY.COORDINATORS,
-  ORBIT_CAPABILITY.LITES,
   ORBIT_CAPABILITY.VACANCIES,
   ORBIT_CAPABILITY.NEWS,
 ];
@@ -40,14 +33,10 @@ export const ALL_ORBIT_CAPABILITIES: readonly OrbitCapability[] = [
 /** Todas las capabilities existentes (reborn / bootstrap admin). */
 export const SUPER_ADMIN_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.HOME,
-  ORBIT_CAPABILITY.TEACHERS,
   ORBIT_CAPABILITY.ACADEMIC_LOAD,
-  ORBIT_CAPABILITY.COORDINATORS,
-  ORBIT_CAPABILITY.LITES,
   ORBIT_CAPABILITY.VACANCIES,
   ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL,
   ORBIT_CAPABILITY.VACANCIES_ADMIN,
-  ORBIT_CAPABILITY.PERSONAL,
   ORBIT_CAPABILITY.PLANTA_ACTIVA,
   ORBIT_CAPABILITY.NEWS,
 ];
@@ -84,21 +73,27 @@ export function isEmailAuthorizedForOrbit(
   return isEmailOnOrbitAllowlist(email) || isEmailOnPlantaActivaGrant(email);
 }
 
-/** Solo Planta Activa (usuarios con grant acotado). */
+/** Solo Planta Activa por defecto; extras vienen del grant. */
 export const PLANTA_ACTIVA_ONLY_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.PLANTA_ACTIVA,
 ];
 
-export function resolvePlantaActivaGrantAccess(): ResolvedOrbitAccess {
+export function resolvePlantaActivaGrantAccess(
+  grant: { extraCapabilities?: readonly string[] } | null | undefined
+): ResolvedOrbitAccess {
+  const extra = (grant?.extraCapabilities ?? []).filter((c): c is OrbitCapability =>
+    (Object.values(ORBIT_CAPABILITY) as string[]).includes(c)
+  );
   return {
     orbitAccess: "full",
-    capabilities: [...PLANTA_ACTIVA_ONLY_CAPABILITIES],
+    capabilities: [
+      ...new Set([...PLANTA_ACTIVA_ONLY_CAPABILITIES, ...extra]),
+    ],
   };
 }
 
 const LITE_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.HOME,
-  ORBIT_CAPABILITY.TEACHERS,
 ];
 
 const DEFAULT_FULL_ACCESS_ROLE_IDS = [1, 10, 13, 19, 42, 43, 44, 45, 46];
@@ -135,9 +130,8 @@ function isSchoolCoordinatorRoleId(roleId: number): boolean {
   return SCHOOL_COORDINATOR_ROLE_IDS.includes(roleId);
 }
 
-/** Rol 51: panel Personal + Vacantes (alcance escuela). */
+/** Rol 51: Vacantes + Novedades (alcance escuela). */
 export const ROLE_51_STAFF_CAPABILITIES: readonly OrbitCapability[] = [
-  ORBIT_CAPABILITY.PERSONAL,
   ORBIT_CAPABILITY.VACANCIES,
   ORBIT_CAPABILITY.NEWS,
 ];

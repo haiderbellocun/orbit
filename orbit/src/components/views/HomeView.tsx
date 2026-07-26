@@ -239,7 +239,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <div className="space-y-4 relative z-10">
             {isLiteUser ? (
               <p className="text-sm font-medium text-white/90 leading-relaxed">
-                Consulta a tus docentes desde el menú lateral «Docentes». Las demás funciones no están disponibles para tu perfil.
+                Usa el menú lateral para acceder a las secciones disponibles para tu perfil.
               </p>
             ) : !canManageVacancies ? (
               <p className="text-sm font-medium text-white/90 leading-relaxed">

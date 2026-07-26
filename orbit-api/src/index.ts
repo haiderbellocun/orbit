@@ -2,13 +2,9 @@ import cors from "cors";
 import express from "express";
 import { verifyConnection } from "./db/connection";
 import { runStartupSchemaPatches } from "./db/startupSchemaPatches";
-import coordinatorsRouter from "./routes/coordinators";
 import reinstatementsRouter from "./routes/reinstatements";
-import teachersRouter from "./routes/teachers";
 import vacanciesRouter from "./routes/vacancies";
-import litesRouter from "./routes/lites";
 import academicLoadRouter from "./routes/academic_load";
-import importRouter from "./routes/import";
 import dashboardRouter from "./routes/dashboard";
 import authRouter from "./routes/auth";
 import catalogRouter from "./routes/catalog";
@@ -31,18 +27,14 @@ app.use("/api", authRouter);
 app.use("/api", orbitAuthMiddleware);
 app.use("/api", orbitCapabilityByPathMiddleware);
 app.use("/api", dashboardRouter);
-app.use("/api", teachersRouter);
 app.use("/api", catalogRouter);
 app.use("/api", personalRouter);
 app.use("/api", plantaActivaRouter);
 app.use("/api", workforceEventsRouter);
 app.use("/api", notificationsRouter);
 app.use("/api", vacanciesRouter);
-app.use("/api", coordinatorsRouter);
 app.use("/api", reinstatementsRouter);
-app.use("/api", litesRouter);
 app.use("/api", academicLoadRouter);
-app.use("/api", importRouter);
 
 app.get("/health", async (_req, res) => {
   try {

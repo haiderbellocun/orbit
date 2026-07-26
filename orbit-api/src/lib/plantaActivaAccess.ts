@@ -1,6 +1,7 @@
 /**
- * Acceso acotado a Planta Activa (reborn).
- * No son admin total: solo capability `view:planta_activa` + límites de área.
+ * Acceso acotado (reborn) para usuarios fuera del allowlist admin.
+ * Base: capability `view:planta_activa` + límites de área.
+ * Opcional: paneles extra (vacantes, etc.).
  *
  * - viewAreaIds `null` → puede ver toda la planta.
  * - editAreaIds → áreas cuyo personal puede gestionar (PATCH).
@@ -12,6 +13,11 @@ export type PlantaActivaGrant = {
   viewAreaIds: number[] | null;
   /** Áreas que puede editar. */
   editAreaIds: number[];
+  /**
+   * Capabilities adicionales a `view:planta_activa`
+   * (p. ej. `view:vacancies`, `vacancies:informative_panel`).
+   */
+  extraCapabilities?: readonly string[];
 };
 
 const GRANTS: readonly PlantaActivaGrant[] = [
@@ -19,16 +25,23 @@ const GRANTS: readonly PlantaActivaGrant[] = [
     email: "sara_murillofo@cun.edu.co",
     viewAreaIds: null,
     editAreaIds: [2, 3, 4, 5, 6, 7, 8],
+    extraCapabilities: [
+      "view:home",
+      "view:vacancies",
+      "vacancies:informative_panel",
+    ],
   },
   {
     email: "leidy_bernal@cun.edu.co",
     viewAreaIds: [1],
     editAreaIds: [1],
+    extraCapabilities: ["view:academic_load"],
   },
   {
     email: "tania_rocha@cun.edu.co",
     viewAreaIds: [9],
     editAreaIds: [9],
+    extraCapabilities: ["view:academic_load"],
   },
 ];
 
@@ -54,7 +67,7 @@ export function canViewPlantaArea(
   grant: PlantaActivaGrant | null | undefined,
   areaId: number | null
 ): boolean {
-  if (grant == null) return true; // admin / sin grant (otro middleware)
+  if (grant == null) return true;
   if (grant.viewAreaIds == null) return true;
   if (areaId == null || !Number.isFinite(areaId)) return false;
   return grant.viewAreaIds.includes(areaId);
@@ -67,6 +80,13 @@ export function canEditPlantaArea(
   if (grant == null) return true;
   if (areaId == null || !Number.isFinite(areaId)) return false;
   return grant.editAreaIds.includes(areaId);
+}
+
+/** Capabilities efectivas del grant (planta + extras). */
+export function capabilitiesForPlantaActivaGrant(
+  grant: PlantaActivaGrant
+): string[] {
+  return ["view:planta_activa", ...(grant.extraCapabilities ?? [])];
 }
 
 /** Lista fija de grants (útil en tests / docs). */

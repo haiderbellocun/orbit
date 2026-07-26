@@ -47,7 +47,7 @@ export const ProgramsView: React.FC<ProgramsViewProps> = ({
     <div className="space-y-10">
       <div className="flex items-center gap-4">
         <button 
-          onClick={() => setView('coordinators')}
+          onClick={() => setView('home')}
           className="p-2 hover:bg-white/50 rounded-xl transition-colors text-slate-400 hover:text-violet-600"
         >
           <ArrowLeftIcon className="h-6 w-6" />
