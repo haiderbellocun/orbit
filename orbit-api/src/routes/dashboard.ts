@@ -7,6 +7,7 @@ import {
 import { hasCapability, ORBIT_CAPABILITY } from "../lib/orbitCapabilities";
 import {
   newsScopeFromRequest,
+  newsScopeSql,
   type NewsScope,
 } from "../lib/newsScope";
 import { sqlPersonIsActive } from "../sql/personActive";
@@ -169,19 +170,8 @@ function newsScopeClause(
   aliasS: string,
   startIdx: number
 ): { clause: string; values: unknown[] } {
-  if (scope.kind === "school") {
-    return {
-      clause: `${aliasAp}.school_id = $${startIdx}`,
-      values: [scope.schoolId],
-    };
-  }
-  if (scope.kind === "area") {
-    return {
-      clause: `COALESCE(${aliasAp}.area_id, ${aliasS}.area_id) = $${startIdx}`,
-      values: [scope.areaId],
-    };
-  }
-  return { clause: "TRUE", values: [] };
+  const part = newsScopeSql(scope, aliasAp, aliasS, startIdx);
+  return { clause: part.clause, values: part.values };
 }
 
 async function getTodayNewsMetrics(req: Request): Promise<{

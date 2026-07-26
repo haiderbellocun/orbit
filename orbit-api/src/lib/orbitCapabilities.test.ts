@@ -214,6 +214,7 @@ test("planta activa grants: sara/leidy/tania", () => {
     "view:home",
     "view:vacancies",
     "vacancies:informative_panel",
+    "view:news",
   ]);
   assert.equal(canViewPlantaArea(sara, 1), true);
   assert.equal(canEditPlantaArea(sara, 1), false);
@@ -226,11 +227,15 @@ test("planta activa grants: sara/leidy/tania", () => {
     saraAccess.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL),
     true
   );
+  assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.NEWS), true);
 
   const leidy = getPlantaActivaGrant("LEIDY_BERNAL@cun.edu.co");
   assert.ok(leidy);
   assert.deepEqual(leidy!.viewAreaIds, [1]);
-  assert.deepEqual(leidy!.extraCapabilities, ["view:academic_load"]);
+  assert.deepEqual(leidy!.extraCapabilities, [
+    "view:academic_load",
+    "view:news",
+  ]);
   assert.equal(canViewPlantaArea(leidy, 1), true);
   assert.equal(canViewPlantaArea(leidy, 2), false);
   assert.equal(canEditPlantaArea(leidy, 1), true);
@@ -241,11 +246,20 @@ test("planta activa grants: sara/leidy/tania", () => {
     ),
     true
   );
+  assert.equal(
+    resolvePlantaActivaGrantAccess(leidy).capabilities.includes(
+      ORBIT_CAPABILITY.NEWS
+    ),
+    true
+  );
 
   const tania = getPlantaActivaGrant("tania_rocha@cun.edu.co");
   assert.ok(tania);
   assert.deepEqual(tania!.viewAreaIds, [9]);
-  assert.deepEqual(tania!.extraCapabilities, ["view:academic_load"]);
+  assert.deepEqual(tania!.extraCapabilities, [
+    "view:academic_load",
+    "view:news",
+  ]);
   assert.equal(canViewPlantaArea(tania, 9), true);
   assert.equal(canViewPlantaArea(tania, 2), false);
   assert.equal(canEditPlantaArea(tania, 9), true);
@@ -253,6 +267,12 @@ test("planta activa grants: sara/leidy/tania", () => {
   assert.equal(
     resolvePlantaActivaGrantAccess(tania).capabilities.includes(
       ORBIT_CAPABILITY.ACADEMIC_LOAD
+    ),
+    true
+  );
+  assert.equal(
+    resolvePlantaActivaGrantAccess(tania).capabilities.includes(
+      ORBIT_CAPABILITY.NEWS
     ),
     true
   );

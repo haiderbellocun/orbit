@@ -9,7 +9,11 @@ import {
   hasCapability,
   ORBIT_CAPABILITY,
 } from "../lib/orbitCapabilities";
-import { schoolScopeFromRequest } from "../middleware/orbitAuth";
+import {
+  newsScopeFromRequest,
+  newsScopeSql,
+  type NewsScope,
+} from "../lib/newsScope";
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
 
 const router = Router();
@@ -33,18 +37,18 @@ function coordinatorAcademicSql(
     )`;
 }
 
-/** Listado de personal de escuela (selector de novedades). */
-function requireSchoolStaffListAccess(
+/** Selector de personas para Novedades: school / área(s) / full. */
+function requireNewsPersonListScope(
   req: Request,
   res: Response
-): { schoolId: number } | null {
-  const scope = schoolScopeFromRequest(req);
-  if (scope == null) {
+): NewsScope | null {
+  const caps = req.orbitUser?.capabilities;
+  if (!hasCapability(caps, ORBIT_CAPABILITY.NEWS)) {
     res.status(403).json({ error: "No tienes permiso para este recurso" });
     return null;
   }
-  const caps = req.orbitUser?.capabilities;
-  if (!hasCapability(caps, ORBIT_CAPABILITY.NEWS)) {
+  const scope = newsScopeFromRequest(req);
+  if (scope == null) {
     res.status(403).json({ error: "No tienes permiso para este recurso" });
     return null;
   }
@@ -54,7 +58,7 @@ function requireSchoolStaffListAccess(
 /** GET /personal — selector de personas para Novedades. */
 router.get("/personal", async (req: Request, res: Response) => {
   try {
-    const scope = requireSchoolStaffListAccess(req, res);
+    const scope = requireNewsPersonListScope(req, res);
     if (scope == null) return;
 
     const mode = await resolveCoreSchemaMode();
@@ -77,8 +81,9 @@ router.get("/personal", async (req: Request, res: Response) => {
     );
     const offset = (pageNum - 1) * limitNum;
 
+    const scopePart = newsScopeSql(scope, "p", "s", 1);
     const conditions: string[] = [
-      `p.school_id = $1`,
+      `(${scopePart.clause})`,
       sqlPersonIsActive("p"),
       `(r.name IS NULL OR r.name NOT IN ('DOCENTES', 'DOCENTES PENSIONADOS'))`,
       `NOT (${sqlPersonIsOrbitLite("p", "r", liteRoleId)})`,
@@ -86,8 +91,8 @@ router.get("/personal", async (req: Request, res: Response) => {
         ${coordinatorAcademicSql("a", "h", "r")}
       )`,
     ];
-    const values: unknown[] = [scope.schoolId];
-    let i = 2;
+    const values: unknown[] = [...scopePart.values];
+    let i = scopePart.nextIdx;
 
     if (search) {
       conditions.push(
@@ -140,7 +145,7 @@ router.get("/personal", async (req: Request, res: Response) => {
         total,
         page: pageNum,
         limit: limitNum,
-        totalPages: Math.ceil(total / limitNum),
+        totalPages: Math.ceil(total / limitNum) || 0,
       },
     });
   } catch (e) {

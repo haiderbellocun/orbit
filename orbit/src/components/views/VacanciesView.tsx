@@ -166,6 +166,14 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     return () => window.clearTimeout(t);
   }, [saveBanner]);
 
+  useEffect(() => {
+    if (filters.search === applied.search) return;
+    const t = window.setTimeout(() => {
+      setApplied((prev) => ({ ...prev, search: filters.search }));
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [filters.search, applied.search]);
+
   const areaOptions = useMemo(
     () =>
       uniqueSortedOptions(

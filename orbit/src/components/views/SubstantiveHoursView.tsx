@@ -124,6 +124,15 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     void loadList();
   }, [loadList]);
 
+  useEffect(() => {
+    if (filters.search === applied.search) return;
+    const t = setTimeout(() => {
+      setCurrentPage(1);
+      setApplied((prev) => ({ ...prev, search: filters.search }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [filters.search, applied.search]);
+
   const applyFilters = () => {
     setCurrentPage(1);
     setApplied({ ...filters });
