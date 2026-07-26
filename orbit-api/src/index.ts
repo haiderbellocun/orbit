@@ -5,6 +5,7 @@ import { runStartupSchemaPatches } from "./db/startupSchemaPatches";
 import reinstatementsRouter from "./routes/reinstatements";
 import vacanciesRouter from "./routes/vacancies";
 import academicLoadRouter from "./routes/academic_load";
+import substantiveHoursRouter from "./routes/substantive_hours";
 import dashboardRouter from "./routes/dashboard";
 import authRouter from "./routes/auth";
 import catalogRouter from "./routes/catalog";
@@ -35,6 +36,7 @@ app.use("/api", notificationsRouter);
 app.use("/api", vacanciesRouter);
 app.use("/api", reinstatementsRouter);
 app.use("/api", academicLoadRouter);
+app.use("/api", substantiveHoursRouter);
 
 app.get("/health", async (_req, res) => {
   try {

@@ -11,6 +11,7 @@ export type OrbitAccess = "lite" | "full" | "school";
 export const ORBIT_CAPABILITY = {
   HOME: "view:home",
   ACADEMIC_LOAD: "view:academic_load",
+  SUBSTANTIVE_HOURS: "view:substantive_hours",
   VACANCIES: "view:vacancies",
   /** Panel informativo de vacantes (bitácora de cambios). */
   VACANCIES_INFORMATIVE_PANEL: "vacancies:informative_panel",
@@ -26,6 +27,7 @@ export type OrbitCapability =
 export const ALL_ORBIT_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.HOME,
   ORBIT_CAPABILITY.ACADEMIC_LOAD,
+  ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
   ORBIT_CAPABILITY.VACANCIES,
   ORBIT_CAPABILITY.NEWS,
 ];
@@ -34,6 +36,7 @@ export const ALL_ORBIT_CAPABILITIES: readonly OrbitCapability[] = [
 export const SUPER_ADMIN_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.HOME,
   ORBIT_CAPABILITY.ACADEMIC_LOAD,
+  ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
   ORBIT_CAPABILITY.VACANCIES,
   ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL,
   ORBIT_CAPABILITY.VACANCIES_ADMIN,
