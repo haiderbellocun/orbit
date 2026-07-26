@@ -5,7 +5,7 @@ import {
   isEmailAuthorizedForOrbit,
   isEmailOnOrbitAllowlist,
   ORBIT_CAPABILITY,
-  PLANTA_ACTIVA_ONLY_CAPABILITIES,
+  resolvePlantaActivaGrantAccess,
   SUPER_ADMIN_CAPABILITIES,
   type OrbitAccess,
   type OrbitCapability,
@@ -136,7 +136,7 @@ export function orbitAuthMiddleware(
         });
         return;
       }
-      capabilities = [...PLANTA_ACTIVA_ONLY_CAPABILITIES];
+      capabilities = resolvePlantaActivaGrantAccess(grant).capabilities;
       plantaViewAreaIds = grant.viewAreaIds;
       plantaEditAreaIds = [...grant.editAreaIds];
     }
@@ -201,7 +201,7 @@ export function liteTeacherScopeFromRequest(
 
 /**
  * Valida capability según el path de la petición (evita que middleware apilados en `/api`
- * exijan HOME/TEACHERS en rutas de vacantes, catálogo, etc.).
+ * exijan HOME en rutas de vacantes, catálogo, etc.).
  */
 export function orbitCapabilityByPathMiddleware(
   req: Request,
@@ -226,12 +226,12 @@ export function orbitCapabilityByPathMiddleware(
     return;
   }
 
-  if (path.startsWith("/import")) {
-    if (!hasCapability(u.capabilities, ORBIT_CAPABILITY.TEACHERS)) {
-      res.status(403).json({ error: "No tienes permiso para este recurso" });
-      return;
-    }
-    if (u.orbitAccess === "lite") {
+  // Selector de personas en Novedades (GET /personal).
+  if (path.startsWith("/personal")) {
+    if (
+      !hasCapability(u.capabilities, ORBIT_CAPABILITY.NEWS) &&
+      !hasCapability(u.capabilities, ORBIT_CAPABILITY.HOME)
+    ) {
       res.status(403).json({ error: "No tienes permiso para este recurso" });
       return;
     }
@@ -241,14 +241,10 @@ export function orbitCapabilityByPathMiddleware(
 
   let required: OrbitCapability | null = null;
   if (path.startsWith("/dashboard")) required = ORBIT_CAPABILITY.HOME;
-  else if (path.startsWith("/teachers")) required = ORBIT_CAPABILITY.TEACHERS;
-  else if (path.startsWith("/personal")) required = ORBIT_CAPABILITY.PERSONAL;
   else if (path.startsWith("/planta-activa"))
     required = ORBIT_CAPABILITY.PLANTA_ACTIVA;
   else if (path.startsWith("/vacancies")) required = ORBIT_CAPABILITY.VACANCIES;
-  else if (path.startsWith("/coordinators")) required = ORBIT_CAPABILITY.COORDINATORS;
   else if (path.startsWith("/reinstatements")) required = ORBIT_CAPABILITY.VACANCIES;
-  else if (path.startsWith("/lites")) required = ORBIT_CAPABILITY.LITES;
   else if (path.startsWith("/academic-load")) required = ORBIT_CAPABILITY.ACADEMIC_LOAD;
   else if (path.startsWith("/workforce-events")) required = ORBIT_CAPABILITY.NEWS;
 

@@ -5,7 +5,6 @@ import {
   BriefcaseIcon,
   LockOpenIcon,
   ChatBubbleLeftEllipsisIcon,
-  UserGroupIcon,
   ShieldCheckIcon,
   FolderIcon,
   BookOpenIcon,
@@ -51,16 +50,12 @@ export const BRAND_CONFIG: BrandConfig = {
  */
 export const APP_ICONS = {
   dashboard: BoltIcon,
-  teachers: AcademicCapIcon,
   vacancies: BriefcaseIcon,
   reinstatements: LockOpenIcon,
   news: ChatBubbleLeftEllipsisIcon,
-  coordinators: UserGroupIcon,
   audit: ShieldCheckIcon,
   export: FolderIcon,
   programs: BookOpenIcon,
   'academic-load': AcademicCapIcon,
-  personal: UserGroupIcon,
   'planta-activa': BuildingOffice2Icon,
-  lites: UserGroupIcon,
 };

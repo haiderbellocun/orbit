@@ -2,14 +2,10 @@ import type { View, NavItem } from "@/src/types";
 
 export const ORBIT_CAPABILITY = {
   HOME: "view:home",
-  TEACHERS: "view:teachers",
   ACADEMIC_LOAD: "view:academic_load",
-  COORDINATORS: "view:coordinators",
-  LITES: "view:lites",
   VACANCIES: "view:vacancies",
   VACANCIES_INFORMATIVE_PANEL: "vacancies:informative_panel",
   VACANCIES_ADMIN: "vacancies:admin",
-  PERSONAL: "view:personal",
   PLANTA_ACTIVA: "view:planta_activa",
   NEWS: "view:news",
 } as const;
@@ -19,32 +15,23 @@ export type OrbitCapability =
 
 const NAV_ID_TO_CAPABILITY: Record<string, OrbitCapability> = {
   home: ORBIT_CAPABILITY.HOME,
-  teachers: ORBIT_CAPABILITY.TEACHERS,
   "academic-load": ORBIT_CAPABILITY.ACADEMIC_LOAD,
-  coordinators: ORBIT_CAPABILITY.COORDINATORS,
-  lites: ORBIT_CAPABILITY.LITES,
   vacancies: ORBIT_CAPABILITY.VACANCIES,
   "vacancy-informative-panel": ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL,
-  personal: ORBIT_CAPABILITY.PERSONAL,
   "planta-activa": ORBIT_CAPABILITY.PLANTA_ACTIVA,
   news: ORBIT_CAPABILITY.NEWS,
 };
 
 const VIEW_TO_CAPABILITY: Partial<Record<View, OrbitCapability>> = {
   home: ORBIT_CAPABILITY.HOME,
-  teachers: ORBIT_CAPABILITY.TEACHERS,
-  "teacher-detail": ORBIT_CAPABILITY.TEACHERS,
   vacancies: ORBIT_CAPABILITY.VACANCIES,
   "vacancy-detail": ORBIT_CAPABILITY.VACANCIES,
   "vacancy-informative-panel": ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL,
-  coordinators: ORBIT_CAPABILITY.COORDINATORS,
-  lites: ORBIT_CAPABILITY.LITES,
   "academic-load": ORBIT_CAPABILITY.ACADEMIC_LOAD,
   reinstatements: ORBIT_CAPABILITY.VACANCIES,
   news: ORBIT_CAPABILITY.NEWS,
   audit: ORBIT_CAPABILITY.HOME,
   programs: ORBIT_CAPABILITY.HOME,
-  personal: ORBIT_CAPABILITY.PERSONAL,
   "planta-activa": ORBIT_CAPABILITY.PLANTA_ACTIVA,
   login: ORBIT_CAPABILITY.HOME,
   export: ORBIT_CAPABILITY.HOME,
@@ -99,10 +86,6 @@ export function canAccessView(
   return hasCapability(capabilities, cap);
 }
 
-export function canBulkImportTeachers(capabilities: readonly string[]): boolean {
-  return hasCapability(capabilities, ORBIT_CAPABILITY.TEACHERS);
-}
-
 export function canManageVacancies(capabilities: readonly string[]): boolean {
   return hasCapability(capabilities, ORBIT_CAPABILITY.VACANCIES);
 }
@@ -130,23 +113,16 @@ export function getStoredRoleId(): number | null {
 
 const LANDING_VIEW_ORDER: View[] = [
   "planta-activa",
-  "personal",
   "news",
-  "teachers",
   "academic-load",
-  "coordinators",
-  "lites",
 ];
 
 /** Primera vista del menú a la que el usuario puede entrar. */
 export function getDefaultView(capabilities: readonly string[]): View {
-  // Preferimos siempre Command Center (home).
   if (canAccessView("home", capabilities)) return "home";
-  // Si no hay acceso a Command Center, ir a Vacantes.
   if (canAccessView("vacancies", capabilities)) return "vacancies";
-  // Si tampoco hay Vacantes, usamos el orden restante (incluye Planta Activa).
   for (const v of LANDING_VIEW_ORDER) {
     if (canAccessView(v, capabilities)) return v;
   }
-  return "teachers";
+  return "home";
 }
