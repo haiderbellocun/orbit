@@ -246,6 +246,8 @@ export function orbitCapabilityByPathMiddleware(
   else if (path.startsWith("/vacancies")) required = ORBIT_CAPABILITY.VACANCIES;
   else if (path.startsWith("/reinstatements")) required = ORBIT_CAPABILITY.VACANCIES;
   else if (path.startsWith("/academic-load")) required = ORBIT_CAPABILITY.ACADEMIC_LOAD;
+  else if (path.startsWith("/substantive-hours"))
+    required = ORBIT_CAPABILITY.SUBSTANTIVE_HOURS;
   else if (path.startsWith("/workforce-events")) required = ORBIT_CAPABILITY.NEWS;
 
   if (required == null) {

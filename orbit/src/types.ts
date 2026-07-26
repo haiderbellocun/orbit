@@ -7,6 +7,7 @@ export type View =
   | 'reinstatements' 
   | 'news' 
   | 'academic-load'
+  | 'substantive-hours'
   | 'audit' 
   | 'export'
   | 'programs'
@@ -223,6 +224,11 @@ export const NAV_ITEMS = [
   { id: 'home', label: 'Command Center', iconKey: 'dashboard' },
   { id: 'planta-activa', label: 'Planta Activa', iconKey: 'planta-activa' },
   { id: 'academic-load', label: 'Carga Académica', iconKey: 'academic-load' },
+  {
+    id: 'substantive-hours',
+    label: 'Horas Sustantivas',
+    iconKey: 'substantive-hours',
+  },
   { id: 'vacancies', label: 'Vacantes', iconKey: 'vacancies' },
   {
     id: 'vacancy-informative-panel',

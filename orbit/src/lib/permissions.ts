@@ -3,6 +3,7 @@ import type { View, NavItem } from "@/src/types";
 export const ORBIT_CAPABILITY = {
   HOME: "view:home",
   ACADEMIC_LOAD: "view:academic_load",
+  SUBSTANTIVE_HOURS: "view:substantive_hours",
   VACANCIES: "view:vacancies",
   VACANCIES_INFORMATIVE_PANEL: "vacancies:informative_panel",
   VACANCIES_ADMIN: "vacancies:admin",
@@ -16,6 +17,7 @@ export type OrbitCapability =
 const NAV_ID_TO_CAPABILITY: Record<string, OrbitCapability> = {
   home: ORBIT_CAPABILITY.HOME,
   "academic-load": ORBIT_CAPABILITY.ACADEMIC_LOAD,
+  "substantive-hours": ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
   vacancies: ORBIT_CAPABILITY.VACANCIES,
   "vacancy-informative-panel": ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL,
   "planta-activa": ORBIT_CAPABILITY.PLANTA_ACTIVA,
@@ -28,6 +30,7 @@ const VIEW_TO_CAPABILITY: Partial<Record<View, OrbitCapability>> = {
   "vacancy-detail": ORBIT_CAPABILITY.VACANCIES,
   "vacancy-informative-panel": ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL,
   "academic-load": ORBIT_CAPABILITY.ACADEMIC_LOAD,
+  "substantive-hours": ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
   reinstatements: ORBIT_CAPABILITY.VACANCIES,
   news: ORBIT_CAPABILITY.NEWS,
   audit: ORBIT_CAPABILITY.HOME,
@@ -115,6 +118,7 @@ const LANDING_VIEW_ORDER: View[] = [
   "planta-activa",
   "news",
   "academic-load",
+  "substantive-hours",
 ];
 
 /** Primera vista del menú a la que el usuario puede entrar. */

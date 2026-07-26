@@ -217,6 +217,7 @@ function isStoredEmailOnOrbitAllowlist(): boolean {
 const ORBIT_ALLOWLIST_ADMIN_CAPABILITIES: readonly string[] = [
   "view:home",
   "view:academic_load",
+  "view:substantive_hours",
   "view:vacancies",
   "vacancies:informative_panel",
   "vacancies:admin",
@@ -919,6 +920,72 @@ export async function getAcademicLoad(params?: {
 export async function getAcademicLoadSummary(): Promise<unknown> {
   const response = await authFetch(`${BASE_URL}/academic-load/summary`, {
     headers: jsonHeaders,
+  });
+  return handleJson(response);
+}
+
+export type SubstantiveHoursTeacher = {
+  id: string;
+  document: string;
+  name: string;
+  email: string;
+  area: string;
+  school: string;
+  contractType: string;
+  workSchedule: string;
+  contractHoursWeekly: number | null;
+  catedraHours: number;
+  preparationHours: number;
+  substantiveHoursAssigned: number;
+  substantiveHoursRemaining: number | null;
+};
+
+export type SubstantiveHoursCategory = {
+  id: number | null;
+  name: string;
+};
+
+export async function getSubstantiveHoursTeachers(params?: {
+  search?: string;
+  area_id?: number;
+  school_id?: number;
+  page?: number;
+  limit?: number;
+}): Promise<PaginatedResponse<SubstantiveHoursTeacher>> {
+  const url = new URL(`${BASE_URL}/substantive-hours/teachers`);
+  if (params?.search) url.searchParams.set("search", params.search);
+  if (params?.area_id != null)
+    url.searchParams.set("area_id", String(params.area_id));
+  if (params?.school_id != null)
+    url.searchParams.set("school_id", String(params.school_id));
+  if (params?.page != null) url.searchParams.set("page", String(params.page));
+  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
+  return handleJson(response);
+}
+
+export async function getSubstantiveHoursCategories(): Promise<
+  SubstantiveHoursCategory[]
+> {
+  const response = await authFetch(`${BASE_URL}/substantive-hours/categories`, {
+    headers: jsonHeaders,
+  });
+  const json = (await handleJson(response)) as {
+    data?: SubstantiveHoursCategory[];
+  };
+  return Array.isArray(json.data) ? json.data : [];
+}
+
+export async function createSubstantiveHoursAssignment(body: {
+  personId: number;
+  categoryId?: number | null;
+  hoursQuantity: number;
+  tasks: string[];
+}): Promise<unknown> {
+  const response = await authFetch(`${BASE_URL}/substantive-hours/assignments`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(body),
   });
   return handleJson(response);
 }

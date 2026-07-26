@@ -12,6 +12,7 @@ import { VacanciesView } from './components/views/VacanciesView';
 import { ReinstatementsView } from './components/views/ReinstatementsView';
 import { NewsView } from './components/views/NewsView';
 import { AcademicLoadView } from './components/views/AcademicLoadView';
+import { SubstantiveHoursView } from './components/views/SubstantiveHoursView';
 import { AuditView } from './components/views/AuditView';
 import { ProgramsView } from './components/views/ProgramsView';
 import { PlantaActivaView } from './components/views/PlantaActivaView';
@@ -189,6 +190,8 @@ export default function App() {
         return <NewsView {...commonProps} />;
       case 'academic-load':
         return <AcademicLoadView {...commonProps} />;
+      case 'substantive-hours':
+        return <SubstantiveHoursView {...commonProps} />;
       case 'audit':
         return <AuditView {...commonProps} />;
       case 'programs':

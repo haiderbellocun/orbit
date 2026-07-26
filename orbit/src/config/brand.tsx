@@ -9,6 +9,7 @@ import {
   FolderIcon,
   BookOpenIcon,
   BuildingOffice2Icon,
+  ClockIcon,
 } from '@heroicons/react/24/solid';
 import { BrandConfig } from '../types';
 
@@ -57,5 +58,6 @@ export const APP_ICONS = {
   export: FolderIcon,
   programs: BookOpenIcon,
   'academic-load': AcademicCapIcon,
+  'substantive-hours': ClockIcon,
   'planta-activa': BuildingOffice2Icon,
 };
