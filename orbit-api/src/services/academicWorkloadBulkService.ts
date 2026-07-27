@@ -41,7 +41,7 @@ export interface AcademicLoadInput {
   regionId: number | null;
   cityId: number | null;
   campusId: number | null;
-  projectId: number | null;
+  substantiveCategoryId: number | null;
   substantiveHoursQuantity: number | null;
   classPreparationId: number | null;
 }
@@ -225,7 +225,7 @@ export async function upsertAcademicLoad(
          region_id = COALESCE($5, region_id),
          city_id = COALESCE($6, city_id),
          campus_id = COALESCE($7, campus_id),
-         project_id = COALESCE($8, project_id),
+         substantive_category_id = COALESCE($8, substantive_category_id),
          substantive_hours_quantity = $9,
          class_preparation_id = COALESCE($10, class_preparation_id)
        WHERE id = $11`,
@@ -237,7 +237,7 @@ export async function upsertAcademicLoad(
         input.regionId,
         input.cityId,
         input.campusId,
-        input.projectId,
+        input.substantiveCategoryId,
         safeSubstantiveHoursQuantity,
         input.classPreparationId,
         existingId,
@@ -249,7 +249,7 @@ export async function upsertAcademicLoad(
   const inserted = await pool.query(
     `INSERT INTO academic_workload.academic_load (
       person_id, period_code, semester, program_id, program_name, subject_code,
-      group_code, enrolled_quantity, region_id, city_id, campus_id, project_id,
+      group_code, enrolled_quantity, region_id, city_id, campus_id, substantive_category_id,
       substantive_hours_quantity, class_preparation_id
     ) VALUES (
       $1, $2, $3, $4, $5, $6,
@@ -269,7 +269,7 @@ export async function upsertAcademicLoad(
       input.regionId,
       input.cityId,
       input.campusId,
-      input.projectId,
+      input.substantiveCategoryId,
       safeSubstantiveHoursQuantity,
       input.classPreparationId,
     ]

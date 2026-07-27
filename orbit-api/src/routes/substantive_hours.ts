@@ -23,7 +23,7 @@ router.get("/substantive-hours/categories", async (_req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, name
-       FROM substantive_hours.project
+       FROM substantive_hours.category
        WHERE COALESCE(is_active, true) = true
        ORDER BY name ASC`
     );
@@ -140,9 +140,9 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         WHERE al.person_id = p.id
       ) cath ON true
       LEFT JOIN LATERAL (
-        SELECT COALESCE(SUM(pa.hours_quantity), 0) AS substantive_hours
-        FROM substantive_hours.person_assignment pa
-        WHERE pa.person_id = p.id
+        SELECT COALESCE(SUM(a.hours_quantity), 0) AS substantive_hours
+        FROM substantive_hours.assignment a
+        WHERE a.person_id = p.id
       ) sub ON true
       ${where}
       ORDER BY p.full_name ASC NULLS LAST
@@ -215,17 +215,17 @@ router.get(
 
       const assignments = await pool.query(
         `SELECT
-           pa.id,
-           pa.person_id,
-           pa.category_id,
-           COALESCE(pr.name, $2) AS category_name,
-           pa.hours_quantity,
-           pa.created_at,
-           pa.updated_at
-         FROM substantive_hours.person_assignment pa
-         LEFT JOIN substantive_hours.project pr ON pr.id = pa.category_id
-         WHERE pa.person_id = $1
-         ORDER BY pa.created_at DESC, pa.id DESC`,
+           a.id,
+           a.person_id,
+           a.category_id,
+           COALESCE(cat.name, $2) AS category_name,
+           a.hours_quantity,
+           a.created_at,
+           a.updated_at
+         FROM substantive_hours.assignment a
+         LEFT JOIN substantive_hours.category cat ON cat.id = a.category_id
+         WHERE a.person_id = $1
+         ORDER BY a.created_at DESC, a.id DESC`,
         [personId, PLACEHOLDER_SUBSTANTIVE_CATEGORY]
       );
 
@@ -234,7 +234,7 @@ router.get(
       if (ids.length > 0) {
         const tasks = await pool.query(
           `SELECT id, assignment_id, description, sort_order
-           FROM substantive_hours.person_assignment_task
+           FROM substantive_hours.assignment_task
            WHERE assignment_id = ANY($1::int[])
            ORDER BY sort_order ASC, id ASC`,
           [ids]
@@ -280,7 +280,12 @@ router.post("/substantive-hours/assignments", async (req: Request, res: Response
   try {
     const body = req.body ?? {};
     const personId = parsePositiveInt(body.personId ?? body.person_id);
-    const categoryId = parsePositiveInt(body.categoryId ?? body.category_id);
+    const categoryId = parsePositiveInt(
+      body.categoryId ??
+        body.category_id ??
+        body.projectId ??
+        body.project_id
+    );
     const hoursQuantity = parsePositiveIntHours(
       body.hoursQuantity ?? body.hours_quantity
     );
@@ -317,7 +322,7 @@ router.post("/substantive-hours/assignments", async (req: Request, res: Response
 
     if (categoryId != null) {
       const cat = await client.query(
-        `SELECT id FROM substantive_hours.project WHERE id = $1 AND COALESCE(is_active, true) = true`,
+        `SELECT id FROM substantive_hours.category WHERE id = $1 AND COALESCE(is_active, true) = true`,
         [categoryId]
       );
       if (cat.rows.length === 0) {
@@ -328,7 +333,7 @@ router.post("/substantive-hours/assignments", async (req: Request, res: Response
 
     await client.query("BEGIN");
     const inserted = await client.query(
-      `INSERT INTO substantive_hours.person_assignment (
+      `INSERT INTO substantive_hours.assignment (
          person_id, category_id, hours_quantity
        ) VALUES ($1, $2, $3)
        RETURNING id, person_id, category_id, hours_quantity, created_at, updated_at`,
@@ -340,7 +345,7 @@ router.post("/substantive-hours/assignments", async (req: Request, res: Response
     const savedTasks: { id: number; description: string; sortOrder: number }[] = [];
     for (let idx = 0; idx < tasks.length; idx++) {
       const t = await client.query(
-        `INSERT INTO substantive_hours.person_assignment_task (
+        `INSERT INTO substantive_hours.assignment_task (
            assignment_id, description, sort_order
          ) VALUES ($1, $2, $3)
          RETURNING id, description, sort_order`,
@@ -358,7 +363,7 @@ router.post("/substantive-hours/assignments", async (req: Request, res: Response
     let categoryName = PLACEHOLDER_SUBSTANTIVE_CATEGORY;
     if (categoryId != null) {
       const catName = await pool.query(
-        `SELECT name FROM substantive_hours.project WHERE id = $1`,
+        `SELECT name FROM substantive_hours.category WHERE id = $1`,
         [categoryId]
       );
       if (catName.rows[0]?.name) categoryName = String(catName.rows[0].name);
