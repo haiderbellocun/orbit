@@ -15,11 +15,13 @@ import type { Vacancy, Teacher, Coordinator } from '@/src/types';
 import {
   getSubstantiveHoursTeachers,
   getSubstantiveHoursCategories,
+  getSubstantiveHoursAssignments,
   createSubstantiveHoursAssignment,
   getCatalogAreas,
   getCatalogSchools,
   type SubstantiveHoursTeacher,
   type SubstantiveHoursCategory,
+  type SubstantiveHoursAssignment,
   type CatalogArea,
   type CatalogSchool,
 } from '@/src/lib/api';
@@ -71,6 +73,10 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   const [tasks, setTasks] = useState<string[]>(['']);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [existingAssignments, setExistingAssignments] = useState<
+    SubstantiveHoursAssignment[]
+  >([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
 
   const selectClass =
     'w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-400/40';
@@ -157,17 +163,26 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     setTasks(['']);
     setFormError(null);
     setCategoryId('');
+    setExistingAssignments([]);
+    setAssignmentsLoading(true);
     try {
-      const cats = await getSubstantiveHoursCategories();
+      const [cats, assignments] = await Promise.all([
+        getSubstantiveHoursCategories(),
+        getSubstantiveHoursAssignments(Number(teacher.id)),
+      ]);
       const list =
         Array.isArray(cats) && cats.length > 0
           ? cats
           : [{ id: null, name: PLACEHOLDER_CATEGORY }];
       setCategories(list);
       setCategoryId(list[0]?.id != null ? String(list[0].id) : '');
+      setExistingAssignments(Array.isArray(assignments) ? assignments : []);
     } catch {
       setCategories([{ id: null, name: PLACEHOLDER_CATEGORY }]);
       setCategoryId('');
+      setExistingAssignments([]);
+    } finally {
+      setAssignmentsLoading(false);
     }
   };
 
@@ -175,6 +190,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     if (saving) return;
     setModalTeacher(null);
     setFormError(null);
+    setExistingAssignments([]);
   };
 
   const addTaskRow = () => setTasks((t) => [...t, '']);
@@ -205,8 +221,13 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
         hoursQuantity: Number.parseInt(hoursInput, 10),
         tasks: taskList,
       });
-      setModalTeacher(null);
-      await loadList();
+      setHoursInput('');
+      setTasks(['']);
+      const [assignments] = await Promise.all([
+        getSubstantiveHoursAssignments(Number(modalTeacher.id)),
+        loadList(),
+      ]);
+      setExistingAssignments(assignments);
     } catch (e) {
       setFormError(
         e instanceof Error ? e.message : 'No se pudo guardar la asignación'
@@ -472,7 +493,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.98 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg glass-panel p-6 space-y-5 shadow-2xl"
+              className="w-full max-w-lg glass-panel p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -498,6 +519,38 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   <XMarkIcon className="h-5 w-5" />
                 </button>
               </div>
+
+              {assignmentsLoading ? (
+                <p className="text-sm text-slate-400">Cargando asignaciones…</p>
+              ) : existingAssignments.length > 0 ? (
+                <div className="space-y-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Asignaciones registradas
+                  </span>
+                  <ul className="space-y-2 max-h-40 overflow-y-auto rounded-xl border border-slate-200/80 bg-slate-50/50 p-3">
+                    {existingAssignments.map((a) => (
+                      <li
+                        key={a.id}
+                        className="text-sm text-slate-700 border-b border-slate-200/60 last:border-0 pb-2 last:pb-0"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold">{a.categoryName}</span>
+                          <span className="text-violet-700 font-bold shrink-0">
+                            {a.hoursQuantity} h
+                          </span>
+                        </div>
+                        {a.tasks.length > 0 && (
+                          <ul className="mt-1 text-xs text-slate-500 list-disc list-inside">
+                            {a.tasks.map((t) => (
+                              <li key={t.id}>{t.description}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               <label className="block space-y-1.5">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">

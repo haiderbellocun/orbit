@@ -945,6 +945,23 @@ export type SubstantiveHoursCategory = {
   name: string;
 };
 
+export type SubstantiveHoursAssignmentTask = {
+  id: number;
+  description: string;
+  sortOrder: number;
+};
+
+export type SubstantiveHoursAssignment = {
+  id: number;
+  personId: number;
+  categoryId: number | null;
+  categoryName: string;
+  hoursQuantity: number;
+  createdAt: string;
+  updatedAt: string;
+  tasks: SubstantiveHoursAssignmentTask[];
+};
+
 export async function getSubstantiveHoursTeachers(params?: {
   search?: string;
   area_id?: number;
@@ -972,6 +989,19 @@ export async function getSubstantiveHoursCategories(): Promise<
   });
   const json = (await handleJson(response)) as {
     data?: SubstantiveHoursCategory[];
+  };
+  return Array.isArray(json.data) ? json.data : [];
+}
+
+export async function getSubstantiveHoursAssignments(
+  personId: number
+): Promise<SubstantiveHoursAssignment[]> {
+  const response = await authFetch(
+    `${BASE_URL}/substantive-hours/teachers/${personId}/assignments`,
+    { headers: jsonHeaders }
+  );
+  const json = (await handleJson(response)) as {
+    data?: SubstantiveHoursAssignment[];
   };
   return Array.isArray(json.data) ? json.data : [];
 }

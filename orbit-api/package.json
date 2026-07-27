@@ -22,6 +22,7 @@
     "migrate:direct-manager-length": "ts-node src/db/migrate_direct_manager_identification_length.ts",
     "migrate:notifications": "ts-node src/db/migrate_notifications.ts",
     "migrate:substantive-hours-person": "ts-node src/db/migrate_substantive_hours_person.ts",
+    "migrate:substantive-hours-rename": "ts-node src/db/migrate_substantive_hours_rename.ts",
     "seed": "ts-node src/db/seed.ts",
     "seed:v2": "ts-node src/db/seed_v2.ts",
     "seed:v3": "ts-node src/db/seed_v3.ts",
