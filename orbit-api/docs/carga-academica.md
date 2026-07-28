@@ -1,337 +1,580 @@
-# Carga Académica en Orbit
+# Carga Académica — Especificación de datos para tableros
 
-Documento explicativo de cómo funciona el módulo de **Carga Académica**: qué es, de dónde sale la información, qué se ve en la plataforma, cómo se actualiza y cómo se relaciona con otros procesos.
+Documento de referencia para diseñar **tableros informativos** (BI / dashboards) sobre carga académica en Orbit.
 
----
-
-## 1. ¿Qué es la carga académica?
-
-La **carga académica** es el registro de **qué docentes están asignados a qué materias y grupos, en qué periodo académico**.
-
-Cada fila representa una asignación concreta, por ejemplo:
-
-> El docente *Ana Pérez* dicta la materia *Cálculo I*, grupo *01*, del programa *Ingeniería de Sistemas*, en el periodo *26C11*, en modalidad presencial.
-
-En Orbit, el módulo se presenta como:
-
-- **Nombre:** Carga Académica  
-- **Descripción en pantalla:** *Asignación docente por periodo*
-
-Su propósito principal es **consultar y filtrar** esa información de forma centralizada, y además **alimentar el cálculo de horas de cátedra** en el módulo de Horas Sustantivas.
+Incluye: definición del dominio, modelo en base de datos, reglas de negocio, calidad de datos, joins recomendados, métricas y estructuras listas para consumir.
 
 ---
 
-## 2. Idea clave: Orbit consulta; no crea la carga
+## 1. Qué es la carga académica
 
-Hoy la carga académica en Orbit es una **vista de consulta** (solo lectura).
+**Carga académica** = asignación de un **docente** a una **materia + grupo** en un **periodo académico**, con contexto de programa, modalidad, cupos y metadatos de oferta.
 
-| En Orbit sí se puede | En Orbit no se puede |
+En Orbit:
+
+| Aspecto | Realidad actual |
 |---|---|
-| Ver las asignaciones importadas | Crear una asignación nueva |
-| Buscar por docente, materia o programa | Editar una materia o un grupo |
-| Filtrar por periodo y modalidad | Aprobar / rechazar cargas |
-| Consultar el detalle por docente (vía API) | Borrar filas desde la interfaz |
+| Fuente de verdad | Proyección ACA (importada por JSON) |
+| Uso en producto | Consulta / lectura |
+| Tipo de dato expuesto | Siempre `projection` |
+| Escritura en UI | No existe |
+| Uso secundario | Alimenta horas de **cátedra** en Horas Sustantivas |
 
-La **fuente de verdad** de las asignaciones es el sistema externo **ACA (proyección)**. Orbit recibe esa información mediante un proceso de importación y la guarda para consulta.
+Granularidad de una fila de negocio:
 
-En la práctica, lo que se muestra en Orbit es una **proyección** de la carga académica (así está etiquetado en el sistema), no un flujo de “carga actual” editable dentro de la aplicación.
-
----
-
-## 3. ¿Qué información guarda cada asignación?
-
-Una asignación de carga académica combina varios conceptos:
-
-### 3.1 Docente
-
-Es la persona que imparte la materia. En Orbit debe existir previamente como **persona/docente** (identificada por su documento).
-
-Si el documento del docente **no está registrado** en Orbit, esa asignación **no se importa** y no aparecerá en el módulo.
-
-### 3.2 Materia (asignatura)
-
-El curso o asignatura: código, nombre, créditos y, cuando aplica, horas asociadas.
-
-### 3.3 Grupo
-
-La oferta concreta de esa materia: código de grupo, fechas, aula, cupo, bloque, horario, modalidad, estudiantes matriculados, etc.
-
-### 3.4 Periodo académico
-
-El periodo al que pertenece la asignación (por ejemplo códigos tipo `26C11`, `2026Q`, etc.). Es el filtro más importante para consultar “la carga de un ciclo”.
-
-### 3.5 Programa
-
-El programa académico asociado a la asignación. Puede venir como nombre desde ACA y, cuando es posible, vincularse al catálogo de programas de Orbit.
-
-### 3.6 Modalidad
-
-Se normaliza principalmente en dos valores:
-
-- **P** → Presencial  
-- **V** → Virtual  
-
-### 3.7 Ubicación (opcional)
-
-Región, ciudad o campus, cuando esa información viene asociada a la carga.
+> 1 docente × 1 materia × 1 grupo × 1 periodo = 1 asignación
 
 ---
 
-## 4. Cómo se ve en Orbit (para el usuario)
-
-### 4.1 Acceso
-
-El módulo aparece en el menú como **Carga Académica**. Solo lo ven usuarios con permiso de consulta de carga académica.
-
-Además:
-
-- Algunos roles ven **toda** la información.
-- Coordinadores u otros roles con alcance de escuela suelen ver **solo** las cargas relacionadas con su escuela (según el docente o el programa).
-- Solo aparecen docentes **activos**.
-
-### 4.2 Qué muestra la pantalla
-
-Una tabla con columnas como:
-
-| Columna | Significado |
-|---|---|
-| Docente | Nombre del profesor |
-| Programa | Programa asociado |
-| Materia | Nombre de la asignatura |
-| Créditos | Créditos de la materia |
-| Modalidad | Presencial o Virtual |
-| Periodo | Periodo académico de la asignación |
-
-### 4.3 Búsqueda y filtros
-
-El usuario puede:
-
-1. **Buscar** por docente, materia o programa.  
-2. **Filtrar por periodo** (lista de periodos disponibles según los datos importados).  
-3. **Filtrar por modalidad** (Presencial / Virtual).  
-4. Navegar por **páginas** (listados paginados, típicamente 100 registros por página).
-
-No hay formularios de creación ni botones de edición: la pantalla es de exploración y seguimiento.
-
----
-
-## 5. De dónde sale la información (flujo completo)
+## 2. Modelo conceptual
 
 ```text
-ACA (proyección / scrape)
-        │
-        ▼
- Archivo JSON de carga académica
-        │
-        ▼
- Scripts de importación en Orbit
-        │
-        ├──► Verifica que el docente exista (por documento)
-        ├──► Crea o actualiza materias y grupos
-        └──► Guarda / actualiza las asignaciones
-        │
-        ▼
- Base de datos de Orbit (módulo de carga académica)
-        │
-        ├──► Pantalla "Carga Académica"
-        └──► Cálculo de horas de cátedra en "Horas Sustantivas"
+core.person (docente)
+      │
+      │ 1:N
+      ▼
+academic_workload.academic_load  ──────────────┐
+      │                                        │
+      │ N:1                                    │ N:1
+      ▼                                        ▼
+academic_workload.subject          academic_workload.class_group
+      ▲                                        │
+      └──────────── 1:N ───────────────────────┘
+
+Opcional:
+  academic_load.program_id      → core.program
+  academic_load.region/city/campus → core.*
+  academic_load.class_preparation_id → academic_workload.class_preparation
+  person.school_id              → core.school
 ```
 
-### 5.1 Origen
+### Entidades
 
-Un proceso externo descarga/scrapea la proyección de ACA y genera un archivo JSON con las asignaciones (docente, periodo, materia, grupo, programa, modalidad, cupos, etc.).
-
-### 5.2 Importación a Orbit
-
-Un script de operaciones toma ese JSON e importa la información a Orbit. El flujo típico de una **recarga completa** es:
-
-1. **Borra** la carga académica actual en Orbit.  
-2. Limpia materias/grupos que queden huérfanos (sin uso).  
-3. Recorre cada asignación del JSON.  
-4. Para cada una:
-   - Busca al docente por documento.  
-   - Si no existe → **omite** esa fila y la deja registrada en un archivo de progreso.  
-   - Si existe → crea/actualiza materia, grupo y asignación.  
-5. Genera un **reporte de progreso** (cuántas se cargaron, cuántas se saltaron, etc.).
-
-### 5.3 Completar docentes faltantes
-
-Cuando hay asignaciones omitidas porque el docente no estaba en Orbit, el proceso operativo suele ser:
-
-1. Contrastar la **BASE DOCENTE** (Excel de nuevos/reintegros) contra las personas ya registradas.  
-2. Crear o actualizar los docentes faltantes en Orbit.  
-3. Reimportar las asignaciones que antes se habían saltado.
-
-Así se busca que la mayor parte posible de la proyección de ACA quede reflejada en la plataforma.
+| Entidad | Tabla | Qué representa |
+|---|---|---|
+| Asignación | `academic_workload.academic_load` | Hecho central del tablero |
+| Materia | `academic_workload.subject` | Catálogo de asignaturas |
+| Grupo | `academic_workload.class_group` | Oferta concreta (modalidad, cupo, horario) |
+| Preparación | `academic_workload.class_preparation` | Horas de prep por docente |
+| Docente | `core.person` | Maestro de personas |
+| Programa | `core.program` | Catálogo de programas (enlace opcional) |
+| Escuela | `core.school` | Dimensión de alcance (vía person/program) |
 
 ---
 
-## 6. Reglas de negocio importantes
+## 3. Estructura en base de datos
 
-Estas son las reglas que más importan para coordinación académica, operación y seguimiento:
+Esquema: **`academic_workload`**  
+Tablas relacionadas en: **`core`**, **`substantive_hours`**
 
-1. **Sin docente en Orbit, no hay carga visible.**  
-   El documento del profesor debe existir en el maestro de personas. Si no, la asignación se omite en la importación.
+### 3.1 `academic_workload.academic_load` (hecho)
 
-2. **La actualización normal es una recarga completa.**  
-   El import típico reemplaza toda la carga, no “parcha” solo unas pocas filas. Hay que tratarlo como un refresco del periodo (o del conjunto de periodos del archivo).
+| Campo | Tipo | Nulo | Descripción para tableros |
+|---|---|---|---|
+| `id` | integer PK | No | ID interno de la asignación |
+| `person_id` | integer FK → `core.person` | No | Docente |
+| `period_code` | varchar(50) | No | **Dimensión clave de periodo** |
+| `semester` | varchar(50) | Sí | Semestre (si viene de ACA) |
+| `program_id` | integer FK → `core.program` | Sí | Programa catalogado (puede estar vacío) |
+| `program_name` | varchar(250) | Sí | Nombre de programa denormalizado desde ACA |
+| `subject_code` | varchar(50) FK → `subject` | No | Código materia |
+| `group_code` | varchar(50) | No | Código grupo (FK compuesto con subject) |
+| `enrolled_quantity` | integer ≥ 0 | No | Estudiantes matriculados (default 0) |
+| `region_id` | integer FK | Sí | Región (poco poblado en import actual) |
+| `city_id` | integer FK | Sí | Ciudad |
+| `campus_id` | integer FK | Sí | Campus |
+| `substantive_category_id` | integer FK | Sí | Categoría sustantiva (opcional) |
+| `substantive_hours_quantity` | numeric(6,2) ≥ 0 | No | Horas traídas del import (ACA `subject.hours_quantity`) |
+| `class_preparation_id` | integer FK | Sí | Prep de clase vinculada |
+| `created_at` / `updated_at` | timestamp | No | Auditoría técnica |
 
-3. **Orbit no aprueba ni gestiona el flujo de asignación.**  
-   No hay estados tipo borrador / aprobado / rechazado. Lo que se ve es lo importado desde la proyección.
-
-4. **Lo que se muestra es proyección.**  
-   El sistema trata los datos como proyección proveniente de ACA, no como un segundo proceso de “carga vigente” editable en Orbit.
-
-5. **Solo docentes activos aparecen en el listado.**  
-   Si un docente está inactivo en el maestro de personas, su carga no se lista en la consulta general.
-
-6. **La visibilidad depende del permiso y, a veces, de la escuela.**  
-   No todos los usuarios ven lo mismo; el alcance puede estar limitado por rol y escuela.
-
-7. **Una asignación se identifica de forma única** por la combinación de:
-   - docente  
-   - materia  
-   - grupo  
-   - periodo  
-
-   Es decir: el mismo profesor, misma materia, mismo grupo y mismo periodo = una sola fila.
-
-8. **El programa puede verse como nombre**, aunque no siempre esté completamente enlazado al catálogo interno de programas. Eso no impide consultarlo en pantalla.
-
-9. **Modalidad se interpreta como Presencial o Virtual.**  
-   Otros valores, si llegaran, se muestran tal cual, pero el filtro operativo está pensado para P/V.
-
-10. **La carga académica alimenta Horas Sustantivas.**  
-    Las materias asignadas al docente se usan para calcular las **horas de cátedra** del balance semanal.
-
----
-
-## 7. Relación con Horas Sustantivas
-
-Aunque son módulos distintos, están conectados.
-
-En **Horas Sustantivas**, Orbit calcula aproximadamente así el balance semanal de un docente:
+**Clave lógica de negocio (upsert):**
 
 ```text
-Horas de contrato
-  − Horas de cátedra (provenientes de la carga académica)
-  − Horas de preparación de clase
-  − Horas sustantivas ya asignadas
-= Horas restantes
+person_id + subject_code + group_code + period_code
 ```
 
-### Detalles útiles
+> No hay UNIQUE constraint físico con ese nombre en todos los ambientes; la unicidad la garantiza el proceso de importación.
 
-- **Contrato:** típicamente 42 horas (tiempo completo) o 21 (medio tiempo), según la etiqueta de contrato del docente.  
-- **Cátedra:** se obtiene a partir de las materias asociadas a la carga académica del docente.  
-- **Preparación:** si el docente no tiene un valor específico configurado, se usa un valor por defecto (actualmente 4 horas).  
-- **Horas sustantivas:** son asignaciones distintas (actividades no de cátedra) que se gestionan en su propio módulo.
+### 3.2 `academic_workload.subject` (dimensión materia)
 
-En resumen: **sin carga académica bien cargada, el balance de horas de un docente puede quedar incompleto o desactualizado**.
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `subject_code` | varchar(50) PK | Código materia |
+| `name` | varchar(250) | Nombre |
+| `credits_quantity` | integer ≥ 0 | Créditos |
+| `hours_quantity` | numeric(6,2) ≥ 0 | Horas de materia (usado en cátedra) |
+| `is_active` | boolean | Activa / inactiva |
+| `created_at` / `updated_at` | timestamp | Auditoría |
+
+**Nota de calidad:** el import crea materias nuevas con `credits_quantity`, pero **no actualiza** materias ya existentes ni siempre popula `hours_quantity`. Para tableros de horas, validar cobertura de `subject.hours_quantity`.
+
+### 3.3 `academic_workload.class_group` (dimensión grupo/oferta)
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `id` | integer PK | ID grupo |
+| `subject_code` | varchar(50) | Materia |
+| `group_code` | varchar(50) | Código de grupo |
+| `start_date` / `end_date` | date | Vigencia |
+| `start_time` / `end_time` | time | Horario (puede venir vacío) |
+| `classroom_name` | varchar(150) | Aula |
+| `capacity` | integer ≥ 0 | Cupo |
+| `block` | varchar(100) | Bloque |
+| `schedule_type` | varchar(100) | Texto de horario / tipo |
+| `modality` | varchar(100) | Modalidad cruda (P/V/Presencial/Virtual…) |
+| `is_active` | boolean | Activo |
+| `created_at` / `updated_at` | timestamp | Auditoría |
+
+**UNIQUE:** `(subject_code, group_code)`
+
+### 3.4 `academic_workload.class_preparation`
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `id` | integer PK | ID |
+| `person_id` | integer FK → person | Docente |
+| `class_preparation_hours` | numeric(6,2) ≥ 0 | Horas de preparación |
+| `created_at` / `updated_at` | timestamp | Auditoría |
+
+### 3.5 Dimensiones de `core` útiles para tableros
+
+#### `core.person` (docente)
+
+Campos más usados:
+
+- `id`, `document`, `full_name`
+- `school_id`, `program_id`, `area_id`
+- `contract_type_id`, `role_id`, `hierarchy_id`
+- `city_id`, `region_id`, `campus_id`
+- `email`, `edu_email`
+- `is_active` (si existe en el ambiente; NULL se trata como activo)
+
+#### `core.program`
+
+- `id`, `code`, `name`, `school_id`, `level`, `modality`, `is_active`
+
+#### `core.school` / `core.area` / `core.contract_type`
+
+Útiles para cortes por escuela, área y dedicación contractual.
 
 ---
 
-## 8. Relación con otros módulos
+## 4. Relaciones y joins recomendados
 
-| Módulo / fuente | Relación con carga académica |
+### 4.1 Vista base para tableros (recomendado)
+
+```sql
+SELECT
+  al.id                         AS load_id,
+  al.period_code,
+  al.semester,
+  al.person_id,
+  p.document                    AS teacher_document,
+  p.full_name                   AS teacher_name,
+  p.school_id                   AS teacher_school_id,
+  sch.name                      AS teacher_school_name,
+  COALESCE(al.program_name, pr.name) AS program_name,
+  al.program_id,
+  pr.school_id                  AS program_school_id,
+  al.subject_code,
+  s.name                        AS subject_name,
+  s.credits_quantity,
+  s.hours_quantity              AS subject_hours,
+  al.group_code,
+  cg.modality                   AS modality_raw,
+  CASE
+    WHEN UPPER(TRIM(cg.modality)) IN ('P') OR LOWER(TRIM(cg.modality)) LIKE 'pres%' THEN 'Presencial'
+    WHEN UPPER(TRIM(cg.modality)) IN ('V') OR LOWER(TRIM(cg.modality)) LIKE 'vir%'  THEN 'Virtual'
+    ELSE COALESCE(NULLIF(TRIM(cg.modality), ''), 'Sin modalidad')
+  END                           AS modality_norm,
+  cg.capacity,
+  al.enrolled_quantity,
+  CASE
+    WHEN cg.capacity > 0 THEN ROUND(100.0 * al.enrolled_quantity / cg.capacity, 2)
+    ELSE NULL
+  END                           AS occupancy_pct,
+  al.substantive_hours_quantity AS imported_hours,
+  'projection'::text            AS load_type,
+  COALESCE(p.is_active, true)   AS teacher_is_active
+FROM academic_workload.academic_load al
+JOIN core.person p
+  ON p.id = al.person_id
+LEFT JOIN core.school sch
+  ON sch.id = p.school_id
+LEFT JOIN core.program pr
+  ON pr.id = al.program_id
+LEFT JOIN academic_workload.subject s
+  ON s.subject_code = al.subject_code
+LEFT JOIN academic_workload.class_group cg
+  ON cg.subject_code = al.subject_code
+ AND cg.group_code = al.group_code;
+```
+
+### 4.2 Filtro de docentes activos (alineado al producto)
+
+```sql
+COALESCE(p.is_active, true) = true
+```
+
+La API de Orbit aplica este filtro en listados y resumen.
+
+### 4.3 Alcance por escuela (si el tablero replica permisos)
+
+Una asignación pertenece al alcance de escuela si:
+
+```sql
+p.school_id = :school_id
+OR pr.school_id = :school_id
+```
+
+---
+
+## 5. Reglas de negocio
+
+### 5.1 Dominio y ciclo de vida
+
+| # | Regla | Implicación para tableros |
+|---|---|---|
+| R1 | La carga en Orbit es **proyección importada**, no un workflow editable | No modelar estados draft/approved |
+| R2 | La recarga estándar **borra toda** `academic_load` y vuelve a cargar | Los tableros reflejan el **último snapshot** importado, no un historial acumulado |
+| R3 | Si el docente no existe en `core.person` (match por dígitos de documento), la asignación **se omite** | Puede haber subconteo vs ACA; medir omisiones desde el JSON de progreso del import |
+| R4 | Unicidad lógica: docente + materia + grupo + periodo | Contar filas = contar asignaciones |
+| R5 | Materias existentes **no se actualizan** en reimport | Nombres/créditos/horas de subject pueden quedar desfasados |
+| R6 | Grupos existentes se actualizan con `COALESCE` (solo pisa si viene valor nuevo) | Campos de grupo pueden quedar parcialmente viejos |
+| R7 | `program_id` suele venir `NULL` en import; se guarda `program_name` | Preferir `COALESCE(program_name, program.name)` |
+| R8 | Tipo expuesto siempre `projection` | No segmentar por `current` vs `projection` en UI/API actual |
+| R9 | Solo docentes activos en consultas de producto | Decidir si el tablero incluye inactivos (recomendado: parámetro) |
+| R10 | Modalidad se normaliza a Presencial/Virtual | Crear dimensión `modality_norm` |
+
+### 5.2 Integridad y validaciones
+
+| Regla | Dónde |
 |---|---|
-| **Personas / Docentes** | Toda asignación exige que el docente exista (documento). |
-| **Programas / Escuelas** | Ayudan a contextualizar y a filtrar por alcance de escuela. |
-| **Horas Sustantivas** | Usa la carga para calcular cátedra y el balance de horas. |
-| **BASE DOCENTE (Excel)** | Fuente operativa para completar docentes nuevos/reintegros antes o durante la importación. |
-| **ACA** | Fuente externa de la proyección de asignaciones. |
-| **Planta activa, vacantes, novedades** | Comparten el maestro de personas, pero no administran la carga académica. |
+| `enrolled_quantity >= 0` | CHECK DB |
+| `substantive_hours_quantity >= 0` | CHECK DB |
+| `capacity >= 0` | CHECK DB |
+| `credits_quantity >= 0`, `hours_quantity >= 0` | CHECK DB |
+| FK persona / subject / class_group = RESTRICT | No se borra persona con carga |
+| FK programa / geo / prep = SET NULL | Dimensiones opcionales |
+
+### 5.3 Lo que NO está gobernado aún
+
+- No hay detección de cruces de horario.
+- No hay tope máximo de horas por docente al importar.
+- No se valida `enrolled <= capacity`.
+- No hay historial versionado de cargas anteriores (salvo backups externos / archivos de import).
+- `subject.hours_quantity` (cátedra) y `academic_load.substantive_hours_quantity` (horas del JSON) **no son el mismo campo ni siempre coinciden**.
+
+### 5.4 Reglas de Horas Sustantivas (impacto en tableros cruzados)
+
+Balance semanal aproximado:
+
+```text
+horas_contrato
+  − horas_cátedra
+  − horas_preparación
+  − horas_sustantivas_asignadas
+= horas_restantes
+```
+
+| Concepto | Origen | Regla |
+|---|---|---|
+| Contrato | etiquetas de contrato / jornada | Completo = **42**, medio = **21** |
+| Cátedra | `SUM(subject.hours_quantity)` de las cargas del docente | Depende de que `hours_quantity` esté poblado |
+| Preparación | `class_preparation.class_preparation_hours` | Default **4** si no hay fila |
+| Sustantivas | `substantive_hours.assignment` | Módulo aparte |
 
 ---
 
-## 9. Ciclo operativo recomendado (para el equipo)
+## 6. Estructura de datos de origen (JSON ACA)
 
-Cuando se necesita actualizar la carga en Orbit, el flujo práctico suele ser:
+Payload típico del scrape/import:
 
-1. **Obtener** el JSON de proyección desde ACA (scrape / descarga).  
-2. **Revisar** si hay docentes nuevos o reintegros en la BASE DOCENTE.  
-3. **Asegurar** que esos docentes existan en Orbit (documento correcto, activos, datos básicos).  
-4. **Ejecutar** la importación de carga académica.  
-5. **Revisar** el archivo de progreso: cargadas vs omitidas.  
-6. **Completar** docentes faltantes y reimportar lo pendiente, si aplica.  
-7. **Validar en la UI** de Carga Académica: periodos, muestras por escuela, modalidades, docentes clave.  
-8. **Revisar Horas Sustantivas** para confirmar que la cátedra refleja la nueva carga.
+```json
+{
+  "generated_at": "2026-07-27T11:36:42",
+  "load_type": "projection",
+  "periods": [{ "period_code": "26C11" }],
+  "assignments": [
+    {
+      "person_document": "1234567890",
+      "period_code": "26C11",
+      "teacher": { "document": "1234567890", "name": "ANA PEREZ" },
+      "subject": {
+        "subject_code": "MAT101",
+        "name": "Calculo I",
+        "credits_quantity": 3,
+        "hours_quantity": 4
+      },
+      "class_group": {
+        "group_code": "01",
+        "start_date": "01/02/2026",
+        "end_date": "20/05/2026",
+        "classroom": "A-201",
+        "capacity": 40,
+        "block": "Noche",
+        "modality": "P",
+        "enrolled_quantity": 35
+      },
+      "academic_load": {
+        "semester": "1",
+        "program_name": "Ingenieria de Sistemas",
+        "period_code": "26C11"
+      }
+    }
+  ]
+}
+```
 
-### Señales de que algo falta
+### Mapeo JSON → DB
 
-- Un docente “debería” tener materias y no aparece → probablemente no está en personas, está inactivo, o su documento no coincide.  
-- Un periodo no sale en el filtro → ese periodo no vino en el último import (o quedó vacío).  
-- Hay muchas filas omitidas en el progreso → priorizar el cruce BASE DOCENTE vs personas.
-
----
-
-## 10. Qué no hace (aún) el módulo
-
-Para evitar expectativas incorrectas:
-
-- No permite asignar docentes a materias desde Orbit.  
-- No detecta cruces de horario ni conflictos de agenda.  
-- No valida automáticamente “máximo de horas por docente” al importar.  
-- No exige que el cupo del grupo coincida con los matriculados (solo evita valores negativos en datos).  
-- No tiene flujo de aprobación ni historial de versiones de negocio dentro de la app.  
-- No sustituye a ACA como sistema de proyección/asignación.
-
-Orbit, en este punto, es el **espejo consultable** de esa proyección, integrado al resto de la operación docente (personas, escuelas, horas).
-
----
-
-## 11. Preguntas frecuentes
-
-### ¿Por qué no veo a un docente en Carga Académica?
-
-Puede deberse a que:
-
-- no está creado en el maestro de personas,  
-- su documento no coincide con el de ACA,  
-- está inactivo,  
-- o su asignación pertenece a un periodo que no está filtrado / no fue importado.
-
-### ¿Puedo corregir una materia desde Orbit?
-
-No desde la interfaz. La corrección debe hacerse en el origen (ACA) y luego reimportarse, o mediante un proceso operativo de datos.
-
-### ¿La importación suma sobre lo anterior?
-
-En el proceso estándar de recarga completa, **no**: primero limpia la carga existente y luego vuelve a cargar. Por eso es importante usar el archivo correcto y completo de periodos.
-
-### ¿Carga Académica y Horas Sustantivas son lo mismo?
-
-No.  
-- **Carga Académica** = qué enseña cada docente.  
-- **Horas Sustantivas** = balance de horas (contrato, cátedra, preparación y otras actividades).  
-
-La primera alimenta parte del cálculo de la segunda.
-
-### ¿Quién puede ver el módulo?
-
-Usuarios con permiso de consulta de carga académica. Según el rol, pueden ver todo o solo su escuela.
-
----
-
-## 12. Resumen en una frase
-
-**Carga Académica en Orbit es la consulta centralizada de la proyección docente (materia–grupo–periodo) importada desde ACA; no se edita en la app, requiere que el docente exista en Orbit, y sirve también como base de las horas de cátedra en Horas Sustantivas.**
-
----
-
-## Anexo: componentes del proceso (referencia operativa)
-
-| Pieza | Rol |
+| Origen JSON | Destino DB |
 |---|---|
-| Pantalla **Carga Académica** | Consulta, búsqueda y filtros |
-| API de consulta de carga | Entrega listados, resumen por periodo y detalle por docente |
-| Esquema de carga académica | Guarda asignaciones, materias, grupos y preparación de clase |
-| Maestro de personas | Identifica al docente por documento |
-| Import desde JSON ACA | Refresca la proyección en Orbit |
-| Cruce BASE DOCENTE | Detecta docentes faltantes |
-| Completar docentes + carga | Crea personas faltantes y recupera asignaciones omitidas |
-| Horas Sustantivas | Consume la carga para calcular cátedra |
+| `person_document` / `teacher.document` | Match → `academic_load.person_id` |
+| `period_code` | `academic_load.period_code` |
+| `subject.*` | `subject` (+ códigos en load) |
+| `subject.hours_quantity` | `academic_load.substantive_hours_quantity` |
+| `class_group.*` | `class_group` |
+| `class_group.enrolled_quantity` | `academic_load.enrolled_quantity` |
+| `academic_load.program_name` | `academic_load.program_name` |
+| `academic_load.semester` | `academic_load.semester` |
 
 ---
 
-*Documento orientado a usuarios de negocio, coordinación y operación. Si se requieren detalles técnicos de tablas, endpoints o scripts, pueden documentarse en un anexo técnico separado.*
+## 7. Dataset / star schema sugerido para BI
+
+### 7.1 Tabla de hechos
+
+**`fact_academic_load`** (1 fila = 1 asignación)
+
+Medidas posibles:
+
+| Medida | Campo / cálculo |
+|---|---|
+| `# asignaciones` | `COUNT(*)` |
+| `# docentes` | `COUNT(DISTINCT person_id)` |
+| `# materias` | `COUNT(DISTINCT subject_code)` |
+| `# grupos` | `COUNT(DISTINCT subject_code \|\| group_code)` |
+| `créditos` | `SUM(credits_quantity)` |
+| `horas importadas` | `SUM(substantive_hours_quantity)` |
+| `horas materia (cátedra)` | `SUM(subject.hours_quantity)` |
+| `matriculados` | `SUM(enrolled_quantity)` |
+| `cupo` | `SUM(capacity)` |
+| `% ocupación` | `SUM(enrolled) / NULLIF(SUM(capacity),0)` |
+
+### 7.2 Dimensiones
+
+| Dimensión | Clave | Atributos |
+|---|---|---|
+| Periodo | `period_code` | código, orden, etiqueta |
+| Docente | `person_id` | documento, nombre, escuela, contrato, activo |
+| Materia | `subject_code` | nombre, créditos, horas, activo |
+| Grupo | `subject_code + group_code` | modalidad, cupo, bloque, aula, fechas |
+| Programa | `program_name` / `program_id` | nombre, escuela, nivel |
+| Escuela | `school_id` | nombre, área |
+| Modalidad | `modality_norm` | Presencial / Virtual / Sin modalidad |
+| Tipo carga | fijo `projection` | — |
+
+### 7.3 Grain (grano) — no romperlo
+
+- **No** sumar créditos a nivel docente sin aclarar que un docente puede tener N materias.
+- **No** mezclar periodos sin filtro (un docente puede repetirse en varios periodos).
+- Para “docentes con carga en periodo X”, usar `COUNT(DISTINCT person_id)` filtrando `period_code`.
+
+---
+
+## 8. Métricas y tableros sugeridos
+
+### Tablero A — Cobertura por periodo
+
+**Pregunta:** ¿Cuánta carga hay cargada y de cuántos docentes?
+
+KPI:
+- Asignaciones por periodo
+- Docentes distintos por periodo
+- Materias distintas por periodo
+- Promedio de asignaciones por docente
+
+```sql
+SELECT
+  al.period_code,
+  COUNT(*)::int AS assignments,
+  COUNT(DISTINCT al.person_id)::int AS teachers,
+  COUNT(DISTINCT al.subject_code)::int AS subjects,
+  ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT al.person_id), 0), 2) AS avg_load_per_teacher
+FROM academic_workload.academic_load al
+JOIN core.person p ON p.id = al.person_id
+WHERE COALESCE(p.is_active, true) = true
+GROUP BY al.period_code
+ORDER BY al.period_code DESC;
+```
+
+### Tablero B — Mix de modalidad
+
+**Pregunta:** ¿Cuánto es presencial vs virtual?
+
+Dimensiones: periodo, escuela, programa  
+Medida: asignaciones y % del total
+
+### Tablero C — Carga por escuela / programa
+
+**Pregunta:** ¿Qué unidades académicas concentran más docencia?
+
+Usar:
+- escuela del docente (`person.school_id`)
+- y/o escuela del programa (`program.school_id`)
+- `program_name` cuando `program_id` sea nulo
+
+### Tablero D — Ocupación de grupos
+
+**Pregunta:** ¿Qué grupos están llenos / subutilizados?
+
+```text
+occupancy_pct = enrolled_quantity / capacity
+```
+
+Segmentos sugeridos: `<50%`, `50–80%`, `80–100%`, `>100%` (sobre-cupo), `sin cupo`.
+
+### Tablero E — Docentes sin carga / carga vs planta
+
+**Pregunta:** ¿Quiénes de la planta activa no tienen asignación en el periodo?
+
+```sql
+-- Docentes activos sin carga en un periodo
+SELECT p.id, p.document, p.full_name, p.school_id
+FROM core.person p
+WHERE COALESCE(p.is_active, true) = true
+  AND NOT EXISTS (
+    SELECT 1
+    FROM academic_workload.academic_load al
+    WHERE al.person_id = p.id
+      AND al.period_code = :period
+  );
+```
+
+(Acotar por `role_id` / jerarquía docente según definición de planta.)
+
+### Tablero F — Calidad del dato / gaps
+
+KPI de confianza del snapshot:
+
+| KPI | Cómo medirlo |
+|---|---|
+| % asignaciones sin `program_name` ni `program_id` | `program` vacío |
+| % sin modalidad normalizable | `modality_norm = Sin modalidad` |
+| % subjects con `hours_quantity = 0` | impacto en cátedra |
+| % subjects con `credits_quantity = 0` | calidad académica |
+| Omisiones por persona faltante | desde progress JSON del import |
+| Desfase ACA vs Orbit | comparar `total_assignments` del JSON vs `COUNT(*)` en DB |
+
+### Tablero G — Balance de horas (cruzado con Horas Sustantivas)
+
+Por docente:
+- contrato (42/21)
+- cátedra (`SUM(subject.hours_quantity)`)
+- preparación (tabla o default 4)
+- sustantivas asignadas
+- restantes
+
+Útil para alertas de sobrecarga / subutilización.
+
+---
+
+## 9. Contratos de datos ya expuestos por API (referencia)
+
+Si el tablero consume API en lugar de SQL directo:
+
+### `GET /api/academic-load`
+
+Filtros: `teacher_document`, `period`, `unit_name` (busca nombre docente/materia/programa), `modality`, `type`, `page`, `limit` (máx 500).
+
+Campos de fila:
+
+| Campo API | Origen |
+|---|---|
+| `id` | `academic_load.id` |
+| `teacher_document` | `person.document` |
+| `teacher_name` | `person.full_name` |
+| `program` | `COALESCE(program_name, program.name)` |
+| `subject_name` | `subject.name` |
+| `credits` | `subject.credits_quantity` |
+| `modality` | `class_group.modality` |
+| `period` | `period_code` |
+| `type` | literal `'projection'` |
+| `subject_code` / `group_code` | códigos |
+
+### `GET /api/academic-load/summary`
+
+Por periodo:
+
+- `period`
+- `type` = `projection`
+- `total_subjects` = `COUNT(*)` (ojo: es **conteo de asignaciones**, no de materias distintas)
+- `total_teachers` = `COUNT(DISTINCT person_id)`
+
+### `GET /api/academic-load/teacher/:document`
+
+Misma forma de fila, filtrada a un docente.
+
+> Para tableros analíticos densos, preferir **SQL / vista materializada / extract**, no paginar la API.
+
+---
+
+## 10. Diccionario rápido de campos “para pintar”
+
+| Nombre amigable | Campo técnico | Tipo visual sugerido |
+|---|---|---|
+| Periodo | `period_code` | filtro / eje X |
+| Docente | `teacher_name` / `document` | dimensión / drill |
+| Escuela | `school.name` | filtro / stacked bar |
+| Programa | `program_name` | filtro / treemap |
+| Materia | `subject_name` | tabla / búsqueda |
+| Créditos | `credits_quantity` | KPI / suma |
+| Modalidad | `modality_norm` | donut / stacked |
+| Grupo | `group_code` | detalle |
+| Cupo | `capacity` | KPI |
+| Matriculados | `enrolled_quantity` | KPI |
+| % ocupación | calculado | gauge / heatmap |
+| Horas importadas | `substantive_hours_quantity` | KPI (con caveat) |
+| Horas cátedra | `subject.hours_quantity` | KPI horas |
+| Tipo | `projection` | badge fijo |
+
+---
+
+## 11. Caveats críticos para quien construye el tablero
+
+1. **Snapshot, no histórico:** un reimport limpia y reemplaza. Si necesitas tendencia temporal, versiona extracts (`as_of_date`).
+2. **`total_subjects` en summary ≠ materias distintas:** es conteo de filas de carga.
+3. **Programa dual:** prioriza `program_name`; `program_id` puede estar vacío.
+4. **Horas en dos campos distintos:** no confundir `academic_load.substantive_hours_quantity` con `subject.hours_quantity`.
+5. **Match de documento por dígitos:** diferencias de formato (`CC 1.234.567` vs `1234567`) se normalizan en import; en cruce manual, normalizar igual.
+6. **Escuela del docente ≠ escuela del programa:** define cuál usa cada visual.
+7. **Activos vs todos:** alinear con la regla de producto si el tablero es “oficial Orbit”.
+8. **Sin workflow de aprobación:** cualquier “estado” habría que inventarlo fuera del modelo actual.
+
+---
+
+## 12. Checklist de implementación de un tablero
+
+- [ ] Definir periodo(s) objetivo y si se permiten multi-periodo
+- [ ] Fijar grain: asignación / docente / grupo
+- [ ] Elegir dimensión de escuela (persona vs programa)
+- [ ] Normalizar modalidad
+- [ ] Decidir inclusión de docentes inactivos
+- [ ] Validar cobertura de `hours_quantity` y `credits_quantity`
+- [ ] Medir gap vs ACA (asignaciones omitidas)
+- [ ] Versionar extract con fecha de corte del import
+- [ ] Documentar cada KPI con fórmula exacta
+- [ ] Separar tableros de **operación** (cobertura/ocupación) vs **horas** (cátedra/balance)
+
+---
+
+## 13. Resumen ejecutivo
+
+La carga académica en Orbit es un **snapshot de proyección docente** (ACA → DB) modelado como hecho `academic_load` con dimensiones de materia, grupo, persona, periodo y programa.  
+Para tableros: usar **periodo + escuela + modalidad + programa** como cortes principales; medir **asignaciones, docentes, ocupación y calidad de dato**; y tratar el dataset como **reemplazable en cada import**, no como histórico nativo.
+
+---
+
+*Documento orientado a analítica / BI / diseño de tableros. Actualizar si cambia el modelo `academic_workload` o el contrato del import ACA.*
