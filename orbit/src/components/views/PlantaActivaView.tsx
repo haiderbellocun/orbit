@@ -123,6 +123,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return { ...EMPTY_FILTERS, areaId: locked };
   });
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [listStatus, setListStatus] = useState<'active' | 'inactive'>('active');
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<PlantaPerson[]>([]);
   const [total, setTotal] = useState(0);
@@ -153,6 +154,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const [editPrograms, setEditPrograms] = useState<CatalogProgram[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -291,6 +293,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         without_program: applied.withoutProgram || undefined,
         without_role: applied.withoutRole || undefined,
         without_edu_email: applied.withoutEduEmail || undefined,
+        status: listStatus,
         page,
         limit: 50,
       });
@@ -310,7 +313,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [applied, page]);
+  }, [applied, page, listStatus]);
 
   useEffect(() => {
     void loadList();
@@ -374,6 +377,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const openEdit = async (row: PlantaPerson) => {
     if (!rowCanEdit(row)) return;
     setFormError(null);
+    setSaveNotice(null);
     setEditing(row);
     setEditForm({
       full_name: row.name,
@@ -454,17 +458,26 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     setFormError(null);
   };
 
+  const switchListStatus = (next: 'active' | 'inactive') => {
+    if (next === listStatus) return;
+    setListStatus(next);
+    setPage(1);
+    setSaveNotice(null);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editing) return;
     setFormError(null);
+    setSaveNotice(null);
     if (!editForm.full_name.trim()) {
       setFormError('El nombre es obligatorio');
       return;
     }
     setSaving(true);
     try {
-      await updatePlantaPerson(Number(editing.id), {
+      const wasActive = editing.status === 'active';
+      const result = (await updatePlantaPerson(Number(editing.id), {
         full_name: editForm.full_name.trim(),
         document: editForm.document.trim() || undefined,
         email: editForm.email.trim() || null,
@@ -476,8 +489,26 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         program_id: editForm.program_id ? Number(editForm.program_id) : null,
         role_id: editForm.role_id ? Number(editForm.role_id) : null,
         is_active: editForm.is_active,
-      });
+      })) as Record<string, unknown>;
+
+      const createdVacancyId =
+        result?.created_vacancy_id != null
+          ? String(result.created_vacancy_id)
+          : null;
+      const becameInactive = wasActive && !editForm.is_active;
+
       closeEdit();
+
+      if (becameInactive && createdVacancyId) {
+        setSaveNotice(
+          'Persona inactivada y vacante creada automáticamente.'
+        );
+      } else if (becameInactive) {
+        setSaveNotice('Persona inactivada.');
+      } else if (!wasActive && editForm.is_active) {
+        setSaveNotice('Persona reactivada.');
+      }
+
       await loadList();
     } catch (err) {
       setFormError(
@@ -495,9 +526,50 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     <div className="space-y-8">
       <Header
         title="Planta Activa"
-        subtitle="Personas con estado activo en el sistema"
+        subtitle={
+          listStatus === 'active'
+            ? 'Personas con estado activo en el sistema'
+            : 'Personas inactivas en el sistema'
+        }
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
+
+      <div className="flex gap-1 p-1 rounded-2xl bg-slate-100/80 w-fit">
+        {(
+          [
+            ['active', 'Activos'],
+            ['inactive', 'Inactivos'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => switchListStatus(key)}
+            className={cn(
+              'px-4 py-2 rounded-xl text-sm font-bold transition-colors',
+              listStatus === key
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {saveNotice && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-800 flex items-center justify-between gap-3">
+          <span>{saveNotice}</span>
+          <button
+            type="button"
+            onClick={() => setSaveNotice(null)}
+            className="text-emerald-600 hover:text-emerald-900 shrink-0"
+            aria-label="Cerrar aviso"
+          >
+            <XMarkIcon className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <div className="glass-panel p-4 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -714,7 +786,9 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         <p className="text-sm text-slate-500">
           {loading
             ? 'Cargando…'
-            : `${total.toLocaleString('es-CO')} persona${total === 1 ? '' : 's'} activa${total === 1 ? '' : 's'}`}
+            : listStatus === 'active'
+              ? `${total.toLocaleString('es-CO')} persona${total === 1 ? '' : 's'} activa${total === 1 ? '' : 's'}`
+              : `${total.toLocaleString('es-CO')} persona${total === 1 ? '' : 's'} inactiva${total === 1 ? '' : 's'}`}
         </p>
         {totalPages > 1 && (
           <div className="flex items-center gap-2">
@@ -1046,7 +1120,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       ))}
                     </select>
                   </label>
-                  <label className="inline-flex items-center gap-2 text-sm text-slate-700 pt-6">
+                  <label className="inline-flex items-start gap-2 text-sm text-slate-700 pt-6 sm:col-span-2">
                     <input
                       type="checkbox"
                       checked={editForm.is_active}
@@ -1056,9 +1130,16 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                           is_active: e.target.checked,
                         }))
                       }
-                      className="rounded border-slate-300 text-violet-600 focus:ring-violet-400"
+                      className="mt-0.5 rounded border-slate-300 text-violet-600 focus:ring-violet-400"
                     />
-                    Persona activa (`is_active`)
+                    <span>
+                      <span className="font-semibold">Persona activa</span>
+                      <span className="block text-xs text-slate-500 mt-0.5">
+                        Al desactivar se mueve a Inactivos. Si el rol no es
+                        DOCENTE, LIDER ni LITE, se crea una vacante
+                        automáticamente.
+                      </span>
+                    </span>
                   </label>
                 </div>
 

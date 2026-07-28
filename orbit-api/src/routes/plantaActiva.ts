@@ -8,8 +8,18 @@ import {
   canViewPlantaArea,
   type PlantaActivaGrant,
 } from "../lib/plantaActivaAccess";
-import { schoolScopeFromRequest } from "../middleware/orbitAuth";
-import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
+import { shouldSkipVacancyOnInactivation } from "../lib/orbitRoles";
+import { toUpperAscii } from "../lib/textNormalize";
+import {
+  orbitPersonIdFromRequest,
+  schoolScopeFromRequest,
+} from "../middleware/orbitAuth";
+import { notifyVacancyCreated } from "../services/vacancyNotifyService";
+import {
+  sqlPersonIsActive,
+  sqlPersonIsInactive,
+  sqlPersonStatusText,
+} from "../sql/personActive";
 
 const router = Router();
 
@@ -25,6 +35,14 @@ function parseBoolFlag(raw: unknown): boolean {
     .trim()
     .toLowerCase();
   return s === "1" || s === "true" || s === "yes";
+}
+
+/** `status=active|inactive` (default active). */
+function parsePersonStatusFilter(raw: unknown): "active" | "inactive" {
+  const s = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  return s === "inactive" ? "inactive" : "active";
 }
 
 /** Grant de Planta Activa del usuario; `null` = admin sin recorte. */
@@ -44,7 +62,7 @@ function effectiveAreaSql(aliasP = "p", aliasS = "s"): string {
   return `COALESCE(${aliasP}.area_id, ${aliasS}.area_id)`;
 }
 
-/** GET /planta-activa — todas las personas activas (is_active). */
+/** GET /planta-activa — personas activas o inactivas según `status`. */
 router.get("/planta-activa", async (req: Request, res: Response) => {
   try {
     const mode = await resolveCoreSchemaMode();
@@ -57,6 +75,7 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
     }
 
     const prefix = mode === "core" ? "core." : "";
+    const statusFilter = parsePersonStatusFilter(req.query.status);
     const search =
       typeof req.query.search === "string" ? req.query.search.trim() : "";
     const areaId = parsePositiveInt(req.query.area_id ?? req.query.areaId);
@@ -82,7 +101,11 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
 
     const schoolScope = schoolScopeFromRequest(req);
     const plantaGrant = plantaGrantFromRequest(req);
-    const conditions: string[] = [sqlPersonIsActive("p")];
+    const conditions: string[] = [
+      statusFilter === "inactive"
+        ? sqlPersonIsInactive("p")
+        : sqlPersonIsActive("p"),
+    ];
     const values: unknown[] = [];
     let i = 1;
 
@@ -318,10 +341,17 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
       `SELECT
          p.id,
          p.school_id,
+         p.program_id,
+         p.role_id,
          p.document,
-         ${effectiveAreaSql()} AS effective_area_id
+         p.full_name,
+         COALESCE(p.is_active, true) AS is_active,
+         ${effectiveAreaSql()} AS effective_area_id,
+         COALESCE(r.name, '') AS role_name,
+         COALESCE(r.code, '') AS role_code
        FROM ${prefix}person p
        LEFT JOIN ${prefix}school s ON s.id = p.school_id
+       LEFT JOIN ${prefix}role r ON r.id = p.role_id
        WHERE p.id = $1`,
       [id]
     );
@@ -332,8 +362,14 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
 
     const current = existing.rows[0] as {
       school_id: number | null;
+      program_id: number | null;
+      role_id: number | null;
       document: string | null;
+      full_name: string | null;
+      is_active: boolean;
       effective_area_id: number | null;
+      role_name: string;
+      role_code: string;
     };
     if (
       schoolScope != null &&
@@ -456,13 +492,14 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
       i++;
     }
 
+    let nextIsActive: boolean | null = null;
     if ("is_active" in b) {
-      const active =
+      nextIsActive =
         typeof b.is_active === "boolean"
           ? b.is_active
           : parseBoolFlag(b.is_active);
       sets.push(`is_active = $${i}`);
-      values.push(active);
+      values.push(nextIsActive);
       i++;
     }
 
@@ -497,7 +534,9 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
          COALESCE(pr.name, '') AS program,
          r.id AS role_id,
          COALESCE(r.name, '') AS role_name,
-         ${sqlPersonStatusText("p")} AS status
+         COALESCE(r.code, '') AS role_code,
+         ${sqlPersonStatusText("p")} AS status,
+         ${effectiveAreaSql()} AS effective_area_id
        FROM ${prefix}person p
        LEFT JOIN ${prefix}role r ON r.id = p.role_id
        LEFT JOIN ${prefix}school s ON s.id = p.school_id
@@ -507,11 +546,139 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
       [id]
     );
 
-    res.json(detail.rows[0]);
+    const personRow = detail.rows[0] as Record<string, unknown>;
+    let createdVacancyId: string | null = null;
+
+    const wasActive = Boolean(current.is_active);
+    const becameInactive = nextIsActive === false && wasActive;
+    if (becameInactive) {
+      createdVacancyId = await createVacancyFromInactivatedPerson({
+        personId: id,
+        actorPersonId: orbitPersonIdFromRequest(req),
+        areaId:
+          personRow.effective_area_id != null
+            ? Number(personRow.effective_area_id)
+            : null,
+        schoolId:
+          personRow.school_id != null ? Number(personRow.school_id) : null,
+        programId:
+          personRow.program_id != null ? Number(personRow.program_id) : null,
+        roleId: personRow.role_id != null ? Number(personRow.role_id) : null,
+        roleName: String(personRow.role_name ?? ""),
+        roleCode: String(personRow.role_code ?? ""),
+        personName: String(personRow.name ?? current.full_name ?? ""),
+        areaName: String(personRow.area ?? ""),
+        schoolName: String(personRow.school ?? ""),
+        programName: String(personRow.program ?? ""),
+      });
+    }
+
+    const { effective_area_id: _ea, role_code: _rc, ...rest } = personRow;
+    res.json({
+      ...rest,
+      created_vacancy_id: createdVacancyId,
+    });
   } catch (e) {
     console.error("PATCH /planta-activa/:id failed:", e);
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+/**
+ * Crea vacante abierta al inactivar personal (excepto DOCENTE / LIDER / LITE).
+ * Best-effort: no revierte la inactivación si falla.
+ */
+async function createVacancyFromInactivatedPerson(input: {
+  personId: number;
+  actorPersonId: number | null;
+  areaId: number | null;
+  schoolId: number | null;
+  programId: number | null;
+  roleId: number | null;
+  roleName: string;
+  roleCode: string;
+  personName: string;
+  areaName: string;
+  schoolName: string;
+  programName: string;
+}): Promise<string | null> {
+  if (
+    shouldSkipVacancyOnInactivation({
+      roleId: input.roleId,
+      roleName: input.roleName,
+      roleCode: input.roleCode,
+    })
+  ) {
+    return null;
+  }
+
+  if (input.areaId == null || !Number.isFinite(input.areaId)) {
+    console.warn(
+      `planta-activa: inactivación persona ${input.personId} sin área; vacante omitida`
+    );
+    return null;
+  }
+
+  const positionName = toUpperAscii(
+    input.roleName.trim() || input.roleCode.trim() || ""
+  );
+  if (!positionName) {
+    console.warn(
+      `planta-activa: inactivación persona ${input.personId} sin rol; vacante omitida`
+    );
+    return null;
+  }
+
+  const note = toUpperAscii(
+    `Vacante generada automáticamente por inactivación de ${input.personName || `persona #${input.personId}`}`
+  );
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO vacancies.vacancy (
+        area_id, school_id, program_id,
+        position_name, curricular_line, quantity,
+        operation_status
+      ) VALUES (
+        $1, $2, $3,
+        $4, NULL, 1,
+        'open'
+      ) RETURNING id`,
+      [input.areaId, input.schoolId, input.programId, positionName]
+    );
+    if (rows.length === 0) return null;
+    const vacancyId = String((rows[0] as { id: unknown }).id);
+
+    await pool.query(
+      `INSERT INTO vacancies.vacancy_operation_note
+        (vacancy_id, body, created_by_person_id)
+       VALUES ($1, $2, $3)`,
+      [vacancyId, note, input.actorPersonId]
+    );
+
+    void notifyVacancyCreated({
+      vacancyId,
+      positionName,
+      quantity: 1,
+      areaName: input.areaName || "—",
+      schoolName: input.schoolName || null,
+      programName: input.programName || null,
+      createdAt: new Date().toISOString(),
+    }).catch((err) => {
+      console.error(
+        "planta-activa: notify vacante por inactivación falló:",
+        err
+      );
+    });
+
+    return vacancyId;
+  } catch (e) {
+    console.error(
+      `planta-activa: no se pudo crear vacante al inactivar persona ${input.personId}:`,
+      e
+    );
+    return null;
+  }
+}
 
 export default router;

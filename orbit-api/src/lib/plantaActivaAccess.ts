@@ -29,6 +29,7 @@ const GRANTS: readonly PlantaActivaGrant[] = [
       "view:home",
       "view:vacancies",
       "vacancies:informative_panel",
+      "vacancies:admin",
       "view:news",
     ],
   },
