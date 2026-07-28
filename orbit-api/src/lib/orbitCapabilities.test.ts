@@ -174,12 +174,13 @@ test("unknown role is denied", () => {
   assert.equal(r, null);
 });
 
-test("allowlist default includes camilo", () => {
+test("allowlist default includes camilo and haider", () => {
   const prev = process.env.ORBIT_ACCESS_ALLOWLIST;
   delete process.env.ORBIT_ACCESS_ALLOWLIST;
   try {
     assert.equal(isEmailOnOrbitAllowlist("camilo_quintero@cun.edu.co"), true);
     assert.equal(isEmailOnOrbitAllowlist("CAMILO_QUINTERO@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("haider_bello@cun.edu.co"), true);
     assert.equal(isEmailOnOrbitAllowlist("otro@cun.edu.co"), false);
     const admin = resolveAllowlistAdminAccess();
     assert.equal(admin.orbitAccess, "full");
