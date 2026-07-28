@@ -12,6 +12,9 @@ import {
   VACANCIES_ONLY_CAPABILITIES,
   isEmailAuthorizedForOrbit,
   isEmailOnOrbitAllowlist,
+  isEmailVacancyAdmin,
+  canVacancyAdmin,
+  ensureVacancyAdminCapabilities,
   resolveAllowlistAdminAccess,
   resolveOrbitAccess,
   resolvePlantaActivaGrantAccess,
@@ -206,6 +209,35 @@ test("allowlist env override", () => {
   }
 });
 
+test("vacancy admin allowlist: camilo, yesid, sara", () => {
+  const prev = process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST;
+  delete process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST;
+  try {
+    assert.equal(isEmailVacancyAdmin("camilo_quintero@cun.edu.co"), true);
+    assert.equal(isEmailVacancyAdmin("yesid_rocha@cun.edu.co"), true);
+    assert.equal(isEmailVacancyAdmin("sara_murillofo@cun.edu.co"), true);
+    assert.equal(isEmailVacancyAdmin("otro@cun.edu.co"), false);
+    assert.equal(isEmailAuthorizedForOrbit("yesid_rocha@cun.edu.co"), true);
+    assert.equal(
+      canVacancyAdmin([], "yesid_rocha@cun.edu.co"),
+      true
+    );
+    assert.equal(
+      canVacancyAdmin([ORBIT_CAPABILITY.VACANCIES_ADMIN], "otro@cun.edu.co"),
+      true
+    );
+    const caps = ensureVacancyAdminCapabilities(
+      [ORBIT_CAPABILITY.HOME],
+      "yesid_rocha@cun.edu.co"
+    );
+    assert.equal(caps.includes(ORBIT_CAPABILITY.VACANCIES), true);
+    assert.equal(caps.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN), true);
+  } finally {
+    if (prev === undefined) delete process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST;
+    else process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST = prev;
+  }
+});
+
 test("planta activa grants: sara/leidy/tania", () => {
   const sara = getPlantaActivaGrant("sara_murillofo@cun.edu.co");
   assert.ok(sara);
@@ -215,6 +247,7 @@ test("planta activa grants: sara/leidy/tania", () => {
     "view:home",
     "view:vacancies",
     "vacancies:informative_panel",
+    "vacancies:admin",
     "view:news",
   ]);
   assert.equal(canViewPlantaArea(sara, 1), true);
@@ -229,6 +262,10 @@ test("planta activa grants: sara/leidy/tania", () => {
     true
   );
   assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.NEWS), true);
+  assert.equal(
+    saraAccess.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN),
+    true
+  );
 
   const leidy = getPlantaActivaGrant("LEIDY_BERNAL@cun.edu.co");
   assert.ok(leidy);

@@ -155,6 +155,16 @@ export function getStoredCapabilities(): string[] {
   if (isStoredEmailOnOrbitAllowlist()) {
     return [...new Set([...ORBIT_ALLOWLIST_ADMIN_CAPABILITIES, ...base])];
   }
+  // Admin de vacantes (eliminar / estado forzado).
+  if (isStoredEmailVacancyAdmin()) {
+    return [
+      ...new Set([
+        ...base,
+        "view:vacancies",
+        "vacancies:admin",
+      ]),
+    ];
+  }
   return base;
 }
 
@@ -195,6 +205,12 @@ const DEFAULT_ORBIT_ACCESS_ALLOWLIST = [
   "haider_bello@cun.edu.co",
 ] as const;
 
+const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
+  "camilo_quintero@cun.edu.co",
+  "yesid_rocha@cun.edu.co",
+  "sara_murillofo@cun.edu.co",
+] as const;
+
 /** Misma allowlist de reborn que el API. Override: VITE_ORBIT_ACCESS_ALLOWLIST */
 function getOrbitAccessAllowlist(): string[] {
   const raw = (
@@ -214,6 +230,27 @@ function isStoredEmailOnOrbitAllowlist(): boolean {
   const email = getStoredUserEmail();
   if (!email) return false;
   return getOrbitAccessAllowlist().includes(email);
+}
+
+function getVacancyAdminAllowlist(): string[] {
+  const raw = (
+    (import.meta.env.VITE_ORBIT_VACANCY_ADMIN_ALLOWLIST as string | undefined) ??
+    ""
+  ).trim();
+  if (!raw) return [...DEFAULT_VACANCY_ADMIN_ALLOWLIST];
+  const emails = raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0);
+  return emails.length > 0
+    ? [...new Set(emails)]
+    : [...DEFAULT_VACANCY_ADMIN_ALLOWLIST];
+}
+
+function isStoredEmailVacancyAdmin(): boolean {
+  const email = getStoredUserEmail();
+  if (!email) return false;
+  return getVacancyAdminAllowlist().includes(email);
 }
 
 /** Capabilities de bootstrap admin (alineadas con SUPER_ADMIN del API). */
@@ -754,6 +791,8 @@ export type PlantaActivaFilters = {
   without_program?: boolean;
   without_role?: boolean;
   without_edu_email?: boolean;
+  /** `active` (default) | `inactive` */
+  status?: "active" | "inactive";
   page?: number;
   limit?: number;
 };
@@ -790,6 +829,7 @@ export async function getPlantaActiva(
   if (params?.without_role) url.searchParams.set("without_role", "1");
   if (params?.without_edu_email)
     url.searchParams.set("without_edu_email", "1");
+  if (params?.status) url.searchParams.set("status", params.status);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });

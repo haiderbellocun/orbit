@@ -3,10 +3,13 @@ import jwt, { type SignOptions } from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { pool } from "../db/connection";
 import {
+  ensureVacancyAdminCapabilities,
   isEmailAuthorizedForOrbit,
   isEmailOnOrbitAllowlist,
+  isEmailVacancyAdmin,
   resolveAllowlistAdminAccess,
   resolvePlantaActivaGrantAccess,
+  VACANCIES_ADMIN_CAPABILITIES,
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
@@ -213,7 +216,10 @@ async function gateOrbitRoleAndLite(
     return {
       ok: true,
       orbitAccess,
-      capabilities,
+      capabilities: ensureVacancyAdminCapabilities(
+        capabilities,
+        emailNorm || personEmailNorm
+      ),
       schoolId: null,
       areaId: null,
       programIds: [],
@@ -224,16 +230,45 @@ async function gateOrbitRoleAndLite(
 
   const grant =
     getPlantaActivaGrant(emailNorm) ?? getPlantaActivaGrant(personEmailNorm);
-  const { orbitAccess, capabilities } = resolvePlantaActivaGrantAccess(grant);
+  if (grant) {
+    const { orbitAccess, capabilities } = resolvePlantaActivaGrantAccess(grant);
+    return {
+      ok: true,
+      orbitAccess,
+      capabilities: ensureVacancyAdminCapabilities(
+        capabilities,
+        emailNorm || personEmailNorm
+      ),
+      schoolId: null,
+      areaId: null,
+      programIds: [],
+      plantaViewAreaIds: grant.viewAreaIds ?? null,
+      plantaEditAreaIds: grant.editAreaIds ?? [],
+    };
+  }
+
+  // Solo admin de vacantes (p. ej. Yesid): acceso a vacantes + eliminar.
+  if (isEmailVacancyAdmin(emailNorm) || isEmailVacancyAdmin(personEmailNorm)) {
+    return {
+      ok: true,
+      orbitAccess: "full",
+      capabilities: ensureVacancyAdminCapabilities(
+        [...VACANCIES_ADMIN_CAPABILITIES],
+        emailNorm || personEmailNorm
+      ),
+      schoolId: null,
+      areaId: null,
+      programIds: [],
+      plantaViewAreaIds: null,
+      plantaEditAreaIds: null,
+    };
+  }
+
   return {
-    ok: true,
-    orbitAccess,
-    capabilities,
-    schoolId: null,
-    areaId: null,
-    programIds: [],
-    plantaViewAreaIds: grant?.viewAreaIds ?? null,
-    plantaEditAreaIds: grant?.editAreaIds ?? [],
+    ok: false,
+    status: 403,
+    error:
+      "ORBIT está en reestructuración. Tu cuenta aún no tiene acceso autorizado.",
   };
 }
 

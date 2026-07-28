@@ -54,6 +54,17 @@ const DEFAULT_ACCESS_ALLOWLIST = [
   "haider_bello@cun.edu.co",
 ] as const;
 
+/**
+ * Correos autorizados a eliminar vacantes / admin de estado
+ * (capability `vacancies:admin`), independiente del role_id.
+ * Override: ORBIT_VACANCY_ADMIN_ALLOWLIST=a@cun.edu.co,b@cun.edu.co
+ */
+const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
+  "camilo_quintero@cun.edu.co",
+  "yesid_rocha@cun.edu.co",
+  "sara_murillofo@cun.edu.co",
+] as const;
+
 export function getOrbitAccessAllowlist(): string[] {
   const raw = (process.env.ORBIT_ACCESS_ALLOWLIST ?? "").trim();
   if (!raw) return [...DEFAULT_ACCESS_ALLOWLIST];
@@ -70,13 +81,38 @@ export function isEmailOnOrbitAllowlist(email: string | null | undefined): boole
   return getOrbitAccessAllowlist().includes(norm);
 }
 
+export function getVacancyAdminAllowlist(): string[] {
+  const raw = (process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST ?? "").trim();
+  if (!raw) return [...DEFAULT_VACANCY_ADMIN_ALLOWLIST];
+  const emails = raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0);
+  return emails.length > 0
+    ? [...new Set(emails)]
+    : [...DEFAULT_VACANCY_ADMIN_ALLOWLIST];
+}
+
+export function isEmailVacancyAdmin(
+  email: string | null | undefined
+): boolean {
+  const norm = (email ?? "").trim().toLowerCase();
+  if (!norm) return false;
+  return getVacancyAdminAllowlist().includes(norm);
+}
+
 /**
- * Puede iniciar sesión en ORBIT: allowlist admin (acceso total) o grant de Planta Activa.
+ * Puede iniciar sesión en ORBIT: allowlist admin, grant de Planta Activa
+ * o allowlist de admin de vacantes.
  */
 export function isEmailAuthorizedForOrbit(
   email: string | null | undefined
 ): boolean {
-  return isEmailOnOrbitAllowlist(email) || isEmailOnPlantaActivaGrant(email);
+  return (
+    isEmailOnOrbitAllowlist(email) ||
+    isEmailOnPlantaActivaGrant(email) ||
+    isEmailVacancyAdmin(email)
+  );
 }
 
 /** Solo Planta Activa por defecto; extras vienen del grant. */
@@ -282,6 +318,21 @@ export function hasCapability(
   return capabilities.includes(required);
 }
 
+/** Asegura `vacancies` + `vacancies:admin` para correos de la allowlist. */
+export function ensureVacancyAdminCapabilities(
+  capabilities: readonly OrbitCapability[],
+  email: string | null | undefined
+): OrbitCapability[] {
+  if (!isEmailVacancyAdmin(email)) return [...capabilities];
+  return [
+    ...new Set([
+      ...capabilities,
+      ORBIT_CAPABILITY.VACANCIES,
+      ORBIT_CAPABILITY.VACANCIES_ADMIN,
+    ]),
+  ];
+}
+
 export function canAccessVacancyInformativePanel(
   capabilities: readonly string[] | undefined
 ): boolean {
@@ -289,4 +340,13 @@ export function canAccessVacancyInformativePanel(
     hasCapability(capabilities, ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL) ||
     hasCapability(capabilities, ORBIT_CAPABILITY.VACANCIES_ADMIN)
   );
+}
+
+/** Admin de vacantes: capability o correo en allowlist. */
+export function canVacancyAdmin(
+  capabilities: readonly string[] | undefined,
+  email?: string | null
+): boolean {
+  if (hasCapability(capabilities, ORBIT_CAPABILITY.VACANCIES_ADMIN)) return true;
+  return isEmailVacancyAdmin(email);
 }

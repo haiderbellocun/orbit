@@ -1,12 +1,15 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import {
+  ensureVacancyAdminCapabilities,
   hasCapability,
   isEmailAuthorizedForOrbit,
   isEmailOnOrbitAllowlist,
+  isEmailVacancyAdmin,
   ORBIT_CAPABILITY,
   resolvePlantaActivaGrantAccess,
   SUPER_ADMIN_CAPABILITIES,
+  VACANCIES_ADMIN_CAPABILITIES,
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
@@ -129,17 +132,22 @@ export function orbitAuthMiddleware(
       capabilities = [...SUPER_ADMIN_CAPABILITIES];
     } else {
       const grant = getPlantaActivaGrant(email);
-      if (!grant) {
+      if (grant) {
+        capabilities = resolvePlantaActivaGrantAccess(grant).capabilities;
+        plantaViewAreaIds = grant.viewAreaIds;
+        plantaEditAreaIds = [...grant.editAreaIds];
+      } else if (isEmailVacancyAdmin(email)) {
+        capabilities = [...VACANCIES_ADMIN_CAPABILITIES];
+      } else {
         res.status(401).json({
           error:
             "ORBIT está en reestructuración. Tu cuenta aún no tiene acceso autorizado.",
         });
         return;
       }
-      capabilities = resolvePlantaActivaGrantAccess(grant).capabilities;
-      plantaViewAreaIds = grant.viewAreaIds;
-      plantaEditAreaIds = [...grant.editAreaIds];
     }
+
+    capabilities = ensureVacancyAdminCapabilities(capabilities, email);
 
     const roleIdRaw = decoded.roleId;
     const roleId =
