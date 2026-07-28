@@ -190,9 +190,12 @@ export function getStoredUserEmail(): string | null {
   return null;
 }
 
-const DEFAULT_ORBIT_ACCESS_ALLOWLIST = ["camilo_quintero@cun.edu.co"] as const;
+const DEFAULT_ORBIT_ACCESS_ALLOWLIST = [
+  "camilo_quintero@cun.edu.co",
+  "haider_bello@cun.edu.co",
+] as const;
 
-/** Misma allowlist de reborn que el API (default Camilo). Override: VITE_ORBIT_ACCESS_ALLOWLIST */
+/** Misma allowlist de reborn que el API. Override: VITE_ORBIT_ACCESS_ALLOWLIST */
 function getOrbitAccessAllowlist(): string[] {
   const raw = (
     (import.meta.env.VITE_ORBIT_ACCESS_ALLOWLIST as string | undefined) ?? ""

@@ -46,10 +46,13 @@ export const SUPER_ADMIN_CAPABILITIES: readonly OrbitCapability[] = [
 
 /**
  * Allowlist temporal de acceso a ORBIT (reborn).
- * Por defecto solo camilo_quintero@cun.edu.co.
+ * Por defecto: camilo_quintero + haider_bello (acceso total).
  * Override: ORBIT_ACCESS_ALLOWLIST=a@cun.edu.co,b@cun.edu.co
  */
-const DEFAULT_ACCESS_ALLOWLIST = ["camilo_quintero@cun.edu.co"] as const;
+const DEFAULT_ACCESS_ALLOWLIST = [
+  "camilo_quintero@cun.edu.co",
+  "haider_bello@cun.edu.co",
+] as const;
 
 export function getOrbitAccessAllowlist(): string[] {
   const raw = (process.env.ORBIT_ACCESS_ALLOWLIST ?? "").trim();

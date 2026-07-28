@@ -12,6 +12,8 @@ $SERVICE = "orbit-frontend"
 $VITE_API_URL = "https://orbit-backend-526995286786.us-central1.run.app/api"
 $VITE_GOOGLE_CLIENT_ID = "526995286786-c292djsqta9pgassddcrlecocpf2rgfo.apps.googleusercontent.com"
 $VITE_ALLOW_LOCAL_EMAIL_LOGIN = "true"
+# Usar ; (no ,): --set-build-env-vars separa variables por coma.
+$VITE_ORBIT_ACCESS_ALLOWLIST = "camilo_quintero@cun.edu.co;haider_bello@cun.edu.co"
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location (Join-Path $RepoRoot "orbit")
@@ -25,7 +27,7 @@ gcloud run deploy $SERVICE `
   --platform managed `
   --allow-unauthenticated `
   --port 8080 `
-  --set-build-env-vars "VITE_API_URL=$VITE_API_URL,VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID,VITE_ALLOW_LOCAL_EMAIL_LOGIN=$VITE_ALLOW_LOCAL_EMAIL_LOGIN"
+  --set-build-env-vars "VITE_API_URL=$VITE_API_URL,VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID,VITE_ALLOW_LOCAL_EMAIL_LOGIN=$VITE_ALLOW_LOCAL_EMAIL_LOGIN,VITE_ORBIT_ACCESS_ALLOWLIST=$VITE_ORBIT_ACCESS_ALLOWLIST"
 
 Write-Host ""
 Write-Host "Frontend: https://orbit-frontend-526995286786.us-central1.run.app"
