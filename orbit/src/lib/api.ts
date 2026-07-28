@@ -811,6 +811,21 @@ export type UpdatePlantaPersonPayload = {
   is_active?: boolean;
 };
 
+export type CreatePlantaPersonPayload = {
+  full_name: string;
+  document: string;
+  type_document?: string | null;
+  email?: string | null;
+  edu_email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  area_id?: number | null;
+  school_id?: number | null;
+  program_id?: number | null;
+  role_id?: number | null;
+  is_active?: boolean;
+};
+
 export async function getPlantaActiva(
   params?: PlantaActivaFilters
 ): Promise<PaginatedResponse> {
@@ -839,6 +854,17 @@ export async function getPlantaActiva(
 export async function getPlantaPerson(id: number): Promise<unknown> {
   const response = await authFetch(`${BASE_URL}/planta-activa/${id}`, {
     headers: jsonHeaders,
+  });
+  return handleJson(response);
+}
+
+export async function createPlantaPerson(
+  data: CreatePlantaPersonPayload
+): Promise<unknown> {
+  const response = await authFetch(`${BASE_URL}/planta-activa`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(data),
   });
   return handleJson(response);
 }

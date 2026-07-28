@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MagnifyingGlassIcon,
@@ -10,6 +11,7 @@ import {
   IdentificationIcon,
   BuildingOffice2Icon,
   ChevronDownIcon,
+  PlusIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -17,6 +19,7 @@ import type { PlantaPerson, Vacancy, Teacher, Coordinator } from '@/src/types';
 import {
   getPlantaActiva,
   getPlantaPerson,
+  createPlantaPerson,
   updatePlantaPerson,
   getCatalogAreas,
   getCatalogSchools,
@@ -29,6 +32,20 @@ import {
   type CatalogRole,
 } from '@/src/lib/api';
 import { canEditPlantaPersonArea } from '@/src/lib/plantaActivaAccess';
+
+const EMPTY_EDIT_FORM = {
+  full_name: '',
+  document: '',
+  email: '',
+  edu_email: '',
+  phone: '',
+  address: '',
+  area_id: '',
+  school_id: '',
+  program_id: '',
+  role_id: '',
+  is_active: true,
+};
 
 function mapPlantaFromApi(row: Record<string, unknown>): PlantaPerson {
   const st = String(row.status ?? 'active');
@@ -137,19 +154,8 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const [roles, setRoles] = useState<CatalogRole[]>([]);
 
   const [editing, setEditing] = useState<PlantaPerson | null>(null);
-  const [editForm, setEditForm] = useState({
-    full_name: '',
-    document: '',
-    email: '',
-    edu_email: '',
-    phone: '',
-    address: '',
-    area_id: '',
-    school_id: '',
-    program_id: '',
-    role_id: '',
-    is_active: true,
-  });
+  const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null);
+  const [editForm, setEditForm] = useState({ ...EMPTY_EDIT_FORM });
   const [editSchools, setEditSchools] = useState<CatalogSchool[]>([]);
   const [editPrograms, setEditPrograms] = useState<CatalogProgram[]>([]);
   const [saving, setSaving] = useState(false);
@@ -366,6 +372,8 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return areas.filter((a) => catalogAreaIds.includes(a.id));
   }, [areas, catalogAreaIds]);
 
+  const canCreate = editableAreaIds == null || editableAreaIds.length > 0;
+
   const rowCanEdit = useCallback(
     (row: PlantaPerson) => {
       if (typeof row.can_edit === 'boolean') return row.can_edit;
@@ -374,11 +382,29 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     [plantaAccess]
   );
 
+  const openCreate = () => {
+    setFormError(null);
+    setSaveNotice(null);
+    setEditing(null);
+    setFormMode('create');
+    const defaultArea =
+      lockedAreaId ||
+      (editableAreaIds != null && editableAreaIds.length === 1
+        ? String(editableAreaIds[0])
+        : '');
+    setEditForm({
+      ...EMPTY_EDIT_FORM,
+      area_id: defaultArea,
+      is_active: true,
+    });
+  };
+
   const openEdit = async (row: PlantaPerson) => {
     if (!rowCanEdit(row)) return;
     setFormError(null);
     setSaveNotice(null);
     setEditing(row);
+    setFormMode('edit');
     setEditForm({
       full_name: row.name,
       document: row.document,
@@ -414,7 +440,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   };
 
   useEffect(() => {
-    if (!editing) return;
+    if (!formMode) return;
     let cancelled = false;
     const areaId = editForm.area_id ? Number(editForm.area_id) : undefined;
     (async () => {
@@ -430,10 +456,10 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [editing, editForm.area_id]);
+  }, [formMode, editForm.area_id]);
 
   useEffect(() => {
-    if (!editing) return;
+    if (!formMode) return;
     let cancelled = false;
     const schoolId = editForm.school_id ? Number(editForm.school_id) : undefined;
     (async () => {
@@ -451,10 +477,11 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [editing, editForm.school_id]);
+  }, [formMode, editForm.school_id]);
 
   const closeEdit = () => {
     setEditing(null);
+    setFormMode(null);
     setFormError(null);
   };
 
@@ -467,15 +494,53 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editing) return;
+    if (!formMode) return;
     setFormError(null);
     setSaveNotice(null);
     if (!editForm.full_name.trim()) {
       setFormError('El nombre es obligatorio');
       return;
     }
+    if (formMode === 'create' && !editForm.document.trim()) {
+      setFormError('La identificación es obligatoria');
+      return;
+    }
+    if (
+      formMode === 'create' &&
+      editableAreaIds != null &&
+      !editForm.area_id
+    ) {
+      setFormError('El área es obligatoria');
+      return;
+    }
     setSaving(true);
     try {
+      if (formMode === 'create') {
+        await createPlantaPerson({
+          full_name: editForm.full_name.trim(),
+          document: editForm.document.trim(),
+          email: editForm.email.trim() || null,
+          edu_email: editForm.edu_email.trim() || null,
+          phone: editForm.phone.trim() || null,
+          address: editForm.address.trim() || null,
+          area_id: editForm.area_id ? Number(editForm.area_id) : null,
+          school_id: editForm.school_id ? Number(editForm.school_id) : null,
+          program_id: editForm.program_id ? Number(editForm.program_id) : null,
+          role_id: editForm.role_id ? Number(editForm.role_id) : null,
+          is_active: editForm.is_active,
+        });
+        closeEdit();
+        setSaveNotice('Persona creada correctamente.');
+        if (listStatus !== 'active' && editForm.is_active) {
+          setListStatus('active');
+          setPage(1);
+        } else {
+          await loadList();
+        }
+        return;
+      }
+
+      if (!editing) return;
       const wasActive = editing.status === 'active';
       const result = (await updatePlantaPerson(Number(editing.id), {
         full_name: editForm.full_name.trim(),
@@ -534,27 +599,40 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
-      <div className="flex gap-1 p-1 rounded-2xl bg-slate-100/80 w-fit">
-        {(
-          [
-            ['active', 'Activos'],
-            ['inactive', 'Inactivos'],
-          ] as const
-        ).map(([key, label]) => (
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex gap-1 p-1 rounded-2xl bg-slate-100/80 w-fit">
+          {(
+            [
+              ['active', 'Activos'],
+              ['inactive', 'Inactivos'],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => switchListStatus(key)}
+              className={cn(
+                'px-4 py-2 rounded-xl text-sm font-bold transition-colors',
+                listStatus === key
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {canCreate && (
           <button
-            key={key}
             type="button"
-            onClick={() => switchListStatus(key)}
-            className={cn(
-              'px-4 py-2 rounded-xl text-sm font-bold transition-colors',
-              listStatus === key
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
-            )}
+            onClick={openCreate}
+            className="glass-button-primary inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold self-start sm:self-auto"
           >
-            {label}
+            <PlusIcon className="h-4 w-4" />
+            Nueva persona
           </button>
-        ))}
+        )}
       </div>
 
       {saveNotice && (
@@ -913,29 +991,36 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         </div>
       </div>
 
-      <AnimatePresence>
-        {editing && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
-            onClick={closeEdit}
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12 }}
-              onClick={(e) => e.stopPropagation()}
-              className="glass-panel w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-5"
-            >
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            {formMode && (
+              <motion.div
+                key="planta-person-modal"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+                onClick={closeEdit}
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 12 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="glass-panel w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-5"
+                >
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h3 className="text-xl font-display font-bold text-slate-900">
-                    Información general
+                    {formMode === 'create'
+                      ? 'Nueva persona'
+                      : 'Información general'}
                   </h3>
                   <p className="text-sm text-slate-500 mt-1">
-                    Datos básicos de la persona en planta
+                    {formMode === 'create'
+                      ? 'Registra una persona en planta activa'
+                      : 'Datos básicos de la persona en planta'}
                   </p>
                 </div>
                 <button
@@ -973,11 +1058,15 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       }
                       className={selectClass}
                       placeholder={
-                        editing.document
+                        formMode === 'edit' && editing?.document
                           ? 'Solo editable si está vacío'
                           : 'Cédula'
                       }
-                      disabled={Boolean(editing.document?.trim())}
+                      required={formMode === 'create'}
+                      disabled={
+                        formMode === 'edit' &&
+                        Boolean(editing?.document?.trim())
+                      }
                     />
                   </label>
                   <label className="space-y-1.5">
@@ -1045,6 +1134,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                         }))
                       }
                       className={selectClass}
+                      required={editableAreaIds != null}
                     >
                       {editableAreaIds == null && (
                         <option value="">Sin área</option>
@@ -1134,11 +1224,17 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     />
                     <span>
                       <span className="font-semibold">Persona activa</span>
-                      <span className="block text-xs text-slate-500 mt-0.5">
-                        Al desactivar se mueve a Inactivos. Si el rol no es
-                        DOCENTE, LIDER ni LITE, se crea una vacante
-                        automáticamente.
-                      </span>
+                      {formMode === 'edit' ? (
+                        <span className="block text-xs text-slate-500 mt-0.5">
+                          Al desactivar se mueve a Inactivos. Si el rol no es
+                          DOCENTE, LIDER ni LITE, se crea una vacante
+                          automáticamente.
+                        </span>
+                      ) : (
+                        <span className="block text-xs text-slate-500 mt-0.5">
+                          Por defecto queda en la pestaña de Activos.
+                        </span>
+                      )}
                     </span>
                   </label>
                 </div>
@@ -1160,14 +1256,22 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     disabled={saving}
                     className="glass-button-primary px-5 py-2.5 text-sm font-bold disabled:opacity-50"
                   >
-                    {saving ? 'Guardando…' : 'Guardar'}
+                    {saving
+                      ? formMode === 'create'
+                        ? 'Creando…'
+                        : 'Guardando…'
+                      : formMode === 'create'
+                        ? 'Crear'
+                        : 'Guardar'}
                   </button>
                 </div>
               </form>
-            </motion.div>
-          </motion.div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
         )}
-      </AnimatePresence>
     </div>
   );
 };

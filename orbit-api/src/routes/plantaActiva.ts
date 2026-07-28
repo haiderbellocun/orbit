@@ -10,6 +10,7 @@ import {
 } from "../lib/plantaActivaAccess";
 import { shouldSkipVacancyOnInactivation } from "../lib/orbitRoles";
 import { toUpperAscii } from "../lib/textNormalize";
+import { validateDocument } from "../lib/dataValidators";
 import {
   orbitPersonIdFromRequest,
   schoolScopeFromRequest,
@@ -315,6 +316,290 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
     });
   } catch (e) {
     console.error("GET /planta-activa/:id failed:", e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+async function loadPlantaPersonDetail(
+  prefix: string,
+  id: number
+): Promise<Record<string, unknown> | null> {
+  const detail = await pool.query(
+    `SELECT
+       p.id,
+       p.document,
+       p.type_document,
+       p.full_name AS name,
+       NULLIF(TRIM(p.email), '') AS email,
+       NULLIF(TRIM(p.edu_email), '') AS edu_email,
+       p.phone,
+       p.address,
+       p.area_id,
+       COALESCE(a.name, '') AS area,
+       p.school_id,
+       COALESCE(s.name, '') AS school,
+       p.program_id,
+       COALESCE(pr.name, '') AS program,
+       r.id AS role_id,
+       COALESCE(r.name, '') AS role_name,
+       COALESCE(r.code, '') AS role_code,
+       ${sqlPersonStatusText("p")} AS status,
+       ${effectiveAreaSql()} AS effective_area_id
+     FROM ${prefix}person p
+     LEFT JOIN ${prefix}role r ON r.id = p.role_id
+     LEFT JOIN ${prefix}school s ON s.id = p.school_id
+     LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
+     LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
+     WHERE p.id = $1`,
+    [id]
+  );
+  return (detail.rows[0] as Record<string, unknown> | undefined) ?? null;
+}
+
+/** POST /planta-activa — crear persona. */
+router.post("/planta-activa", async (req: Request, res: Response) => {
+  try {
+    const mode = await resolveCoreSchemaMode();
+    if (mode == null) {
+      res.status(503).json({ error: "CORE catalog is not available" });
+      return;
+    }
+    const prefix = mode === "core" ? "core." : "";
+    const schoolScope = schoolScopeFromRequest(req);
+    const plantaGrant = plantaGrantFromRequest(req);
+    const b = (req.body ?? {}) as Record<string, unknown>;
+
+    const fullNameRaw =
+      typeof b.full_name === "string"
+        ? b.full_name
+        : typeof b.fullName === "string"
+          ? b.fullName
+          : "";
+    const fullName = fullNameRaw.trim();
+    if (!fullName) {
+      res.status(400).json({ error: "full_name es obligatorio" });
+      return;
+    }
+
+    const document = validateDocument(b.document);
+    if (document == null) {
+      res.status(400).json({ error: "document es obligatorio" });
+      return;
+    }
+
+    const typeDocument =
+      typeof b.type_document === "string" && b.type_document.trim() !== ""
+        ? b.type_document.trim()
+        : typeof b.typeDocument === "string" && b.typeDocument.trim() !== ""
+          ? b.typeDocument.trim()
+          : null;
+
+    const email =
+      "email" in b || "personal_email" in b
+        ? (() => {
+            const raw = b.email ?? b.personal_email;
+            return typeof raw === "string" && raw.trim() !== ""
+              ? raw.trim().toLowerCase()
+              : null;
+          })()
+        : null;
+
+    const eduEmail =
+      "edu_email" in b
+        ? typeof b.edu_email === "string" && b.edu_email.trim() !== ""
+          ? b.edu_email.trim().toLowerCase()
+          : null
+        : null;
+
+    const phone =
+      "phone" in b
+        ? typeof b.phone === "string" && b.phone.trim() !== ""
+          ? b.phone.trim()
+          : null
+        : null;
+
+    const address =
+      "address" in b
+        ? typeof b.address === "string" && b.address.trim() !== ""
+          ? b.address.trim()
+          : null
+        : null;
+
+    let areaId = parsePositiveInt(b.area_id ?? b.areaId);
+    let schoolId = parsePositiveInt(b.school_id ?? b.schoolId);
+    let programId = parsePositiveInt(b.program_id ?? b.programId);
+    const roleId = parsePositiveInt(b.role_id ?? b.roleId);
+
+    const isActive =
+      "is_active" in b
+        ? typeof b.is_active === "boolean"
+          ? b.is_active
+          : parseBoolFlag(b.is_active)
+        : true;
+
+    if (schoolScope != null) {
+      schoolId = schoolScope.schoolId;
+      const schoolCtx = await pool.query(
+        `SELECT area_id FROM ${prefix}school WHERE id = $1`,
+        [schoolId]
+      );
+      if (schoolCtx.rows.length === 0) {
+        res.status(400).json({ error: "School not found" });
+        return;
+      }
+      const schoolArea = schoolCtx.rows[0].area_id;
+      if (schoolArea != null) areaId = Number(schoolArea);
+    }
+
+    // Grants con alcance: área obligatoria y editable.
+    if (plantaGrant != null) {
+      if (areaId == null) {
+        if (plantaGrant.editAreaIds.length === 1) {
+          areaId = plantaGrant.editAreaIds[0];
+        } else {
+          res.status(400).json({
+            error: "area_id es obligatorio para crear personal en tu alcance",
+          });
+          return;
+        }
+      }
+      if (!canEditPlantaArea(plantaGrant, areaId)) {
+        res.status(403).json({
+          error: "No puedes crear personal en un área fuera de tu alcance",
+        });
+        return;
+      }
+    }
+
+    const dup = await pool.query(
+      `SELECT id FROM ${prefix}person WHERE document = $1 LIMIT 1`,
+      [document]
+    );
+    if (dup.rows.length > 0) {
+      res.status(409).json({
+        error: "Ya existe una persona con ese documento",
+        id: Number(dup.rows[0].id),
+      });
+      return;
+    }
+
+    if (roleId != null) {
+      const roleOk = await pool.query(
+        `SELECT id FROM ${prefix}role WHERE id = $1`,
+        [roleId]
+      );
+      if (roleOk.rows.length === 0) {
+        res.status(400).json({ error: "role_id no encontrado" });
+        return;
+      }
+    }
+
+    if (schoolId != null) {
+      const schoolOk = await pool.query(
+        `SELECT id, area_id FROM ${prefix}school WHERE id = $1`,
+        [schoolId]
+      );
+      if (schoolOk.rows.length === 0) {
+        res.status(400).json({ error: "school_id no encontrado" });
+        return;
+      }
+      const schoolArea =
+        schoolOk.rows[0].area_id != null
+          ? Number(schoolOk.rows[0].area_id)
+          : null;
+      if (
+        areaId != null &&
+        schoolArea != null &&
+        areaId !== schoolArea
+      ) {
+        res.status(400).json({
+          error: "La escuela no pertenece al área seleccionada",
+        });
+        return;
+      }
+      if (areaId == null && schoolArea != null) areaId = schoolArea;
+    }
+
+    if (programId != null) {
+      const progOk = await pool.query(
+        `SELECT id, school_id FROM ${prefix}program WHERE id = $1`,
+        [programId]
+      );
+      if (progOk.rows.length === 0) {
+        res.status(400).json({ error: "program_id no encontrado" });
+        return;
+      }
+      const progSchool =
+        progOk.rows[0].school_id != null
+          ? Number(progOk.rows[0].school_id)
+          : null;
+      if (
+        schoolId != null &&
+        progSchool != null &&
+        schoolId !== progSchool
+      ) {
+        res.status(400).json({
+          error: "El programa no pertenece a la escuela seleccionada",
+        });
+        return;
+      }
+      if (schoolId == null && progSchool != null) schoolId = progSchool;
+    }
+
+    const inserted = await pool.query(
+      `INSERT INTO ${prefix}person (
+         full_name, document, type_document,
+         email, edu_email, phone, address,
+         area_id, school_id, program_id, role_id,
+         is_active, created_at, updated_at
+       ) VALUES (
+         $1, $2, $3,
+         $4, $5, $6, $7,
+         $8, $9, $10, $11,
+         $12, NOW(), NOW()
+       )
+       RETURNING id`,
+      [
+        fullName,
+        document,
+        typeDocument,
+        email,
+        eduEmail,
+        phone,
+        address,
+        areaId,
+        schoolId,
+        programId,
+        roleId,
+        isActive,
+      ]
+    );
+
+    const newId = Number((inserted.rows[0] as { id: unknown }).id);
+    const personRow = await loadPlantaPersonDetail(prefix, newId);
+    if (personRow == null) {
+      res.status(201).json({ id: newId });
+      return;
+    }
+
+    const effectiveArea =
+      personRow.effective_area_id != null
+        ? Number(personRow.effective_area_id)
+        : null;
+    const { effective_area_id: _ea, role_code: _rc, ...rest } = personRow;
+    res.status(201).json({
+      ...rest,
+      can_edit: canEditPlantaArea(plantaGrant, effectiveArea),
+    });
+  } catch (e: unknown) {
+    const err = e as { code?: string };
+    if (err?.code === "23505") {
+      res.status(409).json({
+        error: "Ya existe una persona con ese documento o correo",
+      });
+      return;
+    }
+    console.error("POST /planta-activa failed:", e);
     res.status(500).json({ error: "Internal server error" });
   }
 });
