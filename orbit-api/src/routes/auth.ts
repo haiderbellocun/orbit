@@ -14,6 +14,7 @@ import {
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
 import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
+import { recordAppLoginAsync } from "../lib/loginAppsLog";
 
 const router = Router();
 
@@ -473,6 +474,8 @@ async function buildTokenResponse(params: {
           editAreaIds: plantaEditAreaIds,
         }
       : undefined;
+
+  recordAppLoginAsync(email, "orbit");
 
   return {
     token,
