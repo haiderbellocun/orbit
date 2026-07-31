@@ -226,7 +226,7 @@ export const NAV_ITEMS = [
   { id: 'academic-load', label: 'Carga Académica', iconKey: 'academic-load' },
   {
     id: 'substantive-hours',
-    label: 'Horas Sustantivas',
+    label: 'Balance carga',
     iconKey: 'substantive-hours',
   },
   { id: 'vacancies', label: 'Vacantes', iconKey: 'vacancies' },

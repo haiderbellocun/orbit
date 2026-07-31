@@ -2,21 +2,31 @@
  * Importa carga academica scrapeada (JSON ACA) hacia academic_workload.*.
  *
  * Flujo:
- *   1) DELETE academic_workload.academic_load (carga actual)
- *   2) Limpia class_group / subject huerfanos
- *   3) Por cada assignment: subject -> class_group -> academic_load
- *   4) Escribe JSON de progreso/resultados
+ *   1) Resuelve personas + contexto de horas (contrato / prep / sustantivas)
+ *   2) Valida: cupo, cruces de horario, tope vs balance de horas
+ *   3) DELETE academic_workload.academic_load (carga actual)
+ *   4) Limpia class_group / subject huerfanos
+ *   5) Por cada assignment: subject (con hours_quantity) -> class_group -> academic_load
+ *   6) Escribe JSON de progreso/resultados (incl. validation)
  *
  * Uso (desde orbit-api):
  *   node scripts/import-academic-workload-from-json.mjs
  *   node scripts/import-academic-workload-from-json.mjs --source "C:/ruta/carga.json"
  *   node scripts/import-academic-workload-from-json.mjs --dry-run
+ *   node scripts/import-academic-workload-from-json.mjs --validate-only
+ *   node scripts/import-academic-workload-from-json.mjs --fail-on-validation
  */
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import pg from "pg";
+import {
+  DEFAULT_CLASS_PREPARATION_HOURS,
+  parseTimeToMinutes,
+  runImportValidations,
+  summarizeValidationIssues,
+} from "./lib/academicLoadImportValidation.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../.env"), override: true });
@@ -32,6 +42,8 @@ function argValue(flag) {
   return i >= 0 ? args[i + 1] : null;
 }
 const DRY_RUN = args.includes("--dry-run");
+const VALIDATE_ONLY = args.includes("--validate-only");
+const FAIL_ON_VALIDATION = args.includes("--fail-on-validation");
 const SOURCE = argValue("--source") || DEFAULT_SOURCE;
 const PROGRESS_PATH =
   argValue("--progress") ||
@@ -80,6 +92,7 @@ const VW50 = 50;
 const VW100 = 100;
 const VW150 = 150;
 const VW250 = 250;
+const MAX_ISSUES_IN_PROGRESS = 2000;
 
 function truncateUtf(value, max) {
   if (value == null) return null;
@@ -92,6 +105,39 @@ function normDoc(value) {
   return String(value ?? "").replace(/[^\d]/g, "");
 }
 
+function normEmail(value) {
+  const s = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return s.includes("@") ? s : "";
+}
+
+/**
+ * ACA Ocupación Docentes no exporta intensidad horaria (solo créditos y, a veces, horario).
+ * Prioridad: subject.hours_quantity > duración del horario > créditos.
+ */
+function resolveSubjectHours(assignment) {
+  const raw = assignment?.subject?.hours_quantity;
+  if (raw != null && raw !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+
+  const start = parseTimeToMinutes(assignment?.class_group?.start_time);
+  const end = parseTimeToMinutes(assignment?.class_group?.end_time);
+  if (start != null && end != null && end > start) {
+    const hours = (end - start) / 60;
+    if (hours > 0) return Math.round(hours * 100) / 100;
+  }
+
+  const credits = assignment?.subject?.credits_quantity;
+  if (credits != null && credits !== "") {
+    const n = Number(credits);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
 function parseDateDMY(value) {
   if (!value) return null;
   const s = String(value).trim();
@@ -102,6 +148,14 @@ function parseDateDMY(value) {
   }
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   return null;
+}
+
+function toPgTime(value) {
+  const mins = parseTimeToMinutes(value);
+  if (mins == null) return null;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
 }
 
 function scheduleText(cg) {
@@ -117,15 +171,33 @@ function writeProgress(progress) {
 async function upsertSubject(client, input) {
   const subjectCode = truncateUtf(input.subjectCode, VW50) ?? "";
   const subjectName = truncateUtf(input.name, VW250) ?? "";
+  const hoursQuantity =
+    input.hoursQuantity == null || Number.isNaN(Number(input.hoursQuantity))
+      ? null
+      : Number(input.hoursQuantity);
+
   const found = await client.query(
     `SELECT subject_code FROM academic_workload.subject WHERE subject_code = $1 LIMIT 1`,
     [subjectCode]
   );
-  if (found.rows.length) return { isNew: false };
+  if (found.rows.length) {
+    await client.query(
+      `UPDATE academic_workload.subject
+       SET
+         name = COALESCE($2, name),
+         credits_quantity = COALESCE($3, credits_quantity),
+         hours_quantity = COALESCE($4, hours_quantity),
+         updated_at = NOW()
+       WHERE subject_code = $1`,
+      [subjectCode, subjectName || null, input.creditsQuantity, hoursQuantity]
+    );
+    return { isNew: false };
+  }
   await client.query(
-    `INSERT INTO academic_workload.subject (subject_code, name, credits_quantity, is_active)
-     VALUES ($1, $2, $3, true)`,
-    [subjectCode, subjectName, input.creditsQuantity]
+    `INSERT INTO academic_workload.subject (
+      subject_code, name, credits_quantity, hours_quantity, is_active
+    ) VALUES ($1, $2, $3, COALESCE($4, 0), true)`,
+    [subjectCode, subjectName, input.creditsQuantity, hoursQuantity]
   );
   return { isNew: true };
 }
@@ -149,15 +221,20 @@ async function upsertClassGroup(client, input) {
       `UPDATE academic_workload.class_group SET
          start_date = COALESCE($1, start_date),
          end_date = COALESCE($2, end_date),
-         classroom_name = COALESCE($3, classroom_name),
-         capacity = COALESCE($4, capacity),
-         block = COALESCE($5, block),
-         schedule_type = COALESCE($6, schedule_type),
-         modality = COALESCE($7, modality)
-       WHERE id = $8`,
+         start_time = COALESCE($3::time, start_time),
+         end_time = COALESCE($4::time, end_time),
+         classroom_name = COALESCE($5, classroom_name),
+         capacity = COALESCE($6, capacity),
+         block = COALESCE($7, block),
+         schedule_type = COALESCE($8, schedule_type),
+         modality = COALESCE($9, modality),
+         updated_at = NOW()
+       WHERE id = $10`,
       [
         input.startDate,
         input.endDate,
+        input.startTime,
+        input.endTime,
         classroomName,
         input.capacity,
         block,
@@ -170,14 +247,16 @@ async function upsertClassGroup(client, input) {
   }
   const inserted = await client.query(
     `INSERT INTO academic_workload.class_group (
-      subject_code, group_code, start_date, end_date, classroom_name,
-      capacity, block, schedule_type, modality
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      subject_code, group_code, start_date, end_date, start_time, end_time,
+      classroom_name, capacity, block, schedule_type, modality
+    ) VALUES ($1,$2,$3,$4,$5::time,$6::time,$7,$8,$9,$10,$11) RETURNING id`,
     [
       subjectCode,
       groupCode,
       input.startDate,
       input.endDate,
+      input.startTime,
+      input.endTime,
       classroomName,
       input.capacity,
       block,
@@ -217,7 +296,8 @@ async function upsertAcademicLoad(client, input) {
          semester = COALESCE($1, semester),
          program_name = COALESCE($2, program_name),
          enrolled_quantity = COALESCE($3, enrolled_quantity),
-         substantive_hours_quantity = $4
+         substantive_hours_quantity = $4,
+         updated_at = NOW()
        WHERE id = $5`,
       [semester, programName, input.enrolledQuantity, substantiveHours, id]
     );
@@ -261,24 +341,204 @@ async function resolvePersonTable(client) {
   throw new Error("No se encontro tabla person (core/public)");
 }
 
-async function preloadPersons(client, personTable, documents) {
-  const unique = [...new Set(documents.filter(Boolean))];
-  const map = new Map(); // docDigits -> person_id
+function personPrefix(personTable) {
+  return personTable.startsWith("core.") ? "core." : "";
+}
+
+/**
+ * Índices de persona: documento (dígitos) y email/edu_email en minúsculas.
+ * Varias personas en core.person tienen document NULL pero sí email institucional.
+ */
+async function preloadPersons(client, personTable, documents, emails) {
+  const byDoc = new Map(); // docDigits -> person_id
+  const byEmail = new Map(); // email -> person_id
+
+  const uniqueDocs = [...new Set(documents.filter(Boolean))];
+  const uniqueEmails = [...new Set(emails.filter(Boolean))];
   const CHUNK = 500;
-  for (let i = 0; i < unique.length; i += CHUNK) {
-    const chunk = unique.slice(i, i + CHUNK);
+
+  for (let i = 0; i < uniqueDocs.length; i += CHUNK) {
+    const chunk = uniqueDocs.slice(i, i + CHUNK);
     const r = await client.query(
-      `SELECT id, document,
+      `SELECT id,
               regexp_replace(COALESCE(document::text, ''), '[^0-9]', '', 'g') AS doc_digits
        FROM ${personTable}
        WHERE regexp_replace(COALESCE(document::text, ''), '[^0-9]', '', 'g') = ANY($1::text[])`,
       [chunk]
     );
     for (const row of r.rows) {
-      if (row.doc_digits) map.set(String(row.doc_digits), row.id);
+      if (row.doc_digits) byDoc.set(String(row.doc_digits), row.id);
+    }
+  }
+
+  if (uniqueEmails.length) {
+    for (let i = 0; i < uniqueEmails.length; i += CHUNK) {
+      const chunk = uniqueEmails.slice(i, i + CHUNK);
+      const r = await client.query(
+        `SELECT id,
+                lower(trim(COALESCE(edu_email, ''))) AS edu_email,
+                lower(trim(COALESCE(email, ''))) AS email
+         FROM ${personTable}
+         WHERE lower(trim(COALESCE(edu_email, ''))) = ANY($1::text[])
+            OR lower(trim(COALESCE(email, ''))) = ANY($1::text[])`,
+        [chunk]
+      );
+      for (const row of r.rows) {
+        if (row.edu_email) byEmail.set(String(row.edu_email), row.id);
+        if (row.email) byEmail.set(String(row.email), row.id);
+      }
+    }
+  }
+
+  return { byDoc, byEmail };
+}
+
+function resolvePersonId(personMaps, doc, email) {
+  if (doc && personMaps.byDoc.has(doc)) {
+    return { personId: personMaps.byDoc.get(doc), matchBy: "document" };
+  }
+  if (email && personMaps.byEmail.has(email)) {
+    return { personId: personMaps.byEmail.get(email), matchBy: "email" };
+  }
+  return { personId: null, matchBy: null };
+}
+
+/**
+ * Contrato / preparación / sustantivas por person_id (mismo balance que Horas Sustantivas).
+ */
+async function preloadPersonHoursContexts(client, personTable, personIds) {
+  const unique = [...new Set(personIds.filter((id) => id != null))];
+  const map = new Map();
+  if (!unique.length) return map;
+
+  const prefix = personPrefix(personTable);
+  const CHUNK = 500;
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const chunk = unique.slice(i, i + CHUNK);
+    const r = await client.query(
+      `SELECT
+         p.id AS person_id,
+         p.document,
+         p.full_name,
+         ct.name AS contract_name,
+         ct.work_schedule,
+         COALESCE(cp.class_preparation_hours, $2) AS preparation_hours,
+         COALESCE(sub.substantive_hours, 0) AS substantive_assigned
+       FROM ${personTable} p
+       LEFT JOIN ${prefix}contract_type ct ON ct.id = p.contract_type_id
+       LEFT JOIN LATERAL (
+         SELECT cp0.class_preparation_hours
+         FROM academic_workload.class_preparation cp0
+         WHERE cp0.person_id = p.id
+         ORDER BY cp0.updated_at DESC NULLS LAST, cp0.id DESC
+         LIMIT 1
+       ) cp ON true
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(a.hours_quantity), 0) AS substantive_hours
+         FROM substantive_hours.assignment a
+         WHERE a.person_id = p.id
+       ) sub ON true
+       WHERE p.id = ANY($1::int[])`,
+      [chunk, DEFAULT_CLASS_PREPARATION_HOURS]
+    );
+    for (const row of r.rows) {
+      map.set(Number(row.person_id), {
+        personId: Number(row.person_id),
+        document: row.document != null ? String(row.document) : null,
+        fullName: row.full_name != null ? String(row.full_name) : null,
+        workSchedule:
+          row.work_schedule != null ? String(row.work_schedule) : null,
+        contractName:
+          row.contract_name != null ? String(row.contract_name) : null,
+        preparationHours: Number(row.preparation_hours) || DEFAULT_CLASS_PREPARATION_HOURS,
+        substantiveAssigned: Number(row.substantive_assigned) || 0,
+      });
     }
   }
   return map;
+}
+
+function buildNormalizedRows(assignments, personMaps) {
+  const rows = [];
+  const skipped = [];
+  const hardErrors = [];
+  let matchedByEmail = 0;
+
+  for (let i = 0; i < assignments.length; i++) {
+    const a = assignments[i];
+    const doc = normDoc(a.person_document || a.teacher?.document);
+    const email = normEmail(a.teacher?.email);
+    const period = String(a.period_code || a.academic_load?.period_code || "");
+    const subjectCode = String(a.subject?.subject_code || "").trim();
+    const groupCode = String(a.class_group?.group_code || "").trim();
+
+    if (!doc && !email) {
+      skipped.push({
+        index: i,
+        reason: "sin_documento_ni_email",
+        period,
+        subject: subjectCode || null,
+        group: groupCode || null,
+      });
+      continue;
+    }
+
+    const { personId, matchBy } = resolvePersonId(personMaps, doc, email);
+    if (!personId) {
+      skipped.push({
+        index: i,
+        document: doc || null,
+        email: email || null,
+        name: a.teacher?.name ?? null,
+        period,
+        subject: subjectCode || null,
+        group: groupCode || null,
+      });
+      continue;
+    }
+    if (matchBy === "email") matchedByEmail += 1;
+
+    if (!subjectCode || !groupCode || !period) {
+      hardErrors.push({
+        index: i,
+        document: doc || null,
+        email: email || null,
+        error: "faltan subject/group/period",
+      });
+      continue;
+    }
+
+    const subjectHours = resolveSubjectHours(a);
+
+    rows.push({
+      index: i,
+      personId,
+      matchBy,
+      document: doc || null,
+      email: email || null,
+      personName: a.teacher?.name ?? null,
+      periodCode: period,
+      subjectCode,
+      groupCode,
+      subjectHours,
+      enrolledQuantity:
+        a.class_group?.enrolled_quantity == null
+          ? null
+          : Number(a.class_group.enrolled_quantity),
+      capacity:
+        a.class_group?.capacity == null
+          ? null
+          : Number(a.class_group.capacity),
+      startDate: parseDateDMY(a.class_group?.start_date),
+      endDate: parseDateDMY(a.class_group?.end_date),
+      startMinutes: parseTimeToMinutes(a.class_group?.start_time),
+      endMinutes: parseTimeToMinutes(a.class_group?.end_time),
+      block: a.class_group?.block ?? null,
+      raw: a,
+    });
+  }
+
+  return { rows, skipped, hardErrors, matchedByEmail };
 }
 
 async function main() {
@@ -292,6 +552,8 @@ async function main() {
     started_at: new Date().toISOString(),
     finished_at: null,
     dry_run: DRY_RUN,
+    validate_only: VALIDATE_ONLY,
+    fail_on_validation: FAIL_ON_VALIDATION,
     source: SOURCE,
     progress_file: PROGRESS_PATH,
     source_meta: {
@@ -311,7 +573,9 @@ async function main() {
       processed: 0,
       ok: 0,
       skipped_missing_person: 0,
+      matched_by_email: 0,
       errors: 0,
+      validated_rows: 0,
     },
     upserts: {
       subject_new: 0,
@@ -320,6 +584,10 @@ async function main() {
       class_group_existing: 0,
       academic_load_new: 0,
       academic_load_existing: 0,
+    },
+    validation: {
+      summary: { total: 0, by_code: {}, warnings: 0, errors: 0 },
+      issues: [],
     },
     skipped_missing_person: [],
     errors: [],
@@ -331,6 +599,8 @@ async function main() {
   console.log(`Assignments: ${assignments.length}`);
   console.log(`Progress: ${PROGRESS_PATH}`);
   console.log(`Dry-run: ${DRY_RUN}`);
+  console.log(`Validate-only: ${VALIDATE_ONLY}`);
+  console.log(`Fail-on-validation: ${FAIL_ON_VALIDATION}`);
 
   const client = await pool.connect();
   try {
@@ -346,6 +616,68 @@ async function main() {
     progress.counts_before = before.rows[0];
     writeProgress(progress);
     console.log("Counts before:", progress.counts_before);
+
+    const docs = assignments.map((a) =>
+      normDoc(a.person_document || a.teacher?.document)
+    );
+    const emails = assignments.map((a) => normEmail(a.teacher?.email));
+    console.log("Precargando personas (documento + email)...");
+    const personMaps = await preloadPersons(client, personTable, docs, emails);
+    console.log(
+      `Personas por doc: ${personMaps.byDoc.size} / ${new Set(docs.filter(Boolean)).size}`
+    );
+    console.log(
+      `Personas por email: ${personMaps.byEmail.size} / ${new Set(emails.filter(Boolean)).size}`
+    );
+
+    const { rows, skipped, hardErrors, matchedByEmail } = buildNormalizedRows(
+      assignments,
+      personMaps
+    );
+    progress.totals.skipped_missing_person = skipped.length;
+    progress.totals.matched_by_email = matchedByEmail;
+    progress.skipped_missing_person = skipped.slice(0, 500);
+    progress.errors.push(...hardErrors);
+    progress.totals.errors += hardErrors.length;
+    progress.totals.validated_rows = rows.length;
+    console.log(`Matched by email fallback: ${matchedByEmail}`);
+
+    console.log("Precargando contexto de horas (contrato/prep/sustantivas)...");
+    const hoursContexts = await preloadPersonHoursContexts(
+      client,
+      personTable,
+      rows.map((r) => r.personId)
+    );
+    console.log(`Contextos de horas: ${hoursContexts.size}`);
+
+    console.log("Ejecutando validaciones de negocio...");
+    const issues = runImportValidations(rows, hoursContexts);
+    progress.validation.summary = summarizeValidationIssues(issues);
+    progress.validation.issues = issues.slice(0, MAX_ISSUES_IN_PROGRESS);
+    writeProgress(progress);
+    console.log("Validation summary:", progress.validation.summary);
+
+    if (FAIL_ON_VALIDATION && issues.length > 0) {
+      progress.finished_at = new Date().toISOString();
+      writeProgress(progress);
+      console.error(
+        `Abortado por --fail-on-validation (${issues.length} hallazgo(s)).`
+      );
+      process.exitCode = 2;
+      return;
+    }
+
+    if (VALIDATE_ONLY) {
+      progress.finished_at = new Date().toISOString();
+      progress.counts_after = progress.counts_before;
+      writeProgress(progress);
+      console.log("=".repeat(60));
+      console.log("VALIDATE-ONLY DONE");
+      console.log("Totals:", progress.totals);
+      console.log("Validation:", progress.validation.summary);
+      console.log("Progress JSON:", PROGRESS_PATH);
+      return;
+    }
 
     if (!DRY_RUN) {
       console.log("Borrando academic_load actual...");
@@ -375,87 +707,36 @@ async function main() {
       console.log("Deleted:", progress.deleted);
     }
 
-    const docs = assignments.map((a) =>
-      normDoc(a.person_document || a.teacher?.document)
-    );
-    console.log("Precargando personas...");
-    const personMap = await preloadPersons(client, personTable, docs);
-    console.log(`Personas resueltas: ${personMap.size} / ${new Set(docs.filter(Boolean)).size}`);
-
-    for (let i = 0; i < assignments.length; i++) {
-      const a = assignments[i];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const a = row.raw;
       progress.totals.processed = i + 1;
-      const doc = normDoc(a.person_document || a.teacher?.document);
-      const period = String(a.period_code || a.academic_load?.period_code || "");
-      progress.by_period[period] ??= { ok: 0, skipped: 0, errors: 0 };
+      progress.by_period[row.periodCode] ??= { ok: 0, skipped: 0, errors: 0 };
 
       try {
-        if (!doc) {
-          progress.totals.skipped_missing_person += 1;
-          progress.by_period[period].skipped += 1;
-          progress.skipped_missing_person.push({
-            index: i,
-            reason: "documento_vacio",
-            period,
-            subject: a.subject?.subject_code,
-            group: a.class_group?.group_code,
-          });
-          continue;
-        }
-
-        const personId = personMap.get(doc);
-        if (!personId) {
-          progress.totals.skipped_missing_person += 1;
-          progress.by_period[period].skipped += 1;
-          if (progress.skipped_missing_person.length < 500) {
-            progress.skipped_missing_person.push({
-              index: i,
-              document: doc,
-              name: a.teacher?.name ?? null,
-              period,
-              subject: a.subject?.subject_code,
-              group: a.class_group?.group_code,
-            });
-          }
-          continue;
-        }
-
-        const subjectCode = String(a.subject?.subject_code || "").trim();
-        const groupCode = String(a.class_group?.group_code || "").trim();
-        if (!subjectCode || !groupCode || !period) {
-          progress.totals.errors += 1;
-          progress.by_period[period || "?"].errors += 1;
-          progress.errors.push({
-            index: i,
-            document: doc,
-            error: "faltan subject/group/period",
-          });
-          continue;
-        }
-
         if (!DRY_RUN) {
           const s = await upsertSubject(client, {
-            subjectCode,
-            name: a.subject?.name || subjectCode,
+            subjectCode: row.subjectCode,
+            name: a.subject?.name || row.subjectCode,
             creditsQuantity:
               a.subject?.credits_quantity == null
                 ? null
                 : Number(a.subject.credits_quantity),
+            hoursQuantity: row.subjectHours > 0 ? row.subjectHours : null,
           });
           if (s.isNew) progress.upserts.subject_new += 1;
           else progress.upserts.subject_existing += 1;
 
           const g = await upsertClassGroup(client, {
-            subjectCode,
-            groupCode,
-            startDate: parseDateDMY(a.class_group?.start_date),
-            endDate: parseDateDMY(a.class_group?.end_date),
+            subjectCode: row.subjectCode,
+            groupCode: row.groupCode,
+            startDate: row.startDate,
+            endDate: row.endDate,
+            startTime: toPgTime(a.class_group?.start_time),
+            endTime: toPgTime(a.class_group?.end_time),
             classroomName: a.class_group?.classroom ?? null,
-            capacity:
-              a.class_group?.capacity == null
-                ? null
-                : Number(a.class_group.capacity),
-            block: a.class_group?.block ?? null,
+            capacity: row.capacity,
+            block: row.block,
             scheduleTime: scheduleText(a.class_group),
             modality: a.class_group?.modality ?? null,
           });
@@ -463,44 +744,47 @@ async function main() {
           else progress.upserts.class_group_existing += 1;
 
           const al = await upsertAcademicLoad(client, {
-            personId,
-            periodCode: period,
+            personId: row.personId,
+            periodCode: row.periodCode,
             semester: a.academic_load?.semester ?? null,
             programName: a.academic_load?.program_name ?? null,
-            subjectCode,
-            groupCode,
-            enrolledQuantity:
-              a.class_group?.enrolled_quantity == null
-                ? null
-                : Number(a.class_group.enrolled_quantity),
-            substantiveHoursQuantity: a.subject?.hours_quantity ?? 0,
+            subjectCode: row.subjectCode,
+            groupCode: row.groupCode,
+            enrolledQuantity: row.enrolledQuantity,
+            substantiveHoursQuantity: row.subjectHours,
           });
           if (al.isNew) progress.upserts.academic_load_new += 1;
           else progress.upserts.academic_load_existing += 1;
         }
 
         progress.totals.ok += 1;
-        progress.by_period[period].ok += 1;
+        progress.by_period[row.periodCode].ok += 1;
       } catch (err) {
         progress.totals.errors += 1;
-        progress.by_period[period || "?"] ??= { ok: 0, skipped: 0, errors: 0 };
-        progress.by_period[period || "?"].errors += 1;
+        progress.by_period[row.periodCode].errors += 1;
         progress.errors.push({
-          index: i,
-          document: doc,
-          period,
-          subject: a.subject?.subject_code,
-          group: a.class_group?.group_code,
+          index: row.index,
+          document: row.document,
+          period: row.periodCode,
+          subject: row.subjectCode,
+          group: row.groupCode,
           error: String(err?.message || err),
         });
       }
 
-      if ((i + 1) % 100 === 0 || i === assignments.length - 1) {
+      if ((i + 1) % 100 === 0 || i === rows.length - 1) {
         writeProgress(progress);
         console.log(
-          `Progreso ${i + 1}/${assignments.length} | ok=${progress.totals.ok} skip=${progress.totals.skipped_missing_person} err=${progress.totals.errors}`
+          `Progreso ${i + 1}/${rows.length} | ok=${progress.totals.ok} skip=${progress.totals.skipped_missing_person} err=${progress.totals.errors} warn=${progress.validation.summary.total}`
         );
       }
+    }
+
+    // Contabilizar skips por periodo (solo resumen)
+    for (const s of skipped) {
+      const period = s.period || "?";
+      progress.by_period[period] ??= { ok: 0, skipped: 0, errors: 0 };
+      progress.by_period[period].skipped += 1;
     }
 
     const after = await client.query(`
@@ -518,6 +802,7 @@ async function main() {
     console.log("Deleted:", progress.deleted);
     console.log("Totals:", progress.totals);
     console.log("Upserts:", progress.upserts);
+    console.log("Validation:", progress.validation.summary);
     console.log("Counts after:", progress.counts_after);
     console.log("Progress JSON:", PROGRESS_PATH);
   } finally {

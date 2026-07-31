@@ -11,7 +11,11 @@ import { cn } from '@/src/lib/utils';
 import { Teacher, Vacancy, Coordinator } from '@/src/types';
 import {
   getAcademicLoad,
-  getAcademicLoadSummary,
+  getAcademicLoadFilterOptions,
+  getCatalogAreas,
+  getCatalogSchools,
+  type CatalogArea,
+  type CatalogSchool,
 } from '@/src/lib/api';
 
 interface AcademicLoadRow {
@@ -19,9 +23,12 @@ interface AcademicLoadRow {
   teacherName: string;
   program: string;
   subjectName: string;
+  subjectCode: string;
+  groupCode: string;
   credits: string;
   modality: string;
   modalityLabel: string;
+  block: string;
   period: string;
   type: string;
 }
@@ -53,42 +60,39 @@ function mapRow(r: Record<string, unknown>): AcademicLoadRow {
     teacherName: String(r.teacher_name ?? ''),
     program,
     subjectName: String(r.subject_name ?? ''),
+    subjectCode: String(r.subject_code ?? ''),
+    groupCode: String(r.group_code ?? ''),
     credits,
     modality: mod,
     modalityLabel,
+    block: String(r.block ?? '') || '—',
     period: String(r.period ?? ''),
     type: String(r.type ?? 'projection'),
   };
-}
-
-function parseSummaryPeriods(raw: unknown): string[] {
-  if (raw == null || typeof raw !== 'object') return [];
-  const o = raw as Record<string, unknown>;
-  if (Array.isArray(o.periods)) {
-    return o.periods.map((p) => String(p)).filter(Boolean);
-  }
-  if (Array.isArray(o.data)) {
-    return (o.data as unknown[])
-      .map((x) =>
-        x && typeof x === 'object' && 'period' in x
-          ? String((x as { period: unknown }).period)
-          : ''
-      )
-      .filter(Boolean);
-  }
-  return [];
 }
 
 type Filters = {
   search: string;
   period: string;
   modality: string;
+  areaId: string;
+  schoolId: string;
+  program: string;
+  subject: string;
+  groupCode: string;
+  block: string;
 };
 
 const EMPTY_FILTERS: Filters = {
   search: '',
   period: '',
   modality: '',
+  areaId: '',
+  schoolId: '',
+  program: '',
+  subject: '',
+  groupCode: '',
+  block: '',
 };
 
 interface AcademicLoadViewProps {
@@ -109,6 +113,10 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [periodOptions, setPeriodOptions] = useState<string[]>([]);
+  const [blockOptions, setBlockOptions] = useState<string[]>([]);
+  const [programOptions, setProgramOptions] = useState<string[]>([]);
+  const [areas, setAreas] = useState<CatalogArea[]>([]);
+  const [schools, setSchools] = useState<CatalogSchool[]>([]);
   const [rows, setRows] = useState<AcademicLoadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -122,18 +130,30 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
     let cancelled = false;
     (async () => {
       try {
-        const summary = await getAcademicLoadSummary();
+        const [opts, a, s] = await Promise.all([
+          getAcademicLoadFilterOptions(),
+          getCatalogAreas(),
+          getCatalogSchools(),
+        ]);
         if (cancelled) return;
-        const periods = parseSummaryPeriods(summary);
-        if (periods.length > 0) setPeriodOptions(periods);
+        setPeriodOptions(opts.periods);
+        setBlockOptions(opts.blocks);
+        setProgramOptions(opts.programs);
+        setAreas(Array.isArray(a) ? a : []);
+        setSchools(Array.isArray(s) ? s : []);
       } catch {
-        /* sin periodos hasta que cargue el listado */
+        /* catálogos opcionales */
       }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const schoolOptions = useMemo(() => {
+    if (!filters.areaId) return schools;
+    return schools.filter((s) => String(s.area_id ?? '') === filters.areaId);
+  }, [schools, filters.areaId]);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -142,6 +162,12 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
         unit_name: applied.search.trim() || undefined,
         period: applied.period || undefined,
         modality: applied.modality || undefined,
+        area_id: applied.areaId ? Number(applied.areaId) : undefined,
+        school_id: applied.schoolId ? Number(applied.schoolId) : undefined,
+        program: applied.program || undefined,
+        subject: applied.subject.trim() || undefined,
+        group_code: applied.groupCode.trim() || undefined,
+        block: applied.block || undefined,
         page: currentPage,
         limit: 100,
       });
@@ -188,8 +214,17 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
     let n = 0;
     if (applied.period) n++;
     if (applied.modality) n++;
+    if (applied.areaId) n++;
+    if (applied.schoolId) n++;
+    if (applied.program) n++;
+    if (applied.subject.trim()) n++;
+    if (applied.groupCode.trim()) n++;
+    if (applied.block) n++;
     return n;
   }, [applied]);
+
+  const hasActive =
+    Boolean(applied.search.trim()) || activeFilterCount > 0;
 
   return (
     <div className="space-y-8 relative">
@@ -208,7 +243,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Buscar por docente, materia o programa…"
+              placeholder="Buscar por docente, email, documento, materia o programa…"
               className={cn(selectClass, 'pl-10')}
               value={filters.search}
               onChange={(e) =>
@@ -253,7 +288,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
             >
               Buscar
             </button>
-            {(applied.search || applied.period || applied.modality) && (
+            {hasActive && (
               <button
                 type="button"
                 onClick={clearFilters}
@@ -277,7 +312,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
               className="overflow-hidden"
             >
               <div className="pt-3 border-t border-slate-100">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <label className="space-y-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       Periodo
@@ -314,6 +349,134 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                       <option value="V">Virtual</option>
                     </select>
                   </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Bloque
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={filters.block}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, block: e.target.value }))
+                      }
+                    >
+                      <option value="">Todos</option>
+                      {blockOptions.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Área
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={filters.areaId}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          areaId: e.target.value,
+                          schoolId: '',
+                        }))
+                      }
+                    >
+                      <option value="">Todas</option>
+                      {areas.map((a) => (
+                        <option key={a.id} value={String(a.id)}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Escuela
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={filters.schoolId}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          schoolId: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">
+                        {filters.areaId ? 'Todas del área' : 'Todas'}
+                      </option>
+                      {schoolOptions.map((s) => (
+                        <option key={s.id} value={String(s.id)}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Programa
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={filters.program}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, program: e.target.value }))
+                      }
+                    >
+                      <option value="">Todos</option>
+                      {programOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Materia / código
+                    </span>
+                    <input
+                      type="text"
+                      className={selectClass}
+                      placeholder="Nombre o código…"
+                      value={filters.subject}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, subject: e.target.value }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') applyFilters();
+                      }}
+                    />
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Grupo
+                    </span>
+                    <input
+                      type="text"
+                      className={selectClass}
+                      placeholder="Código de grupo…"
+                      value={filters.groupCode}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          groupCode: e.target.value,
+                        }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') applyFilters();
+                      }}
+                    />
+                  </label>
                 </div>
               </div>
             </motion.div>
@@ -340,14 +503,16 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
       ) : (
         <>
           <div className="glass-panel overflow-x-auto relative z-10">
-            <table className="w-full text-left text-sm min-w-[800px]">
+            <table className="w-full text-left text-sm min-w-[960px]">
               <thead>
                 <tr className="border-b border-white/40 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                   <th className="py-4 px-4">Docente</th>
                   <th className="py-4 px-4">Programa</th>
                   <th className="py-4 px-4">Materia</th>
+                  <th className="py-4 px-4 w-24">Grupo</th>
                   <th className="py-4 px-4 w-24">Créditos</th>
                   <th className="py-4 px-4">Modalidad</th>
+                  <th className="py-4 px-4">Bloque</th>
                   <th className="py-4 px-4">Periodo</th>
                 </tr>
               </thead>
@@ -361,8 +526,16 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                       {r.teacherName || '—'}
                     </td>
                     <td className="py-3 px-4 text-slate-600">{r.program}</td>
-                    <td className="py-3 px-4 text-slate-600 max-w-[220px] truncate">
-                      {r.subjectName || '—'}
+                    <td className="py-3 px-4 text-slate-600 max-w-[220px]">
+                      <div className="truncate">{r.subjectName || '—'}</div>
+                      {r.subjectCode ? (
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {r.subjectCode}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="py-3 px-4 text-slate-600 font-mono text-xs">
+                      {r.groupCode || '—'}
                     </td>
                     <td className="py-3 px-4 text-slate-600 font-mono text-xs">
                       {r.credits}
@@ -370,6 +543,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                     <td className="py-3 px-4 text-slate-600">
                       {r.modalityLabel}
                     </td>
+                    <td className="py-3 px-4 text-slate-600">{r.block}</td>
                     <td className="py-3 px-4 text-slate-600">{r.period}</td>
                   </tr>
                 ))}

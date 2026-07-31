@@ -48,6 +48,11 @@ router.get("/substantive-hours/categories", async (_req, res) => {
 /**
  * GET /substantive-hours/teachers
  * Lista docentes activos con resumen de horas (contrato / cátedra / prep / sustantivas).
+ *
+ * Filtros:
+ *  search, area_id, school_id, period (cátedra),
+ *  contract_hours (21|42), availability (available|none|unknown),
+ *  has_catedra (true|false), has_substantive (true|false)
  */
 router.get("/substantive-hours/teachers", async (req: Request, res: Response) => {
   try {
@@ -64,6 +69,30 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
       typeof req.query.search === "string" ? req.query.search.trim() : "";
     const areaId = parsePositiveInt(req.query.area_id ?? req.query.areaId);
     const schoolId = parsePositiveInt(req.query.school_id ?? req.query.schoolId);
+    const period =
+      typeof req.query.period === "string" ? req.query.period.trim() : "";
+    const contractHoursRaw = String(
+      req.query.contract_hours ?? req.query.contractHours ?? ""
+    ).trim();
+    const contractHoursFilter =
+      contractHoursRaw === "21" || contractHoursRaw === "42"
+        ? Number(contractHoursRaw)
+        : null;
+    const availability = String(
+      req.query.availability ?? ""
+    )
+      .trim()
+      .toLowerCase();
+    const hasCatedraRaw = String(
+      req.query.has_catedra ?? req.query.hasCatedra ?? ""
+    )
+      .trim()
+      .toLowerCase();
+    const hasSubstantiveRaw = String(
+      req.query.has_substantive ?? req.query.hasSubstantive ?? ""
+    )
+      .trim()
+      .toLowerCase();
 
     const pageNum = Math.max(
       1,
@@ -104,6 +133,61 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
       i++;
     }
 
+    let periodSql = "";
+    if (period) {
+      periodSql = ` AND al.period_code = $${i}`;
+      values.push(period);
+      i++;
+    }
+
+    // Jornada inferida en SQL (alineada a weeklyContractHoursFromLabels).
+    const contractHoursExpr = `
+      CASE
+        WHEN lower(coalesce(ct.work_schedule, '') || ' ' || coalesce(ct.name, ''))
+          ~ '(medio|media|medio[[:space:]]*tiempo|1/2|[[:<:]]21[[:>:]])' THEN 21
+        WHEN lower(coalesce(ct.work_schedule, '') || ' ' || coalesce(ct.name, ''))
+          ~ '(tiempo[[:space:]]*completo|[[:<:]]completo[[:>:]]|[[:<:]]full[[:>:]]|[[:<:]]42[[:>:]])' THEN 42
+        ELSE NULL
+      END
+    `;
+
+    if (contractHoursFilter != null) {
+      conditions.push(`(${contractHoursExpr}) = $${i}`);
+      values.push(contractHoursFilter);
+      i++;
+    }
+
+    if (hasCatedraRaw === "true" || hasCatedraRaw === "1") {
+      conditions.push(`COALESCE(cath.catedra_hours, 0) > 0`);
+    } else if (hasCatedraRaw === "false" || hasCatedraRaw === "0") {
+      conditions.push(`COALESCE(cath.catedra_hours, 0) = 0`);
+    }
+
+    if (hasSubstantiveRaw === "true" || hasSubstantiveRaw === "1") {
+      conditions.push(`COALESCE(sub.substantive_hours, 0) > 0`);
+    } else if (hasSubstantiveRaw === "false" || hasSubstantiveRaw === "0") {
+      conditions.push(`COALESCE(sub.substantive_hours, 0) = 0`);
+    }
+
+    const remainingExpr = `
+      (${contractHoursExpr})
+      - COALESCE(cath.catedra_hours, 0)
+      - COALESCE(cp.class_preparation_hours, ${DEFAULT_CLASS_PREPARATION_HOURS})
+      - COALESCE(sub.substantive_hours, 0)
+    `;
+
+    if (availability === "available") {
+      conditions.push(
+        `(${contractHoursExpr}) IS NOT NULL AND (${remainingExpr}) > 0`
+      );
+    } else if (availability === "none") {
+      conditions.push(
+        `(${contractHoursExpr}) IS NOT NULL AND (${remainingExpr}) <= 0`
+      );
+    } else if (availability === "unknown") {
+      conditions.push(`(${contractHoursExpr}) IS NULL`);
+    }
+
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const query = `
@@ -133,11 +217,20 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         LIMIT 1
       ) cp ON true
       LEFT JOIN LATERAL (
-        SELECT COALESCE(SUM(COALESCE(subj.hours_quantity, 0)), 0) AS catedra_hours
+        SELECT COALESCE(
+          SUM(
+            COALESCE(
+              NULLIF(subj.hours_quantity, 0),
+              NULLIF(al.substantive_hours_quantity, 0),
+              0
+            )
+          ),
+          0
+        ) AS catedra_hours
         FROM academic_workload.academic_load al
         LEFT JOIN academic_workload.subject subj
           ON subj.subject_code = al.subject_code
-        WHERE al.person_id = p.id
+        WHERE al.person_id = p.id${periodSql}
       ) cath ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(a.hours_quantity), 0) AS substantive_hours
@@ -393,5 +486,183 @@ router.post("/substantive-hours/assignments", async (req: Request, res: Response
     client.release();
   }
 });
+
+/**
+ * PUT /substantive-hours/teachers/:personId/class-preparation
+ * Body: { hoursQuantity: number } — horas semanales de preparación de clase (≥ 0).
+ * Upsert en academic_workload.class_preparation.
+ * Valida que el balance semanal no quede negativo si hay jornada (42/21).
+ */
+router.put(
+  "/substantive-hours/teachers/:personId/class-preparation",
+  async (req: Request, res: Response) => {
+    try {
+      const personId = parsePositiveInt(req.params.personId);
+      if (personId == null) {
+        res.status(400).json({ error: "personId inválido" });
+        return;
+      }
+
+      const rawHours =
+        req.body?.hoursQuantity ??
+        req.body?.hours_quantity ??
+        req.body?.classPreparationHours ??
+        req.body?.class_preparation_hours;
+      const hours =
+        typeof rawHours === "number"
+          ? rawHours
+          : typeof rawHours === "string" && /^\d+(\.\d+)?$/.test(rawHours.trim())
+            ? Number(rawHours.trim())
+            : null;
+      if (hours == null || !Number.isFinite(hours) || hours < 0) {
+        res.status(400).json({
+          error: "hoursQuantity debe ser un número ≥ 0",
+        });
+        return;
+      }
+      // Guardamos con máximo 2 decimales (columna numeric(6,2)).
+      const hoursQuantity = Math.round(hours * 100) / 100;
+
+      const mode = await resolveCoreSchemaMode();
+      if (mode == null) {
+        res.status(500).json({ error: "Esquema de personas no disponible" });
+        return;
+      }
+      const prefix = mode === "core" ? "core." : "";
+
+      const personR = await pool.query(
+        `SELECT
+           p.id,
+           p.full_name,
+           ct.name AS contract_type,
+           ct.work_schedule
+         FROM ${prefix}person p
+         LEFT JOIN ${prefix}contract_type ct ON ct.id = p.contract_type_id
+         WHERE p.id = $1 AND ${sqlPersonIsActive("p")}`,
+        [personId]
+      );
+      if (personR.rows.length === 0) {
+        res.status(404).json({ error: "Docente no encontrado" });
+        return;
+      }
+      const person = personR.rows[0];
+
+      const [catedraR, substR] = await Promise.all([
+        pool.query(
+          `SELECT COALESCE(
+             SUM(
+               COALESCE(
+                 NULLIF(subj.hours_quantity, 0),
+                 NULLIF(al.substantive_hours_quantity, 0),
+                 0
+               )
+             ),
+             0
+           ) AS catedra_hours
+           FROM academic_workload.academic_load al
+           LEFT JOIN academic_workload.subject subj
+             ON subj.subject_code = al.subject_code
+           WHERE al.person_id = $1`,
+          [personId]
+        ),
+        pool.query(
+          `SELECT COALESCE(SUM(a.hours_quantity), 0) AS substantive_hours
+           FROM substantive_hours.assignment a
+           WHERE a.person_id = $1`,
+          [personId]
+        ),
+      ]);
+
+      const contractHours = weeklyContractHoursFromLabels(
+        person.work_schedule as string | null,
+        person.contract_type as string | null
+      );
+      const catedraHours = Number(catedraR.rows[0]?.catedra_hours) || 0;
+      const substantiveAssigned =
+        Number(substR.rows[0]?.substantive_hours) || 0;
+
+      if (contractHours != null) {
+        const remaining =
+          contractHours - catedraHours - hoursQuantity - substantiveAssigned;
+        if (remaining < 0) {
+          res.status(400).json({
+            error: `La preparación (${hoursQuantity} h) deja el balance semanal en ${remaining} (tope ${contractHours} h). Ajusta el valor.`,
+            detail: {
+              contractHours,
+              catedraHours,
+              preparationHours: hoursQuantity,
+              substantiveAssigned,
+              remaining,
+            },
+          });
+          return;
+        }
+      }
+
+      const existing = await pool.query(
+        `SELECT id
+         FROM academic_workload.class_preparation
+         WHERE person_id = $1
+         ORDER BY updated_at DESC NULLS LAST, id DESC
+         LIMIT 1`,
+        [personId]
+      );
+
+      let row: {
+        id: number;
+        person_id: number;
+        class_preparation_hours: string | number;
+        updated_at: string;
+      };
+      if (existing.rows.length > 0) {
+        const updated = await pool.query(
+          `UPDATE academic_workload.class_preparation
+           SET class_preparation_hours = $1, updated_at = NOW()
+           WHERE id = $2
+           RETURNING id, person_id, class_preparation_hours, updated_at`,
+          [hoursQuantity, existing.rows[0].id]
+        );
+        row = updated.rows[0];
+      } else {
+        const inserted = await pool.query(
+          `INSERT INTO academic_workload.class_preparation (
+             class_preparation_hours, person_id
+           ) VALUES ($1, $2)
+           RETURNING id, person_id, class_preparation_hours, updated_at`,
+          [hoursQuantity, personId]
+        );
+        row = inserted.rows[0];
+      }
+
+      const preparationHours = Number(row.class_preparation_hours) || 0;
+      const remaining =
+        contractHours != null
+          ? Math.max(
+              0,
+              contractHours - catedraHours - preparationHours - substantiveAssigned
+            )
+          : null;
+
+      res.json({
+        data: {
+          id: row.id as number,
+          personId: row.person_id as number,
+          preparationHours,
+          contractHoursWeekly: contractHours,
+          catedraHours,
+          substantiveHoursAssigned: substantiveAssigned,
+          substantiveHoursRemaining: remaining,
+          updatedAt: row.updated_at,
+        },
+      });
+    } catch (err) {
+      console.error(
+        "PUT /substantive-hours/teachers/:personId/class-preparation",
+        err
+      );
+      res.status(500).json({ error: "Error al actualizar preparación de clase" });
+    }
+  }
+);
 
 export default router;
