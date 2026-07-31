@@ -359,7 +359,10 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
-      <div className="glass-panel p-1.5 relative z-10 inline-flex w-full sm:w-auto gap-1 rounded-2xl">
+      <div
+        data-tutorial="substantive-modes"
+        className="glass-panel p-1.5 relative z-10 inline-flex w-full sm:w-auto gap-1 rounded-2xl"
+      >
         <button
           type="button"
           onClick={() => setActionMode('substantive')}
@@ -385,7 +388,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
           Preparación clase
         </button>
       </div>
-      <div className="glass-panel p-4 space-y-3 relative z-10">
+      <div data-tutorial="substantive-filters" className="glass-panel p-4 space-y-3 relative z-10">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
           <div className="relative flex-1">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />

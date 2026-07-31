@@ -237,7 +237,10 @@ export const NewsView: React.FC<NewsViewProps> = ({
               <h3 className="text-lg font-bold text-slate-900 font-display">
                 Feed de Novedades
               </h3>
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <div
+                data-tutorial="news-filters"
+                className="flex flex-wrap items-center gap-2 w-full sm:w-auto"
+              >
                 <div className="glass-panel p-1 flex items-center gap-2 flex-1 min-w-[140px] sm:flex-none">
                   <MagnifyingGlassIcon className="ml-2 h-3.5 w-3.5 text-slate-400" />
                   <input
