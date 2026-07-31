@@ -237,7 +237,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
-      <div className="glass-panel p-4 space-y-3 relative z-10">
+      <div data-tutorial="academic-filters" className="glass-panel p-4 space-y-3 relative z-10">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
           <div className="relative flex-1">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />

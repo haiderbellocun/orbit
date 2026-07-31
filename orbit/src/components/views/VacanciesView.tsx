@@ -362,7 +362,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         </div>
       </div>
 
-      <div className="relative z-10 flex flex-col gap-4">
+      <div data-tutorial="vacancies-filters" className="relative z-10 flex flex-col gap-4">
         <div className="glass-panel p-4 space-y-3 w-full">
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
             <div className="relative flex-1">
@@ -431,6 +431,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   setSaveBanner(null);
                   setManagePanel({ mode: 'create' });
                 }}
+                data-tutorial="vacancies-create"
                 className="glass-button-primary inline-flex items-center gap-1.5 px-4 py-2.5 text-sm whitespace-nowrap"
               >
                 <PlusIcon className="h-4 w-4" />

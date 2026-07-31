@@ -18,6 +18,7 @@ import {
   type DashboardSummaryMetric,
   type DashboardSummaryResponse,
 } from '@/src/lib/api';
+import { useTutorialOptional } from '@/src/components/tutorial/TutorialContext';
 
 interface HomeViewProps {
   setView: (v: View) => void;
@@ -126,6 +127,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   canManageVacancies = true,
   onOpenVacancyFromNotification,
 }) => {
+  const tutorial = useTutorialOptional();
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -192,7 +194,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-        <div className={cn(
+        <div
+          data-tutorial="home-metrics"
+          className={cn(
           "md:col-span-8 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6",
           loadState === 'loading' && "opacity-60"
         )}>
@@ -233,39 +237,76 @@ export const HomeView: React.FC<HomeViewProps> = ({
           ))}
         </div>
 
-        <div className="md:col-span-4 glass-panel p-8 bg-gradient-to-br from-violet-600 to-fuchsia-700 text-white border-none relative overflow-hidden group shadow-xl shadow-violet-900/20">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700"></div>
-          <h3 className="text-xl font-bold mb-6 relative z-10 font-display text-white drop-shadow-sm">Acciones Rápidas</h3>
-          <div className="space-y-4 relative z-10">
-            {isLiteUser ? (
-              <p className="text-sm font-medium text-white/90 leading-relaxed">
-                Usa el menú lateral para acceder a las secciones disponibles para tu perfil.
-              </p>
-            ) : !canManageVacancies ? (
-              <p className="text-sm font-medium text-white/90 leading-relaxed">
-                Usa el menú lateral para acceder a las secciones disponibles para tu perfil.
-              </p>
-            ) : (
-              <motion.button
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                whileHover={{ scale: 1.02, x: 5 }}
-                whileTap={{ scale: 0.98 }}
-                transition={{ delay: 0.3 }}
-                onClick={() => setView('vacancies')}
-                className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/10 transition-all group backdrop-blur-md"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-white/20 rounded-xl shadow-inner">
-                    <PlusIcon className="h-5 w-5 text-white" />
+        <div className="md:col-span-4 space-y-4">
+          <div
+            data-tutorial="home-quick-actions"
+            className="glass-panel p-8 bg-gradient-to-br from-violet-600 to-fuchsia-700 text-white border-none relative overflow-hidden group shadow-xl shadow-violet-900/20"
+          >
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700"></div>
+            <h3 className="text-xl font-bold mb-6 relative z-10 font-display text-white drop-shadow-sm">Acciones Rápidas</h3>
+            <div className="space-y-4 relative z-10">
+              {isLiteUser ? (
+                <p className="text-sm font-medium text-white/90 leading-relaxed">
+                  Usa el menú lateral para acceder a las secciones disponibles para tu perfil.
+                </p>
+              ) : !canManageVacancies ? (
+                <p className="text-sm font-medium text-white/90 leading-relaxed">
+                  Usa el menú lateral para acceder a las secciones disponibles para tu perfil.
+                </p>
+              ) : (
+                <motion.button
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  whileHover={{ scale: 1.02, x: 5 }}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ delay: 0.3 }}
+                  onClick={() => setView('vacancies')}
+                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/10 transition-all group backdrop-blur-md"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="p-2 bg-white/20 rounded-xl shadow-inner">
+                      <PlusIcon className="h-5 w-5 text-white" />
+                    </div>
+                    <span className="text-sm font-bold tracking-wide text-white drop-shadow-sm">
+                      Nueva Vacante
+                    </span>
                   </div>
-                  <span className="text-sm font-bold tracking-wide text-white drop-shadow-sm">
-                    Nueva Vacante
-                  </span>
-                </div>
-                <ChevronRightIcon className="h-[18px] w-[18px] text-white/50 group-hover:text-white group-hover:translate-x-1 transition-all" />
-              </motion.button>
-            )}
+                  <ChevronRightIcon className="h-[18px] w-[18px] text-white/50 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                </motion.button>
+              )}
+            </div>
+          </div>
+
+          <div
+            data-tutorial="home-tutorial-toggle"
+            className="glass-panel p-5 flex items-center justify-between gap-4"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-900">Tutorial de ayuda</p>
+              <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                Si está prendido, el recorrido guiado aparece al entrar a Orbit.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={tutorial?.enabled ?? true}
+              aria-label="Prender o apagar tutorial"
+              onClick={() => tutorial?.setEnabled(!(tutorial?.enabled ?? true))}
+              className={cn(
+                'relative shrink-0 w-12 h-7 rounded-full transition-colors border',
+                tutorial?.enabled
+                  ? 'bg-violet-600 border-violet-500'
+                  : 'bg-slate-200 border-slate-300'
+              )}
+            >
+              <span
+                className={cn(
+                  'absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
+                  tutorial?.enabled && 'translate-x-5'
+                )}
+              />
+            </button>
           </div>
         </div>
       </div>

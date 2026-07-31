@@ -40,6 +40,9 @@ import {
   hasCapability,
   ORBIT_CAPABILITY,
 } from "./lib/permissions";
+import { TutorialProvider } from "./components/tutorial/TutorialContext";
+import { GuidedTour } from "./components/tutorial/GuidedTour";
+import { clearTutorialSession } from "./lib/tutorialStorage";
 
 export default function App() {
   const [view, setView] = useState<View>('login');
@@ -77,6 +80,7 @@ export default function App() {
   );
 
   const handleLogout = useCallback(() => {
+    clearTutorialSession();
     clearOrbitSession();
     setOrbitAccess(null);
     setCapabilities([]);
@@ -208,70 +212,79 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex overflow-x-hidden">
-      <svg width="0" height="0" className="absolute pointer-events-none">
-        <defs>
-          <linearGradient id="icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#8B5CF6" />
-            <stop offset="50%" stopColor="#D946EF" />
-            <stop offset="100%" stopColor="#8B5CF6" />
-          </linearGradient>
-        </defs>
-      </svg>
+    <TutorialProvider
+      view={view}
+      setView={setView}
+      capabilities={capabilities}
+      setSidebarOpen={setIsSidebarOpen}
+    >
+      <div className="min-h-screen flex overflow-x-hidden">
+        <svg width="0" height="0" className="absolute pointer-events-none">
+          <defs>
+            <linearGradient id="icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#8B5CF6" />
+              <stop offset="50%" stopColor="#D946EF" />
+              <stop offset="100%" stopColor="#8B5CF6" />
+            </linearGradient>
+          </defs>
+        </svg>
 
-      <Sidebar
-        currentView={view}
-        setView={(v) => {
-          setView(v);
-          setIsSidebarOpen(false);
-        }}
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        navItems={sidebarNavItems}
-        onLogout={handleLogout}
-      />
+        <Sidebar
+          currentView={view}
+          setView={(v) => {
+            setView(v);
+            setIsSidebarOpen(false);
+          }}
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          navItems={sidebarNavItems}
+          onLogout={handleLogout}
+        />
 
-      <AnimatePresence>
-        {isSidebarOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsSidebarOpen(false)}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[90] md:hidden"
-          />
-        )}
-      </AnimatePresence>
-
-      <main className="flex-1 md:ml-64 p-3 md:p-5 xl:p-6 min-h-screen w-full relative">
-        <motion.div className="md:hidden sticky top-0 -mx-4 px-4 py-3 mb-6 bg-white/80 backdrop-blur-lg border-b border-slate-200/50 flex items-center justify-between z-40">
-          <div className="flex items-center gap-3">
-            <motion.div className={`w-10 h-10 bg-white rounded-xl flex items-center justify-center text-white shadow-lg`}>
-              <Logo className="h-6 w-6" />
-            </motion.div>
-            <span className="font-bold text-xl tracking-tight text-slate-900 font-display">{BRAND_CONFIG.name}</span>
-          </div>
-          <button
-            onClick={() => setIsSidebarOpen(true)}
-            className="p-2 glass-button-secondary"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg>
-          </button>
-        </motion.div>
-
-        <AnimatePresence mode="wait">
-        <motion.div
-          key={view}
-          initial={{ opacity: 0, x: 10 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -10 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-          className="w-full max-w-none px-5"
-        >
-          {renderView()}
-        </motion.div>
+        <AnimatePresence>
+          {isSidebarOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSidebarOpen(false)}
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[90] md:hidden"
+            />
+          )}
         </AnimatePresence>
-      </main>
-    </div>
+
+        <main className="flex-1 md:ml-64 p-3 md:p-5 xl:p-6 min-h-screen w-full relative">
+          <motion.div className="md:hidden sticky top-0 -mx-4 px-4 py-3 mb-6 bg-white/80 backdrop-blur-lg border-b border-slate-200/50 flex items-center justify-between z-40">
+            <div className="flex items-center gap-3">
+              <motion.div className={`w-10 h-10 bg-white rounded-xl flex items-center justify-center text-white shadow-lg`}>
+                <Logo className="h-6 w-6" />
+              </motion.div>
+              <span className="font-bold text-xl tracking-tight text-slate-900 font-display">{BRAND_CONFIG.name}</span>
+            </div>
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="p-2 glass-button-secondary"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg>
+            </button>
+          </motion.div>
+
+          <AnimatePresence mode="wait">
+          <motion.div
+            key={view}
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="w-full max-w-none px-5"
+          >
+            {renderView()}
+          </motion.div>
+          </AnimatePresence>
+        </main>
+
+        <GuidedTour />
+      </div>
+    </TutorialProvider>
   );
 }

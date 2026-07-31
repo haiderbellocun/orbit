@@ -91,7 +91,9 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-4">
-        <NotificationBell onOpenVacancy={onOpenVacancyFromNotification} />
+        <div data-tutorial="header-notifications">
+          <NotificationBell onOpenVacancy={onOpenVacancyFromNotification} />
+        </div>
 
         <div className="flex items-center gap-4 pl-4 border-l border-white/40">
           <div className="text-right hidden sm:block">

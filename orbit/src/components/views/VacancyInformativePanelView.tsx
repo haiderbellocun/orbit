@@ -160,7 +160,10 @@ export const VacancyInformativePanelView: React.FC = () => {
         subtitle="Historial de acciones sobre vacantes y requisiciones (auditoría)"
       />
 
-      <div className="glass-panel p-4 flex flex-col sm:flex-row flex-wrap gap-3 items-end">
+      <div
+        data-tutorial="informative-actions"
+        className="glass-panel p-4 flex flex-col sm:flex-row flex-wrap gap-3 items-end"
+      >
         <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[140px] flex-1">
           Buscar
           <input

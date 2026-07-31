@@ -77,6 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               whileHover={{ x: 4 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => setView(item.id as View)}
+              data-tutorial={`nav-${item.id}`}
               className={cn(
                 "w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all duration-300 group relative",
                 isActive

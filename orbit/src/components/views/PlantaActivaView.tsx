@@ -600,7 +600,10 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       />
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex gap-1 p-1 rounded-2xl bg-slate-100/80 w-fit">
+        <div
+          data-tutorial="planta-status"
+          className="flex gap-1 p-1 rounded-2xl bg-slate-100/80 w-fit"
+        >
           {(
             [
               ['active', 'Activos'],
@@ -627,6 +630,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
           <button
             type="button"
             onClick={openCreate}
+            data-tutorial="planta-create"
             className="glass-button-primary inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold self-start sm:self-auto"
           >
             <PlusIcon className="h-4 w-4" />
@@ -649,7 +653,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         </div>
       )}
 
-      <div className="glass-panel p-4 space-y-3">
+      <div data-tutorial="planta-filters" className="glass-panel p-4 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
           <div className="relative flex-1">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
