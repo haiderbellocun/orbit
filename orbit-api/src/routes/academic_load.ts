@@ -5,6 +5,16 @@ import { schoolScopeFromRequest } from "../middleware/orbitAuth";
 
 const router = Router();
 
+function parsePositiveInt(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function qStr(raw: unknown): string {
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
 function normalizeModalityQueryParam(value: string): {
   code: "P" | "V" | null;
   literal: string | null;
@@ -22,41 +32,115 @@ function normalizeModalityQueryParam(value: string): {
   return { code: null, literal: trimmed };
 }
 
+router.get("/academic-load/filter-options", async (req: Request, res: Response) => {
+  try {
+    const schoolScope = schoolScopeFromRequest(req);
+    const schoolSql = schoolScope
+      ? ` AND (p.school_id = $1 OR pr.school_id = $1)`
+      : "";
+    const params = schoolScope ? [schoolScope.schoolId] : [];
+
+    const [periodsR, blocksR, programsR] = await Promise.all([
+      pool.query(
+        `
+        SELECT DISTINCT al.period_code AS period
+        FROM academic_workload.academic_load al
+        INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
+        LEFT JOIN program pr ON pr.id = al.program_id
+        WHERE al.period_code IS NOT NULL AND TRIM(al.period_code) <> ''${schoolSql}
+        ORDER BY period DESC
+        `,
+        params
+      ),
+      pool.query(
+        `
+        SELECT DISTINCT TRIM(cg.block) AS block
+        FROM academic_workload.class_group cg
+        INNER JOIN academic_workload.academic_load al
+          ON al.subject_code = cg.subject_code AND al.group_code = cg.group_code
+        INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
+        LEFT JOIN program pr ON pr.id = al.program_id
+        WHERE cg.block IS NOT NULL AND TRIM(cg.block) <> ''${schoolSql}
+        ORDER BY block ASC
+        `,
+        params
+      ),
+      pool.query(
+        `
+        SELECT DISTINCT TRIM(COALESCE(al.program_name, pr.name, '')) AS program
+        FROM academic_workload.academic_load al
+        INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
+        LEFT JOIN program pr ON pr.id = al.program_id
+        WHERE COALESCE(NULLIF(TRIM(al.program_name), ''), NULLIF(TRIM(pr.name), ''), NULL) IS NOT NULL${schoolSql}
+        ORDER BY program ASC
+        LIMIT 500
+        `,
+        params
+      ),
+    ]);
+
+    res.json({
+      periods: periodsR.rows.map((r) => String(r.period)).filter(Boolean),
+      blocks: blocksR.rows.map((r) => String(r.block)).filter(Boolean),
+      programs: programsR.rows.map((r) => String(r.program)).filter(Boolean),
+      modalities: [
+        { value: "P", label: "Presencial" },
+        { value: "V", label: "Virtual" },
+      ],
+    });
+  } catch (err) {
+    console.error("GET /academic-load/filter-options", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/academic-load", async (req: Request, res: Response) => {
   try {
-    const {
-      teacher_document,
-      period,
-      unit_name,
-      modality,
-      type,
-      page = "1",
-      limit = "100",
-    } = req.query;
-    const pageNum = Math.max(1, parseInt(page as string));
-    const limitNum = Math.min(500, parseInt(limit as string));
+    const pageNum = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
+    const limitNum = Math.min(
+      500,
+      Math.max(1, parseInt(String(req.query.limit ?? "100"), 10) || 100)
+    );
     const offset = (pageNum - 1) * limitNum;
+
+    const teacherDocument = qStr(req.query.teacher_document);
+    const period = qStr(req.query.period);
+    const unitName = qStr(req.query.unit_name ?? req.query.search);
+    const modality = qStr(req.query.modality);
+    const type = qStr(req.query.type);
+    const program = qStr(req.query.program);
+    const subject = qStr(req.query.subject);
+    const groupCode = qStr(req.query.group_code ?? req.query.groupCode);
+    const block = qStr(req.query.block);
+    const areaId = parsePositiveInt(req.query.area_id ?? req.query.areaId);
+    const schoolId = parsePositiveInt(req.query.school_id ?? req.query.schoolId);
 
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
 
-    if (teacher_document) {
-      conditions.push(`p.document = $${i++}`);
-      values.push(teacher_document);
+    if (teacherDocument) {
+      conditions.push(`p.document ILIKE $${i++}`);
+      values.push(`%${teacherDocument}%`);
     }
     if (period) {
       conditions.push(`al.period_code = $${i++}`);
       values.push(period);
     }
-    if (unit_name) {
+    if (unitName) {
       conditions.push(
-        `(p.full_name ILIKE $${i} OR s.name ILIKE $${i} OR COALESCE(al.program_name, pr.name, '') ILIKE $${i})`
+        `(p.full_name ILIKE $${i}
+          OR s.name ILIKE $${i}
+          OR COALESCE(al.program_name, pr.name, '') ILIKE $${i}
+          OR al.subject_code ILIKE $${i}
+          OR p.document ILIKE $${i}
+          OR COALESCE(p.email, '') ILIKE $${i}
+          OR COALESCE(p.edu_email, '') ILIKE $${i})`
       );
-      values.push(`%${unit_name}%`);
+      values.push(`%${unitName}%`);
       i++;
     }
-    if (modality && typeof modality === "string") {
+    if (modality) {
       const { code, literal } = normalizeModalityQueryParam(modality);
       if (code) {
         conditions.push(
@@ -69,22 +153,49 @@ router.get("/academic-load", async (req: Request, res: Response) => {
         values.push(`%${literal}%`);
       }
     }
-    if (type && typeof type === "string") {
-      const normalizedType = type.trim().toLowerCase();
+    if (type) {
+      const normalizedType = type.toLowerCase();
       if (normalizedType === "current") {
-        // Sin tabla de “carga actual” separada, no aplicamos filtro (evita resultado vacío).
+        // Sin tabla de “carga actual” separada.
       } else if (normalizedType === "projection") {
-        // Todas las filas provienen de importación ACA Proyeccion.
+        // Todas las filas son proyección ACA.
       }
+    }
+    if (program) {
+      conditions.push(`COALESCE(al.program_name, pr.name, '') ILIKE $${i++}`);
+      values.push(`%${program}%`);
+    }
+    if (subject) {
+      conditions.push(
+        `(s.name ILIKE $${i} OR al.subject_code ILIKE $${i})`
+      );
+      values.push(`%${subject}%`);
+      i++;
+    }
+    if (groupCode) {
+      conditions.push(`al.group_code ILIKE $${i++}`);
+      values.push(`%${groupCode}%`);
+    }
+    if (block) {
+      conditions.push(`cg.block ILIKE $${i++}`);
+      values.push(`%${block}%`);
     }
 
     const schoolScope = schoolScopeFromRequest(req);
     if (schoolScope != null) {
-      conditions.push(
-        `(p.school_id = $${i} OR pr.school_id = $${i})`
-      );
+      conditions.push(`(p.school_id = $${i} OR pr.school_id = $${i})`);
       values.push(schoolScope.schoolId);
       i++;
+    } else if (schoolId != null) {
+      conditions.push(`p.school_id = $${i++}`);
+      values.push(schoolId);
+    }
+
+    if (areaId != null) {
+      conditions.push(
+        `COALESCE(p.area_id, sch.area_id) = $${i++}`
+      );
+      values.push(areaId);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -98,6 +209,7 @@ router.get("/academic-load", async (req: Request, res: Response) => {
         s.name AS subject_name,
         s.credits_quantity AS credits,
         cg.modality AS modality,
+        cg.block AS block,
         al.period_code AS period,
         'projection'::text AS type,
         al.subject_code,
@@ -106,6 +218,7 @@ router.get("/academic-load", async (req: Request, res: Response) => {
       FROM academic_workload.academic_load al
       INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
       LEFT JOIN program pr ON pr.id = al.program_id
+      LEFT JOIN school sch ON sch.id = p.school_id
       LEFT JOIN academic_workload.subject s ON s.subject_code = al.subject_code
       LEFT JOIN academic_workload.class_group cg
         ON cg.subject_code = al.subject_code

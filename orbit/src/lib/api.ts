@@ -962,13 +962,48 @@ export async function getCatalogAcademicLines(): Promise<string[]> {
   return handleJson(response);
 }
 
-// Carga acadÃ©mica
+// Carga académica
+export type AcademicLoadFilterOptions = {
+  periods: string[];
+  blocks: string[];
+  programs: string[];
+  modalities: { value: string; label: string }[];
+};
+
+export async function getAcademicLoadFilterOptions(): Promise<AcademicLoadFilterOptions> {
+  const response = await authFetch(`${BASE_URL}/academic-load/filter-options`, {
+    headers: jsonHeaders,
+  });
+  const json = (await handleJson(response)) as Partial<AcademicLoadFilterOptions>;
+  return {
+    periods: Array.isArray(json.periods) ? json.periods.map(String) : [],
+    blocks: Array.isArray(json.blocks) ? json.blocks.map(String) : [],
+    programs: Array.isArray(json.programs) ? json.programs.map(String) : [],
+    modalities: Array.isArray(json.modalities)
+      ? json.modalities.map((m) => ({
+          value: String((m as { value: string }).value),
+          label: String((m as { label: string }).label),
+        }))
+      : [
+          { value: "P", label: "Presencial" },
+          { value: "V", label: "Virtual" },
+        ],
+  };
+}
+
 export async function getAcademicLoad(params?: {
   teacher_document?: string;
   period?: string;
   unit_name?: string;
+  search?: string;
   modality?: string;
   type?: string;
+  area_id?: number;
+  school_id?: number;
+  program?: string;
+  subject?: string;
+  group_code?: string;
+  block?: string;
   page?: number;
   limit?: number;
 }): Promise<PaginatedResponse> {
@@ -978,8 +1013,17 @@ export async function getAcademicLoad(params?: {
   }
   if (params?.period) url.searchParams.set("period", params.period);
   if (params?.unit_name) url.searchParams.set("unit_name", params.unit_name);
+  if (params?.search) url.searchParams.set("search", params.search);
   if (params?.modality) url.searchParams.set("modality", params.modality);
   if (params?.type) url.searchParams.set("type", params.type);
+  if (params?.area_id != null)
+    url.searchParams.set("area_id", String(params.area_id));
+  if (params?.school_id != null)
+    url.searchParams.set("school_id", String(params.school_id));
+  if (params?.program) url.searchParams.set("program", params.program);
+  if (params?.subject) url.searchParams.set("subject", params.subject);
+  if (params?.group_code) url.searchParams.set("group_code", params.group_code);
+  if (params?.block) url.searchParams.set("block", params.block);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });
@@ -1035,6 +1079,11 @@ export async function getSubstantiveHoursTeachers(params?: {
   search?: string;
   area_id?: number;
   school_id?: number;
+  period?: string;
+  contract_hours?: 21 | 42;
+  availability?: "available" | "none" | "unknown";
+  has_catedra?: boolean;
+  has_substantive?: boolean;
   page?: number;
   limit?: number;
 }): Promise<PaginatedResponse<SubstantiveHoursTeacher>> {
@@ -1044,6 +1093,15 @@ export async function getSubstantiveHoursTeachers(params?: {
     url.searchParams.set("area_id", String(params.area_id));
   if (params?.school_id != null)
     url.searchParams.set("school_id", String(params.school_id));
+  if (params?.period) url.searchParams.set("period", params.period);
+  if (params?.contract_hours != null)
+    url.searchParams.set("contract_hours", String(params.contract_hours));
+  if (params?.availability)
+    url.searchParams.set("availability", params.availability);
+  if (params?.has_catedra != null)
+    url.searchParams.set("has_catedra", String(params.has_catedra));
+  if (params?.has_substantive != null)
+    url.searchParams.set("has_substantive", String(params.has_substantive));
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });
@@ -1087,6 +1145,36 @@ export async function createSubstantiveHoursAssignment(body: {
     body: JSON.stringify(body),
   });
   return handleJson(response);
+}
+
+export type ClassPreparationUpdateResult = {
+  id: number;
+  personId: number;
+  preparationHours: number;
+  contractHoursWeekly: number | null;
+  catedraHours: number;
+  substantiveHoursAssigned: number;
+  substantiveHoursRemaining: number | null;
+  updatedAt: string;
+};
+
+/** Upsert horas semanales de preparación de clase del docente. */
+export async function updateClassPreparationHours(
+  personId: number,
+  hoursQuantity: number
+): Promise<ClassPreparationUpdateResult> {
+  const response = await authFetch(
+    `${BASE_URL}/substantive-hours/teachers/${personId}/class-preparation`,
+    {
+      method: "PUT",
+      headers: jsonHeaders,
+      body: JSON.stringify({ hoursQuantity }),
+    }
+  );
+  const json = (await handleJson(response)) as {
+    data: ClassPreparationUpdateResult;
+  };
+  return json.data;
 }
 
 // Dashboard

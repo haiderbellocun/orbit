@@ -8,6 +8,7 @@ import {
   PlusIcon,
   TrashIcon,
   ClockIcon,
+  PencilSquareIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -17,8 +18,10 @@ import {
   getSubstantiveHoursCategories,
   getSubstantiveHoursAssignments,
   createSubstantiveHoursAssignment,
+  updateClassPreparationHours,
   getCatalogAreas,
   getCatalogSchools,
+  getAcademicLoadSummary,
   type SubstantiveHoursTeacher,
   type SubstantiveHoursCategory,
   type SubstantiveHoursAssignment,
@@ -41,15 +44,27 @@ type Filters = {
   search: string;
   areaId: string;
   schoolId: string;
+  period: string;
+  contractHours: '' | '21' | '42';
+  availability: '' | 'available' | 'none' | 'unknown';
+  hasCatedra: '' | 'true' | 'false';
+  hasSubstantive: '' | 'true' | 'false';
 };
 
 const EMPTY_FILTERS: Filters = {
   search: '',
   areaId: '',
   schoolId: '',
+  period: '',
+  contractHours: '',
+  availability: '',
+  hasCatedra: '',
+  hasSubstantive: '',
 };
 
 const PLACEHOLDER_CATEGORY = 'PEDIR LISTA CATEGORIAS HORAS SUSTANTIVAS';
+
+type ActionMode = 'substantive' | 'preparation';
 
 export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   onOpenVacancyFromNotification,
@@ -57,6 +72,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [actionMode, setActionMode] = useState<ActionMode>('substantive');
   const [rows, setRows] = useState<SubstantiveHoursTeacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -64,12 +80,15 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   const [totalCount, setTotalCount] = useState(0);
   const [areas, setAreas] = useState<CatalogArea[]>([]);
   const [schools, setSchools] = useState<CatalogSchool[]>([]);
+  const [periodOptions, setPeriodOptions] = useState<string[]>([]);
 
   const [modalTeacher, setModalTeacher] =
     useState<SubstantiveHoursTeacher | null>(null);
+  const [modalKind, setModalKind] = useState<ActionMode>('substantive');
   const [categories, setCategories] = useState<SubstantiveHoursCategory[]>([]);
   const [categoryId, setCategoryId] = useState<string>('');
   const [hoursInput, setHoursInput] = useState('');
+  const [prepHoursInput, setPrepHoursInput] = useState('');
   const [tasks, setTasks] = useState<string[]>(['']);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -85,13 +104,19 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     let cancelled = false;
     (async () => {
       try {
-        const [a, s] = await Promise.all([
+        const [a, s, summary] = await Promise.all([
           getCatalogAreas(),
           getCatalogSchools(),
+          getAcademicLoadSummary(),
         ]);
         if (cancelled) return;
         setAreas(Array.isArray(a) ? a : []);
         setSchools(Array.isArray(s) ? s : []);
+        const raw = summary as { periods?: unknown[] };
+        const periods = Array.isArray(raw?.periods)
+          ? raw.periods.map(String).filter(Boolean)
+          : [];
+        setPeriodOptions(periods);
       } catch {
         if (!cancelled) {
           setAreas([]);
@@ -104,6 +129,11 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     };
   }, []);
 
+  const schoolOptions = useMemo(() => {
+    if (!filters.areaId) return schools;
+    return schools.filter((s) => String(s.area_id ?? '') === filters.areaId);
+  }, [schools, filters.areaId]);
+
   const loadList = useCallback(async () => {
     setLoading(true);
     try {
@@ -111,6 +141,20 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
         search: applied.search.trim() || undefined,
         area_id: applied.areaId ? Number(applied.areaId) : undefined,
         school_id: applied.schoolId ? Number(applied.schoolId) : undefined,
+        period: applied.period || undefined,
+        contract_hours:
+          applied.contractHours === '21' || applied.contractHours === '42'
+            ? Number(applied.contractHours) as 21 | 42
+            : undefined,
+        availability: applied.availability || undefined,
+        has_catedra:
+          applied.hasCatedra === ''
+            ? undefined
+            : applied.hasCatedra === 'true',
+        has_substantive:
+          applied.hasSubstantive === ''
+            ? undefined
+            : applied.hasSubstantive === 'true',
         page: currentPage,
         limit: 50,
       });
@@ -154,10 +198,17 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     let n = 0;
     if (applied.areaId) n++;
     if (applied.schoolId) n++;
+    if (applied.period) n++;
+    if (applied.contractHours) n++;
+    if (applied.availability) n++;
+    if (applied.hasCatedra) n++;
+    if (applied.hasSubstantive) n++;
     return n;
   }, [applied]);
 
+  const hasActive = Boolean(applied.search.trim()) || activeFilterCount > 0;
   const openAddModal = async (teacher: SubstantiveHoursTeacher) => {
+    setModalKind('substantive');
     setModalTeacher(teacher);
     setHoursInput('');
     setTasks(['']);
@@ -186,6 +237,22 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     }
   };
 
+  const openPrepModal = (teacher: SubstantiveHoursTeacher) => {
+    setModalKind('preparation');
+    setModalTeacher(teacher);
+    setPrepHoursInput(String(teacher.preparationHours ?? ''));
+    setFormError(null);
+    setAssignmentsLoading(false);
+  };
+
+  const openActionForRow = (teacher: SubstantiveHoursTeacher) => {
+    if (actionMode === 'preparation') {
+      openPrepModal(teacher);
+      return;
+    }
+    void openAddModal(teacher);
+  };
+
   const closeModal = () => {
     if (saving) return;
     setModalTeacher(null);
@@ -204,6 +271,26 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     const digits = raw.replace(/\D/g, '');
     setHoursInput(digits);
   };
+
+  const onPrepHoursChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, '');
+    setPrepHoursInput(digits);
+  };
+
+  const prepBalancePreview = useMemo(() => {
+    if (!modalTeacher || modalKind !== 'preparation') return null;
+    if (modalTeacher.contractHoursWeekly == null) return null;
+    const prep = /^\d+$/.test(prepHoursInput)
+      ? Number.parseInt(prepHoursInput, 10)
+      : null;
+    if (prep == null) return null;
+    return (
+      modalTeacher.contractHoursWeekly -
+      modalTeacher.catedraHours -
+      prep -
+      modalTeacher.substantiveHoursAssigned
+    );
+  }, [modalTeacher, modalKind, prepHoursInput]);
 
   const submitAssignment = async () => {
     if (!modalTeacher) return;
@@ -237,17 +324,67 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     }
   };
 
+  const submitPreparation = async () => {
+    if (!modalTeacher) return;
+    setFormError(null);
+    if (!/^\d+$/.test(prepHoursInput)) {
+      setFormError('La preparación debe ser un entero ≥ 0.');
+      return;
+    }
+    const hours = Number.parseInt(prepHoursInput, 10);
+    setSaving(true);
+    try {
+      await updateClassPreparationHours(Number(modalTeacher.id), hours);
+      await loadList();
+      setModalTeacher(null);
+    } catch (e) {
+      setFormError(
+        e instanceof Error
+          ? e.message
+          : 'No se pudo actualizar la preparación de clase'
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-8 relative">
       <div className="absolute -top-20 -right-20 w-64 h-64 bg-violet-200/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 rounded-full blur-3xl pointer-events-none" />
 
       <Header
-        title="Horas Sustantivas"
-        subtitle="Asignación de horas sustantivas por docente"
+        title="Balance carga"
+        subtitle="Balance semanal: cátedra, preparación y horas sustantivas"
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
+      <div className="glass-panel p-1.5 relative z-10 inline-flex w-full sm:w-auto gap-1 rounded-2xl">
+        <button
+          type="button"
+          onClick={() => setActionMode('substantive')}
+          className={cn(
+            'flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-sm font-bold transition-colors',
+            actionMode === 'substantive'
+              ? 'bg-violet-600 text-white shadow-sm shadow-violet-500/20'
+              : 'text-slate-600 hover:bg-slate-100'
+          )}
+        >
+          Horas sustantivas
+        </button>
+        <button
+          type="button"
+          onClick={() => setActionMode('preparation')}
+          className={cn(
+            'flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-sm font-bold transition-colors',
+            actionMode === 'preparation'
+              ? 'bg-violet-600 text-white shadow-sm shadow-violet-500/20'
+              : 'text-slate-600 hover:bg-slate-100'
+          )}
+        >
+          Preparación clase
+        </button>
+      </div>
       <div className="glass-panel p-4 space-y-3 relative z-10">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
           <div className="relative flex-1">
@@ -299,7 +436,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
             >
               Buscar
             </button>
-            {(applied.search || applied.areaId || applied.schoolId) && (
+            {(hasActive) && (
               <button
                 type="button"
                 onClick={clearFilters}
@@ -320,7 +457,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-slate-200/60">
                 <label className="space-y-1">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
                     Área
@@ -329,7 +466,11 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                     className={selectClass}
                     value={filters.areaId}
                     onChange={(e) =>
-                      setFilters((f) => ({ ...f, areaId: e.target.value }))
+                      setFilters((f) => ({
+                        ...f,
+                        areaId: e.target.value,
+                        schoolId: '',
+                      }))
                     }
                   >
                     <option value="">Todas</option>
@@ -351,12 +492,112 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       setFilters((f) => ({ ...f, schoolId: e.target.value }))
                     }
                   >
-                    <option value="">Todas</option>
-                    {schools.map((s) => (
+                    <option value="">
+                      {filters.areaId ? 'Todas del área' : 'Todas'}
+                    </option>
+                    {schoolOptions.map((s) => (
                       <option key={s.id} value={String(s.id)}>
                         {s.name}
                       </option>
                     ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Periodo (cátedra)
+                  </span>
+                  <select
+                    className={selectClass}
+                    value={filters.period}
+                    onChange={(e) =>
+                      setFilters((f) => ({ ...f, period: e.target.value }))
+                    }
+                  >
+                    <option value="">Todos</option>
+                    {periodOptions.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Jornada
+                  </span>
+                  <select
+                    className={selectClass}
+                    value={filters.contractHours}
+                    onChange={(e) =>
+                      setFilters((f) => ({
+                        ...f,
+                        contractHours: e.target.value as Filters['contractHours'],
+                      }))
+                    }
+                  >
+                    <option value="">Todas</option>
+                    <option value="42">Tiempo completo (42 h)</option>
+                    <option value="21">Medio tiempo (21 h)</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Disponibilidad
+                  </span>
+                  <select
+                    className={selectClass}
+                    value={filters.availability}
+                    onChange={(e) =>
+                      setFilters((f) => ({
+                        ...f,
+                        availability: e.target
+                          .value as Filters['availability'],
+                      }))
+                    }
+                  >
+                    <option value="">Todas</option>
+                    <option value="available">Con horas disponibles</option>
+                    <option value="none">Sin horas disponibles</option>
+                    <option value="unknown">Sin jornada definida</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Cátedra
+                  </span>
+                  <select
+                    className={selectClass}
+                    value={filters.hasCatedra}
+                    onChange={(e) =>
+                      setFilters((f) => ({
+                        ...f,
+                        hasCatedra: e.target.value as Filters['hasCatedra'],
+                      }))
+                    }
+                  >
+                    <option value="">Todas</option>
+                    <option value="true">Con cátedra</option>
+                    <option value="false">Sin cátedra</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Sustantivas
+                  </span>
+                  <select
+                    className={selectClass}
+                    value={filters.hasSubstantive}
+                    onChange={(e) =>
+                      setFilters((f) => ({
+                        ...f,
+                        hasSubstantive: e.target
+                          .value as Filters['hasSubstantive'],
+                      }))
+                    }
+                  >
+                    <option value="">Todas</option>
+                    <option value="true">Con horas sustantivas</option>
+                    <option value="false">Sin horas sustantivas</option>
                   </select>
                 </label>
               </div>
@@ -425,13 +666,28 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                     </div>
                   </td>
                   <td className="px-5 py-4 text-right text-slate-600">
-                    <div className="text-xs space-y-0.5">
-                      <div>Cátedra: {row.catedraHours}</div>
-                      <div>Prep.: {row.preparationHours}</div>
-                      <div>Sust.: {row.substantiveHoursAssigned}</div>
+                    <div className="text-xs space-y-0.5 tabular-nums">
+                      <div>
+                        <span className="text-slate-400">Cátedra:</span>{' '}
+                        <span className="font-medium text-slate-700">
+                          {row.catedraHours}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Preparación clase:</span>{' '}
+                        <span className="font-medium text-slate-700">
+                          {row.preparationHours}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">Sustantivas:</span>{' '}
+                        <span className="font-medium text-slate-700">
+                          {row.substantiveHoursAssigned}
+                        </span>
+                      </div>
                       {row.substantiveHoursRemaining != null && (
                         <div className="font-semibold text-violet-700">
-                          Disp.: {row.substantiveHoursRemaining}
+                          Disponibles: {row.substantiveHoursRemaining}
                         </div>
                       )}
                     </div>
@@ -439,11 +695,20 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   <td className="px-5 py-4 text-right">
                     <button
                       type="button"
-                      onClick={() => void openAddModal(row)}
+                      onClick={() => openActionForRow(row)}
                       className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-violet-600 text-white hover:bg-violet-700 shadow-sm shadow-violet-500/20"
                     >
-                      <PlusIcon className="h-3.5 w-3.5" />
-                      Añadir horas sustantivas
+                      {actionMode === 'preparation' ? (
+                        <>
+                          <PencilSquareIcon className="h-3.5 w-3.5" />
+                          Modificar preparación
+                        </>
+                      ) : (
+                        <>
+                          <PlusIcon className="h-3.5 w-3.5" />
+                          Añadir horas sustantivas
+                        </>
+                      )}
                     </button>
                   </td>
                 </tr>
@@ -498,9 +763,15 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 text-violet-600 mb-1">
-                    <ClockIcon className="h-5 w-5" />
+                    {modalKind === 'preparation' ? (
+                      <PencilSquareIcon className="h-5 w-5" />
+                    ) : (
+                      <ClockIcon className="h-5 w-5" />
+                    )}
                     <span className="text-xs font-bold uppercase tracking-wide">
-                      Horas sustantivas
+                      {modalKind === 'preparation'
+                        ? 'Preparación de clase'
+                        : 'Horas sustantivas'}
                     </span>
                   </div>
                   <h2 className="text-lg font-bold text-slate-900">
@@ -520,135 +791,233 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                 </button>
               </div>
 
-              {assignmentsLoading ? (
-                <p className="text-sm text-slate-400">Cargando asignaciones…</p>
-              ) : existingAssignments.length > 0 ? (
-                <div className="space-y-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    Asignaciones registradas
-                  </span>
-                  <ul className="space-y-2 max-h-40 overflow-y-auto rounded-xl border border-slate-200/80 bg-slate-50/50 p-3">
-                    {existingAssignments.map((a) => (
-                      <li
-                        key={a.id}
-                        className="text-sm text-slate-700 border-b border-slate-200/60 last:border-0 pb-2 last:pb-0"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold">{a.categoryName}</span>
-                          <span className="text-violet-700 font-bold shrink-0">
-                            {a.hoursQuantity} h
-                          </span>
-                        </div>
-                        {a.tasks.length > 0 && (
-                          <ul className="mt-1 text-xs text-slate-500 list-disc list-inside">
-                            {a.tasks.map((t) => (
-                              <li key={t.id}>{t.description}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
+              {modalKind === 'preparation' ? (
+                <>
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 text-xs text-slate-600 space-y-1 tabular-nums">
+                    <div className="flex justify-between gap-3">
+                      <span>Jornada semanal</span>
+                      <span className="font-semibold text-slate-800">
+                        {modalTeacher.contractHoursWeekly != null
+                          ? `${modalTeacher.contractHoursWeekly} h`
+                          : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span>Cátedra</span>
+                      <span className="font-semibold text-slate-800">
+                        {modalTeacher.catedraHours} h
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span>Sustantivas</span>
+                      <span className="font-semibold text-slate-800">
+                        {modalTeacher.substantiveHoursAssigned} h
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span>Preparación actual</span>
+                      <span className="font-semibold text-slate-800">
+                        {modalTeacher.preparationHours} h
+                      </span>
+                    </div>
+                  </div>
 
-              <label className="block space-y-1.5">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                  Categoría
-                </span>
-                <select
-                  className={selectClass}
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                >
-                  {categories.map((c) => (
-                    <option
-                      key={c.id != null ? String(c.id) : c.name}
-                      value={c.id != null ? String(c.id) : ''}
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      Horas de preparación (semanal)
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Ej. 4"
+                      className={selectClass}
+                      value={prepHoursInput}
+                      onChange={(e) => onPrepHoursChange(e.target.value)}
+                    />
+                    <span className="text-[11px] text-slate-400">
+                      Entero ≥ 0. No puede dejar el balance semanal en negativo.
+                    </span>
+                  </label>
+
+                  {prepBalancePreview != null && (
+                    <p
+                      className={cn(
+                        'text-sm font-semibold',
+                        prepBalancePreview < 0
+                          ? 'text-rose-600'
+                          : 'text-violet-700'
+                      )}
                     >
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                      Disponibles tras el cambio: {prepBalancePreview} h/sem
+                    </p>
+                  )}
 
-              <label className="block space-y-1.5">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                  Cantidad de horas
-                </span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder="Solo números enteros (ej. 4)"
-                  className={selectClass}
-                  value={hoursInput}
-                  onChange={(e) => onHoursChange(e.target.value)}
-                />
-                <span className="text-[11px] text-slate-400">
-                  Solo admite enteros (≥ 1). No se permiten decimales (0.5, etc.).
-                </span>
-              </label>
+                  {formError && (
+                    <p className="text-sm text-rose-600 font-medium">
+                      {formError}
+                    </p>
+                  )}
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    Lista de tareas
-                  </span>
-                  <button
-                    type="button"
-                    onClick={addTaskRow}
-                    className="inline-flex items-center gap-1 text-xs font-bold text-violet-700 hover:text-violet-900"
-                  >
-                    <PlusIcon className="h-3.5 w-3.5" />
-                    Añadir tarea
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {tasks.map((task, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder={`Tarea ${idx + 1}`}
-                        className={selectClass}
-                        value={task}
-                        onChange={(e) => updateTask(idx, e.target.value)}
-                      />
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      disabled={saving}
+                      className="px-4 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void submitPreparation()}
+                      disabled={saving}
+                      className="glass-button-primary px-4 py-2.5 text-sm font-bold disabled:opacity-60"
+                    >
+                      {saving ? 'Guardando…' : 'Guardar preparación'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {assignmentsLoading ? (
+                    <p className="text-sm text-slate-400">
+                      Cargando asignaciones…
+                    </p>
+                  ) : existingAssignments.length > 0 ? (
+                    <div className="space-y-2">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                        Asignaciones registradas
+                      </span>
+                      <ul className="space-y-2 max-h-40 overflow-y-auto rounded-xl border border-slate-200/80 bg-slate-50/50 p-3">
+                        {existingAssignments.map((a) => (
+                          <li
+                            key={a.id}
+                            className="text-sm text-slate-700 border-b border-slate-200/60 last:border-0 pb-2 last:pb-0"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold">
+                                {a.categoryName}
+                              </span>
+                              <span className="text-violet-700 font-bold shrink-0">
+                                {a.hoursQuantity} h
+                              </span>
+                            </div>
+                            {a.tasks.length > 0 && (
+                              <ul className="mt-1 text-xs text-slate-500 list-disc list-inside">
+                                {a.tasks.map((t) => (
+                                  <li key={t.id}>{t.description}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      Categoría
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={categoryId}
+                      onChange={(e) => setCategoryId(e.target.value)}
+                    >
+                      {categories.map((c) => (
+                        <option
+                          key={c.id != null ? String(c.id) : c.name}
+                          value={c.id != null ? String(c.id) : ''}
+                        >
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      Cantidad de horas
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Solo números enteros (ej. 4)"
+                      className={selectClass}
+                      value={hoursInput}
+                      onChange={(e) => onHoursChange(e.target.value)}
+                    />
+                    <span className="text-[11px] text-slate-400">
+                      Solo admite enteros (≥ 1). No se permiten decimales (0.5,
+                      etc.).
+                    </span>
+                  </label>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                        Lista de tareas
+                      </span>
                       <button
                         type="button"
-                        onClick={() => removeTaskRow(idx)}
-                        className="shrink-0 p-2.5 rounded-xl border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50"
-                        aria-label="Eliminar tarea"
+                        onClick={addTaskRow}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-violet-700 hover:text-violet-900"
                       >
-                        <TrashIcon className="h-4 w-4" />
+                        <PlusIcon className="h-3.5 w-3.5" />
+                        Añadir tarea
                       </button>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div className="space-y-2">
+                      {tasks.map((task, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            placeholder={`Tarea ${idx + 1}`}
+                            className={selectClass}
+                            value={task}
+                            onChange={(e) => updateTask(idx, e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeTaskRow(idx)}
+                            className="shrink-0 p-2.5 rounded-xl border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50"
+                            aria-label="Eliminar tarea"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-              {formError && (
-                <p className="text-sm text-rose-600 font-medium">{formError}</p>
+                  {formError && (
+                    <p className="text-sm text-rose-600 font-medium">
+                      {formError}
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      disabled={saving}
+                      className="px-4 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void submitAssignment()}
+                      disabled={saving}
+                      className="glass-button-primary px-4 py-2.5 text-sm font-bold disabled:opacity-60"
+                    >
+                      {saving ? 'Guardando…' : 'Guardar'}
+                    </button>
+                  </div>
+                </>
               )}
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  disabled={saving}
-                  className="px-4 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void submitAssignment()}
-                  disabled={saving}
-                  className="glass-button-primary px-4 py-2.5 text-sm font-bold disabled:opacity-60"
-                >
-                  {saving ? 'Guardando…' : 'Guardar'}
-                </button>
-              </div>
             </motion.div>
           </motion.div>
         )}

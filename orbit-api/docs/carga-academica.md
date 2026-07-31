@@ -240,7 +240,7 @@ OR pr.school_id = :school_id
 | R2 | La recarga estándar **borra toda** `academic_load` y vuelve a cargar | Los tableros reflejan el **último snapshot** importado, no un historial acumulado |
 | R3 | Si el docente no existe en `core.person` (match por dígitos de documento), la asignación **se omite** | Puede haber subconteo vs ACA; medir omisiones desde el JSON de progreso del import |
 | R4 | Unicidad lógica: docente + materia + grupo + periodo | Contar filas = contar asignaciones |
-| R5 | Materias existentes **no se actualizan** en reimport | Nombres/créditos/horas de subject pueden quedar desfasados |
+| R5 | Materias existentes **sí se actualizan** en reimport (`name`, `credits_quantity`, `hours_quantity`) | Cátedra en Horas Sustantivas usa `subject.hours_quantity` actualizado |
 | R6 | Grupos existentes se actualizan con `COALESCE` (solo pisa si viene valor nuevo) | Campos de grupo pueden quedar parcialmente viejos |
 | R7 | `program_id` suele venir `NULL` en import; se guarda `program_name` | Preferir `COALESCE(program_name, program.name)` |
 | R8 | Tipo expuesto siempre `projection` | No segmentar por `current` vs `projection` en UI/API actual |
@@ -258,13 +258,24 @@ OR pr.school_id = :school_id
 | FK persona / subject / class_group = RESTRICT | No se borra persona con carga |
 | FK programa / geo / prep = SET NULL | Dimensiones opcionales |
 
-### 5.3 Lo que NO está gobernado aún
+### 5.3 Validaciones al importar (script JSON)
 
-- No hay detección de cruces de horario.
-- No hay tope máximo de horas por docente al importar.
-- No se valida `enrolled <= capacity`.
-- No hay historial versionado de cargas anteriores (salvo backups externos / archivos de import).
-- `subject.hours_quantity` (cátedra) y `academic_load.substantive_hours_quantity` (horas del JSON) **no son el mismo campo ni siempre coinciden**.
+El import (`scripts/import-academic-workload-from-json.mjs`) corre validaciones **antes** de escribir y las deja en el progress JSON (`validation.summary` / `validation.issues`). Por defecto **no bloquean** el cargue (son warnings); usar `--fail-on-validation` para abortar o `--validate-only` para solo auditar.
+
+| Código | Qué detecta | Regla |
+|---|---|---|
+| `over_capacity` | Matriculados > cupo | `enrolled_quantity > capacity` |
+| `schedule_conflict` | Cruce de horario del mismo docente/periodo | Mismo `block` (si ambos tienen), rangos de fecha solapados y `[start_time, end_time)` solapados |
+| `hours_overload` | Tope contractual | `cátedra + prep + sustantivas > contrato (42/21)` — mismo balance que Horas Sustantivas |
+| `missing_contract_hours` | No se infiere jornada | Sin etiqueta medio/completo en contrato |
+| `missing_subject_hours` | Materia sin horas | `subject.hours_quantity` ausente o ≤ 0 |
+
+Además el reimport **actualiza** `subject.hours_quantity` / créditos / nombre y persiste `class_group.start_time` / `end_time` (antes solo iba texto a `schedule_type`).
+
+Aún pendiente:
+
+- Historial versionado de cargas anteriores (salvo backups externos / archivos de import).
+- `academic_load.substantive_hours_quantity` (copia del JSON) y `subject.hours_quantity` (cátedra) pueden diferir si el JSON trae valores inconsistentes entre filas de la misma materia.
 
 ### 5.4 Reglas de Horas Sustantivas (impacto en tableros cruzados)
 
@@ -281,7 +292,7 @@ horas_contrato
 | Concepto | Origen | Regla |
 |---|---|---|
 | Contrato | etiquetas de contrato / jornada | Completo = **42**, medio = **21** |
-| Cátedra | `SUM(subject.hours_quantity)` de las cargas del docente | Depende de que `hours_quantity` esté poblado |
+| Cátedra | `SUM(COALESCE(NULLIF(subject.hours_quantity,0), academic_load.substantive_hours_quantity))` | Depende de horas pobladas en import |
 | Preparación | `class_preparation.class_preparation_hours` | Default **4** si no hay fila |
 | Sustantivas | `substantive_hours.assignment` | Módulo aparte |
 
@@ -334,7 +345,7 @@ Payload típico del scrape/import:
 | `person_document` / `teacher.document` | Match → `academic_load.person_id` |
 | `period_code` | `academic_load.period_code` |
 | `subject.*` | `subject` (+ códigos en load) |
-| `subject.hours_quantity` | `academic_load.substantive_hours_quantity` |
+| `subject.hours_quantity` | `subject.hours_quantity` (cátedra; se actualiza en reimport) y `academic_load.substantive_hours_quantity` |
 | `class_group.*` | `class_group` |
 | `class_group.enrolled_quantity` | `academic_load.enrolled_quantity` |
 | `academic_load.program_name` | `academic_load.program_name` |
@@ -487,7 +498,7 @@ Si el tablero consume API en lugar de SQL directo:
 
 ### `GET /api/academic-load`
 
-Filtros: `teacher_document`, `period`, `unit_name` (busca nombre docente/materia/programa), `modality`, `type`, `page`, `limit` (máx 500).
+Filtros: `teacher_document`, `period`, `unit_name` / `search` (busca nombre docente, email, edu_email, documento, materia, programa), `modality`, `type`, `page`, `limit` (máx 500).
 
 Campos de fila:
 
