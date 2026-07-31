@@ -809,6 +809,8 @@ export type UpdatePlantaPersonPayload = {
   program_id?: number | null;
   role_id?: number | null;
   is_active?: boolean;
+  /** Al inactivar: crear vacante (default true). Ignorado si el rol no aplica. */
+  create_vacancy?: boolean;
 };
 
 export type CreatePlantaPersonPayload = {

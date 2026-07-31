@@ -45,7 +45,21 @@ const EMPTY_EDIT_FORM = {
   program_id: '',
   role_id: '',
   is_active: true,
+  create_vacancy: true,
 };
+
+/** Roles para los que el backend no auto-crea vacante al inactivar. */
+function roleSkipsAutoVacancy(roleName: string | undefined): boolean {
+  const n = (roleName ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
+  if (!n) return false;
+  if (n === 'LITE' || n === 'LIDER') return true;
+  return n === 'DOCENTE' || n === 'DOCENTES' || n.startsWith('DOCENTES ');
+}
 
 function mapPlantaFromApi(row: Record<string, unknown>): PlantaPerson {
   const st = String(row.status ?? 'active');
@@ -396,6 +410,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       ...EMPTY_EDIT_FORM,
       area_id: defaultArea,
       is_active: true,
+      create_vacancy: true,
     });
   };
 
@@ -417,6 +432,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       program_id: row.program_id != null ? String(row.program_id) : '',
       role_id: row.role_id != null ? String(row.role_id) : '',
       is_active: row.status === 'active',
+      create_vacancy: true,
     });
     try {
       const detail = await getPlantaPerson(Number(row.id));
@@ -433,6 +449,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         program_id: mapped.program_id != null ? String(mapped.program_id) : '',
         role_id: mapped.role_id != null ? String(mapped.role_id) : '',
         is_active: mapped.status === 'active',
+        create_vacancy: true,
       });
     } catch {
       /* keep list row data */
@@ -542,6 +559,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
 
       if (!editing) return;
       const wasActive = editing.status === 'active';
+      const becameInactive = wasActive && !editForm.is_active;
       const result = (await updatePlantaPerson(Number(editing.id), {
         full_name: editForm.full_name.trim(),
         document: editForm.document.trim() || undefined,
@@ -554,13 +572,15 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         program_id: editForm.program_id ? Number(editForm.program_id) : null,
         role_id: editForm.role_id ? Number(editForm.role_id) : null,
         is_active: editForm.is_active,
+        ...(becameInactive
+          ? { create_vacancy: editForm.create_vacancy }
+          : {}),
       })) as Record<string, unknown>;
 
       const createdVacancyId =
         result?.created_vacancy_id != null
           ? String(result.created_vacancy_id)
           : null;
-      const becameInactive = wasActive && !editForm.is_active;
 
       closeEdit();
 
@@ -586,6 +606,15 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
 
   const selectClass =
     'w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-400/40';
+
+  const inactivatingActivePerson =
+    formMode === 'edit' &&
+    editing?.status === 'active' &&
+    !editForm.is_active;
+  const selectedEditRoleName = roles.find(
+    (r) => String(r.id) === editForm.role_id
+  )?.name;
+  const skipsAutoVacancy = roleSkipsAutoVacancy(selectedEditRoleName);
 
   return (
     <div className="space-y-8">
@@ -1222,6 +1251,9 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                         setEditForm((f) => ({
                           ...f,
                           is_active: e.target.checked,
+                          create_vacancy: e.target.checked
+                            ? f.create_vacancy
+                            : true,
                         }))
                       }
                       className="mt-0.5 rounded border-slate-300 text-violet-600 focus:ring-violet-400"
@@ -1230,9 +1262,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       <span className="font-semibold">Persona activa</span>
                       {formMode === 'edit' ? (
                         <span className="block text-xs text-slate-500 mt-0.5">
-                          Al desactivar se mueve a Inactivos. Si el rol no es
-                          DOCENTE, LIDER ni LITE, se crea una vacante
-                          automáticamente.
+                          Al desactivar se mueve a Inactivos.
                         </span>
                       ) : (
                         <span className="block text-xs text-slate-500 mt-0.5">
@@ -1241,6 +1271,36 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       )}
                     </span>
                   </label>
+                  {inactivatingActivePerson && skipsAutoVacancy && (
+                    <p className="text-xs text-slate-500 sm:col-span-2 -mt-2">
+                      Para roles DOCENTE, LIDER o LITE no se crea vacante
+                      automática.
+                    </p>
+                  )}
+                  {inactivatingActivePerson && !skipsAutoVacancy && (
+                    <label className="inline-flex items-start gap-2 text-sm text-slate-700 sm:col-span-2 -mt-2">
+                      <input
+                        type="checkbox"
+                        checked={editForm.create_vacancy}
+                        onChange={(e) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            create_vacancy: e.target.checked,
+                          }))
+                        }
+                        className="mt-0.5 rounded border-slate-300 text-violet-600 focus:ring-violet-400"
+                      />
+                      <span>
+                        <span className="font-semibold">
+                          Crear vacante automáticamente
+                        </span>
+                        <span className="block text-xs text-slate-500 mt-0.5">
+                          Activo por defecto. Desmárcalo si solo quieres
+                          inactivar sin abrir vacante.
+                        </span>
+                      </span>
+                    </label>
+                  )}
                 </div>
 
                 {formError && (
