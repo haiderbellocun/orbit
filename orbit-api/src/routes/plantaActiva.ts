@@ -836,7 +836,13 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
 
     const wasActive = Boolean(current.is_active);
     const becameInactive = nextIsActive === false && wasActive;
-    if (becameInactive) {
+    const createVacancyRequested =
+      "create_vacancy" in b
+        ? typeof b.create_vacancy === "boolean"
+          ? b.create_vacancy
+          : parseBoolFlag(b.create_vacancy)
+        : true;
+    if (becameInactive && createVacancyRequested) {
       createdVacancyId = await createVacancyFromInactivatedPerson({
         personId: id,
         actorPersonId: orbitPersonIdFromRequest(req),
