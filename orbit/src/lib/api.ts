@@ -203,6 +203,8 @@ export function getStoredUserEmail(): string | null {
 const DEFAULT_ORBIT_ACCESS_ALLOWLIST = [
   "camilo_quintero@cun.edu.co",
   "haider_bello@cun.edu.co",
+  "raul_valencia@cun.edu.co",
+  "zuany_acuna@cun.edu.co",
 ] as const;
 
 const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [

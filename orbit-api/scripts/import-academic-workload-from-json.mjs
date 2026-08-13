@@ -275,6 +275,7 @@ async function upsertAcademicLoad(client, input) {
       : truncateUtf(String(input.semester), VW50);
   const subjectCode = truncateUtf(input.subjectCode, VW50) ?? "";
   const groupCode = truncateUtf(input.groupCode, VW50) ?? "";
+  const acaGroupId = truncateUtf(input.acaGroupId, VW50) || null;
   const programName = truncateUtf(input.programName, VW250);
   const enrolled = input.enrolledQuantity ?? 0;
   const substantiveHours = input.substantiveHoursQuantity ?? 0;
@@ -285,8 +286,14 @@ async function upsertAcademicLoad(client, input) {
        AND subject_code = $2
        AND group_code = $3
        AND COALESCE(period_code, '') = COALESCE($4, '')
+       AND (
+         $5::varchar IS NULL
+         OR aca_group_id = $5
+         OR aca_group_id IS NULL
+       )
+     ORDER BY CASE WHEN aca_group_id = $5 THEN 0 ELSE 1 END
      LIMIT 1`,
-    [input.personId, subjectCode, groupCode, periodCode]
+    [input.personId, subjectCode, groupCode, periodCode, acaGroupId]
   );
 
   if (found.rows.length) {
@@ -297,9 +304,17 @@ async function upsertAcademicLoad(client, input) {
          program_name = COALESCE($2, program_name),
          enrolled_quantity = COALESCE($3, enrolled_quantity),
          substantive_hours_quantity = $4,
+         aca_group_id = COALESCE($5, aca_group_id),
          updated_at = NOW()
-       WHERE id = $5`,
-      [semester, programName, input.enrolledQuantity, substantiveHours, id]
+       WHERE id = $6`,
+      [
+        semester,
+        programName,
+        input.enrolledQuantity,
+        substantiveHours,
+        acaGroupId,
+        id,
+      ]
     );
     return { id, isNew: false };
   }
@@ -307,12 +322,12 @@ async function upsertAcademicLoad(client, input) {
   const inserted = await client.query(
     `INSERT INTO academic_workload.academic_load (
       person_id, period_code, semester, program_id, program_name, subject_code,
-      group_code, enrolled_quantity, region_id, city_id, campus_id,
+      group_code, aca_group_id, enrolled_quantity, region_id, city_id, campus_id,
       substantive_category_id, substantive_hours_quantity, class_preparation_id
     ) VALUES (
       $1,$2,$3,NULL,$4,$5,
-      $6,$7,NULL,NULL,NULL,
-      NULL,$8,NULL
+      $6,$7,$8,NULL,NULL,NULL,
+      NULL,$9,NULL
     ) RETURNING id`,
     [
       input.personId,
@@ -321,6 +336,7 @@ async function upsertAcademicLoad(client, input) {
       programName,
       subjectCode,
       groupCode,
+      acaGroupId,
       enrolled,
       substantiveHours,
     ]
@@ -750,6 +766,7 @@ async function main() {
             programName: a.academic_load?.program_name ?? null,
             subjectCode: row.subjectCode,
             groupCode: row.groupCode,
+            acaGroupId: a.meta?.id_grupo ?? null,
             enrolledQuantity: row.enrolledQuantity,
             substantiveHoursQuantity: row.subjectHours,
           });

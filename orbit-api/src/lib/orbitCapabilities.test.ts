@@ -177,13 +177,15 @@ test("unknown role is denied", () => {
   assert.equal(r, null);
 });
 
-test("allowlist default includes camilo and haider", () => {
+test("allowlist default includes camilo, haider, raul and zuany", () => {
   const prev = process.env.ORBIT_ACCESS_ALLOWLIST;
   delete process.env.ORBIT_ACCESS_ALLOWLIST;
   try {
     assert.equal(isEmailOnOrbitAllowlist("camilo_quintero@cun.edu.co"), true);
     assert.equal(isEmailOnOrbitAllowlist("CAMILO_QUINTERO@cun.edu.co"), true);
     assert.equal(isEmailOnOrbitAllowlist("haider_bello@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("raul_valencia@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("zuany_acuna@cun.edu.co"), true);
     assert.equal(isEmailOnOrbitAllowlist("otro@cun.edu.co"), false);
     const admin = resolveAllowlistAdminAccess();
     assert.equal(admin.orbitAccess, "full");
@@ -324,6 +326,7 @@ test("isEmailAuthorizedForOrbit includes planta grants", () => {
   assert.equal(isEmailAuthorizedForOrbit("tania_rocha@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("otro@cun.edu.co"), false);
   assert.equal(isEmailAuthorizedForOrbit("camilo_quintero@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("zuany_acuna@cun.edu.co"), true);
 });
 
 console.log("orbitCapabilities tests passed");

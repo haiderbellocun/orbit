@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS academic_workload.academic_load (
   program_name character varying(250) NULL,
   subject_code character varying(50) NOT NULL,
   group_code character varying(50) NOT NULL,
+  aca_group_id character varying(50) NULL,
   enrolled_quantity integer DEFAULT 0 NOT NULL,
   region_id integer NULL,
   city_id integer NULL,

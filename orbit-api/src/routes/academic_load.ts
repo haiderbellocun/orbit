@@ -111,6 +111,7 @@ router.get("/academic-load", async (req: Request, res: Response) => {
     const program = qStr(req.query.program);
     const subject = qStr(req.query.subject);
     const groupCode = qStr(req.query.group_code ?? req.query.groupCode);
+    const acaGroupId = qStr(req.query.aca_group_id ?? req.query.acaGroupId);
     const block = qStr(req.query.block);
     const areaId = parsePositiveInt(req.query.area_id ?? req.query.areaId);
     const schoolId = parsePositiveInt(req.query.school_id ?? req.query.schoolId);
@@ -133,6 +134,7 @@ router.get("/academic-load", async (req: Request, res: Response) => {
           OR s.name ILIKE $${i}
           OR COALESCE(al.program_name, pr.name, '') ILIKE $${i}
           OR al.subject_code ILIKE $${i}
+          OR COALESCE(al.aca_group_id, '') ILIKE $${i}
           OR p.document ILIKE $${i}
           OR COALESCE(p.email, '') ILIKE $${i}
           OR COALESCE(p.edu_email, '') ILIKE $${i})`
@@ -176,6 +178,10 @@ router.get("/academic-load", async (req: Request, res: Response) => {
       conditions.push(`al.group_code ILIKE $${i++}`);
       values.push(`%${groupCode}%`);
     }
+    if (acaGroupId) {
+      conditions.push(`al.aca_group_id = $${i++}`);
+      values.push(acaGroupId);
+    }
     if (block) {
       conditions.push(`cg.block ILIKE $${i++}`);
       values.push(`%${block}%`);
@@ -214,6 +220,7 @@ router.get("/academic-load", async (req: Request, res: Response) => {
         'projection'::text AS type,
         al.subject_code,
         al.group_code,
+        al.aca_group_id,
         COUNT(*) OVER() AS total_count
       FROM academic_workload.academic_load al
       INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
@@ -304,7 +311,8 @@ router.get("/academic-load/teacher/:document", async (req: Request, res: Respons
         al.period_code AS period,
         'projection'::text AS type,
         al.subject_code,
-        al.group_code
+        al.group_code,
+        al.aca_group_id
       FROM academic_workload.academic_load al
       INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
       LEFT JOIN program pr ON pr.id = al.program_id
