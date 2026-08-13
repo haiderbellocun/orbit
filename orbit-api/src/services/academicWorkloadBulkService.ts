@@ -40,6 +40,7 @@ export interface AcademicLoadInput {
   programName: string | null;
   subjectCode: string;
   groupCode: string;
+  acaGroupId?: string | null;
   enrolledQuantity: number | null;
   regionId: number | null;
   cityId: number | null;
@@ -224,6 +225,7 @@ export async function upsertAcademicLoad(
   const semester = truncateUtf(input.semester, VW50);
   const subjectCode = truncateUtf(input.subjectCode, VW50) ?? "";
   const groupCode = truncateUtf(input.groupCode, VW50) ?? "";
+  const acaGroupId = truncateUtf(input.acaGroupId, VW50);
   const programName = truncateUtf(input.programName, VW250);
 
   const found = await pool.query(
@@ -233,8 +235,14 @@ export async function upsertAcademicLoad(
        AND subject_code = $2
        AND group_code = $3
        AND COALESCE(period_code, '') = COALESCE($4, '')
+       AND (
+         $5::varchar IS NULL
+         OR aca_group_id = $5
+         OR aca_group_id IS NULL
+       )
+     ORDER BY CASE WHEN aca_group_id = $5 THEN 0 ELSE 1 END
      LIMIT 1`,
-    [input.personId, subjectCode, groupCode, periodCode]
+    [input.personId, subjectCode, groupCode, periodCode, acaGroupId]
   );
 
   if (found.rows.length > 0) {
@@ -251,8 +259,9 @@ export async function upsertAcademicLoad(
          campus_id = COALESCE($7, campus_id),
          substantive_category_id = COALESCE($8, substantive_category_id),
          substantive_hours_quantity = $9,
-         class_preparation_id = COALESCE($10, class_preparation_id)
-       WHERE id = $11`,
+         class_preparation_id = COALESCE($10, class_preparation_id),
+         aca_group_id = COALESCE($11, aca_group_id)
+       WHERE id = $12`,
       [
         semester,
         input.programId,
@@ -264,6 +273,7 @@ export async function upsertAcademicLoad(
         input.substantiveCategoryId,
         safeSubstantiveHoursQuantity,
         input.classPreparationId,
+        acaGroupId,
         existingId,
       ]
     );
@@ -273,12 +283,12 @@ export async function upsertAcademicLoad(
   const inserted = await pool.query(
     `INSERT INTO academic_workload.academic_load (
       person_id, period_code, semester, program_id, program_name, subject_code,
-      group_code, enrolled_quantity, region_id, city_id, campus_id, substantive_category_id,
+      group_code, aca_group_id, enrolled_quantity, region_id, city_id, campus_id, substantive_category_id,
       substantive_hours_quantity, class_preparation_id
     ) VALUES (
       $1, $2, $3, $4, $5, $6,
-      $7, $8, $9, $10, $11, $12,
-      $13, $14
+      $7, $8, $9, $10, $11, $12, $13,
+      $14, $15
     )
     RETURNING id`,
     [
@@ -289,6 +299,7 @@ export async function upsertAcademicLoad(
       programName,
       subjectCode,
       groupCode,
+      acaGroupId,
       enrolledForInsert,
       input.regionId,
       input.cityId,
