@@ -580,7 +580,7 @@ router.post("/workforce-events/events", async (req, res) => {
          start_time,
          end_time,
          status
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id`,
       [
         eventTypeId,
