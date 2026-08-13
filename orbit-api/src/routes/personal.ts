@@ -2,10 +2,6 @@
 import { pool } from "../db/connection";
 import { resolveCoreSchemaMode } from "../lib/coreSchema";
 import {
-  getLiteRoleId,
-  sqlPersonIsOrbitLite,
-} from "../lib/orbitRoles";
-import {
   hasCapability,
   ORBIT_CAPABILITY,
 } from "../lib/orbitCapabilities";
@@ -17,25 +13,6 @@ import {
 import { sqlPersonIsActive, sqlPersonStatusText } from "../sql/personActive";
 
 const router = Router();
-
-function coordinatorAcademicSql(
-  areaAlias: string,
-  hierarchyAlias: string,
-  roleAlias: string
-): string {
-  return `(
-      ${areaAlias}.name ILIKE '%ÁREA ACÁDEMICA%' OR
-      ${areaAlias}.name ILIKE '%AREA ACADEMICA%' OR
-      ${areaAlias}.name ILIKE '%ACÁDEMICA%' OR
-      ${areaAlias}.name ILIKE '%ACADEMICA%'
-    )
-    AND ${hierarchyAlias}.level = 3
-    AND (
-      LOWER(COALESCE(${roleAlias}.category, ${roleAlias}.code, '')) LIKE '%acad%' OR
-      ${roleAlias}.name ILIKE 'COORDINADOR%' OR
-      ${roleAlias}.code ILIKE 'COORDINADOR%'
-    )`;
-}
 
 /** Selector de personas para Novedades: school / área(s) / full. */
 function requireNewsPersonListScope(
@@ -71,7 +48,6 @@ router.get("/personal", async (req: Request, res: Response) => {
     }
 
     const prefix = mode === "core" ? "core." : "";
-    const liteRoleId = getLiteRoleId();
     const search =
       typeof req.query.search === "string" ? req.query.search.trim() : "";
     const pageNum = Math.max(1, Number.parseInt(String(req.query.page ?? "1"), 10));
@@ -85,11 +61,6 @@ router.get("/personal", async (req: Request, res: Response) => {
     const conditions: string[] = [
       `(${scopePart.clause})`,
       sqlPersonIsActive("p"),
-      `(r.name IS NULL OR r.name NOT IN ('DOCENTES', 'DOCENTES PENSIONADOS'))`,
-      `NOT (${sqlPersonIsOrbitLite("p", "r", liteRoleId)})`,
-      `NOT (
-        ${coordinatorAcademicSql("a", "h", "r")}
-      )`,
     ];
     const values: unknown[] = [...scopePart.values];
     let i = scopePart.nextIdx;
@@ -124,8 +95,6 @@ router.get("/personal", async (req: Request, res: Response) => {
        LEFT JOIN ${prefix}role r ON r.id = p.role_id
        LEFT JOIN ${prefix}school s ON s.id = p.school_id
        LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
-       LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
-       LEFT JOIN ${prefix}hierarchy h ON h.id = p.hierarchy_id
        ${where}
        ORDER BY p.full_name ASC NULLS LAST
        LIMIT $${i} OFFSET $${i + 1}`,
