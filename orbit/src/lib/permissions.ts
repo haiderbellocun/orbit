@@ -52,10 +52,17 @@ export function hasCapability(
   return capabilities.includes(required);
 }
 
+/**
+ * Panel informativo: oculto en todos los perfiles hasta que se implemente.
+ * El módulo, la vista y las capabilities se conservan; poner en `true` para reactivar.
+ */
+export const VACANCY_INFORMATIVE_PANEL_ENABLED = false;
+
 /** Panel informativo: capability dedicada o administración de vacantes (rol 38). */
 export function canAccessVacancyInformativePanel(
   capabilities: readonly string[] | undefined
 ): boolean {
+  if (!VACANCY_INFORMATIVE_PANEL_ENABLED) return false;
   return (
     hasCapability(capabilities, ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL) ||
     hasCapability(capabilities, ORBIT_CAPABILITY.VACANCIES_ADMIN)
