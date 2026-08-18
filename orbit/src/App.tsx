@@ -253,7 +253,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <main className="flex-1 md:ml-64 p-3 md:p-5 xl:p-6 min-h-screen w-full relative">
+        <main className="flex-1 min-w-0 min-h-screen relative p-3 md:p-5 xl:p-6 w-full md:w-[calc(100%-16rem)] md:ml-64">
           <motion.div className="md:hidden sticky top-0 -mx-4 px-4 py-3 mb-6 bg-white/80 backdrop-blur-lg border-b border-slate-200/50 flex items-center justify-between z-40">
             <div className="flex items-center gap-3">
               <motion.div className={`w-10 h-10 bg-white rounded-xl flex items-center justify-center text-white shadow-lg`}>
@@ -276,7 +276,7 @@ export default function App() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="w-full max-w-none px-5"
+            className="w-full max-w-none min-w-0 px-5"
           >
             {renderView()}
           </motion.div>

@@ -605,7 +605,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   };
 
   const selectClass =
-    'w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-400/40';
+    'w-full min-w-0 max-w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-400/40';
 
   const inactivatingActivePerson =
     formMode === 'edit' &&
@@ -617,7 +617,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const skipsAutoVacancy = roleSkipsAutoVacancy(selectedEditRoleName);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 min-w-0">
       <Header
         title="Planta Activa"
         subtitle={
@@ -682,7 +682,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         </div>
       )}
 
-      <div data-tutorial="planta-filters" className="glass-panel p-4 space-y-3">
+      <div data-tutorial="planta-filters" className="glass-panel p-4 space-y-3 min-w-0">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
           <div className="relative flex-1">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -742,11 +742,11 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="overflow-hidden"
+              className="overflow-hidden min-w-0"
             >
-              <div className="pt-3 border-t border-slate-100 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                  <label className="space-y-1.5">
+              <div className="pt-3 border-t border-slate-100 space-y-4 min-w-0">
+                <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-3 min-w-0">
+                  <label className="space-y-1.5 min-w-0">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       Área
                     </span>
@@ -777,7 +777,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     </select>
                   </label>
 
-                  <label className="space-y-1.5">
+                  <label className="space-y-1.5 min-w-0">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       Escuela
                     </span>
@@ -801,7 +801,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     </select>
                   </label>
 
-                  <label className="space-y-1.5">
+                  <label className="space-y-1.5 min-w-0">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       Programa
                     </span>
@@ -821,7 +821,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     </select>
                   </label>
 
-                  <label className="space-y-1.5">
+                  <label className="space-y-1.5 min-w-0">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       Rol
                     </span>
