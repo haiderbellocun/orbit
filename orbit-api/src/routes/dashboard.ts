@@ -18,13 +18,6 @@ import {
 
 const router = Router();
 
-async function hasLegacyTeachersTable(): Promise<boolean> {
-  const result = await pool.query(
-    "SELECT to_regclass('teachers') AS table_name"
-  );
-  return result.rows[0]?.table_name != null;
-}
-
 type TrendType = "up" | "down" | "flat";
 
 /** `trendUnit` define el formato en UI; `trendGood` si la dirección es favorable. */
@@ -108,58 +101,75 @@ const NO_TREND: Pick<
 > = { ...FLAT_TREND, trendUnit: "none", trendGood: true };
 
 async function getActiveTeachersCount(req: Request): Promise<number> {
-  const useLegacy = await hasLegacyTeachersTable();
+  const mode = await resolveCoreSchemaMode();
+  if (mode == null) return 0;
+
+  const personT = qualifiedCoreTable(mode, "person");
+  const schoolT = qualifiedCoreTable(mode, "school");
+  const areaT = qualifiedCoreTable(mode, "area");
   const lite = liteTeacherScopeFromRequest(req);
   const schoolScope = schoolScopeFromRequest(req);
+  const u = req.orbitUser;
+  const viewAreaIds =
+    u?.plantaEditAreaIds == null ? null : u.plantaViewAreaIds;
 
-  if (useLegacy && lite != null) {
-    return 0;
-  }
-
-  if (useLegacy) {
-    const result = await pool.query(
-      "SELECT COUNT(*)::int AS total FROM teachers WHERE status = 'active'"
-    );
-    return Number(result.rows[0]?.total ?? 0);
-  }
+  const conditions: string[] = [sqlPersonIsActive("p")];
+  const values: unknown[] = [];
+  let i = 1;
 
   if (lite != null) {
-    const result = await pool.query(
-      `SELECT COUNT(*)::int AS total
-       FROM person p
-       LEFT JOIN role r ON r.id = p.role_id
-       LEFT JOIN person_program_assignments ppa ON ppa.person_id = p.id
-       WHERE ${sqlPersonIsActive("p")}
-         AND r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')
-         AND p.school_id = $1
-         AND (
-           p.program_id = ANY($2::integer[])
-           OR COALESCE(ppa.programs_id, ARRAY[]::integer[]) && $2::integer[]
-         )`,
-      [lite.schoolId, lite.programIds]
+    conditions.push(`p.school_id = $${i}`);
+    values.push(lite.schoolId);
+    i++;
+    const ppaReg = await pool.query(
+      `SELECT to_regclass('${mode}.person_program_assignments') AS t`
     );
-    return Number(result.rows[0]?.total ?? 0);
+    const ppaT = ppaReg.rows[0]?.t
+      ? qualifiedCoreTable(mode, "person_program_assignments")
+      : null;
+    if (ppaT) {
+      conditions.push(`(
+        p.program_id = ANY($${i}::integer[])
+        OR EXISTS (
+          SELECT 1
+          FROM ${ppaT} ppa
+          WHERE ppa.person_id = p.id
+            AND COALESCE(ppa.programs_id, ARRAY[]::integer[]) && $${i}::integer[]
+        )
+      )`);
+    } else {
+      conditions.push(`p.program_id = ANY($${i}::integer[])`);
+    }
+    values.push(lite.programIds);
+    i++;
+  } else if (schoolScope != null) {
+    conditions.push(`p.school_id = $${i}`);
+    values.push(schoolScope.schoolId);
+    i++;
   }
 
-  if (schoolScope != null) {
-    const result = await pool.query(
-      `SELECT COUNT(*)::int AS total
-       FROM person p
-       LEFT JOIN role r ON r.id = p.role_id
-       WHERE ${sqlPersonIsActive("p")}
-         AND r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')
-         AND p.school_id = $1`,
-      [schoolScope.schoolId]
-    );
-    return Number(result.rows[0]?.total ?? 0);
+  if (viewAreaIds != null && viewAreaIds.length > 0) {
+    conditions.push(`COALESCE(p.area_id, s.area_id) = ANY($${i}::int[])`);
+    values.push(viewAreaIds);
+    i++;
   }
+
+  // Command Center: toda la planta activa excepto Área investigativa (Harvey).
+  conditions.push(`(
+    a.id IS NULL
+    OR (
+      COALESCE(a.name, '') NOT ILIKE '%investigativ%'
+      AND COALESCE(a.name, '') NOT ILIKE '%harvey%'
+    )
+  )`);
 
   const result = await pool.query(
     `SELECT COUNT(*)::int AS total
-     FROM person p
-     LEFT JOIN role r ON r.id = p.role_id
-     WHERE ${sqlPersonIsActive("p")}
-       AND r.name IN ('DOCENTES', 'DOCENTES PENSIONADOS')`
+     FROM ${personT} p
+     LEFT JOIN ${schoolT} s ON s.id = p.school_id
+     LEFT JOIN ${areaT} a ON a.id = COALESCE(p.area_id, s.area_id)
+     WHERE ${conditions.join(" AND ")}`,
+    values
   );
   return Number(result.rows[0]?.total ?? 0);
 }
@@ -420,7 +430,7 @@ router.get("/dashboard/summary", async (req, res) => {
       activeTeachers: {
         value: activeTeachers,
         ...NO_TREND,
-        detail: "Docentes activos en planta",
+        detail: "Personas activas en planta",
         capacityPercentage: null,
       },
       openVacancies: vacancyMetrics.openVacancies,
