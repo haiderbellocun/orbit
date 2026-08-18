@@ -49,6 +49,7 @@ type Filters = {
   availability: '' | 'available' | 'none' | 'unknown';
   hasCatedra: '' | 'true' | 'false';
   hasSubstantive: '' | 'true' | 'false';
+  withoutEduEmail: boolean;
 };
 
 const EMPTY_FILTERS: Filters = {
@@ -60,6 +61,7 @@ const EMPTY_FILTERS: Filters = {
   availability: '',
   hasCatedra: '',
   hasSubstantive: '',
+  withoutEduEmail: false,
 };
 
 const PLACEHOLDER_CATEGORY = 'PEDIR LISTA CATEGORIAS HORAS SUSTANTIVAS';
@@ -155,6 +157,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
           applied.hasSubstantive === ''
             ? undefined
             : applied.hasSubstantive === 'true',
+        without_edu_email: applied.withoutEduEmail || undefined,
         page: currentPage,
         limit: 50,
       });
@@ -203,6 +206,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     if (applied.availability) n++;
     if (applied.hasCatedra) n++;
     if (applied.hasSubstantive) n++;
+    if (applied.withoutEduEmail) n++;
     return n;
   }, [applied]);
 
@@ -603,6 +607,20 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                     <option value="false">Sin horas sustantivas</option>
                   </select>
                 </label>
+                <label className="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer sm:col-span-2 lg:col-span-3 pt-1">
+                  <input
+                    type="checkbox"
+                    checked={filters.withoutEduEmail}
+                    onChange={(e) =>
+                      setFilters((f) => ({
+                        ...f,
+                        withoutEduEmail: e.target.checked,
+                      }))
+                    }
+                    className="rounded border-slate-300 text-violet-600 focus:ring-violet-400"
+                  />
+                  Sin correo CUN
+                </label>
               </div>
             </motion.div>
           )}
@@ -653,7 +671,14 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                     <div className="font-semibold text-slate-800">{row.name}</div>
                     <div className="text-xs text-slate-400 mt-0.5">
                       {row.document || '—'}
-                      {row.email ? ` · ${row.email}` : ''}
+                      {' · '}
+                      {row.email?.trim() ? (
+                        row.email.trim()
+                      ) : (
+                        <span className="text-red-600 font-semibold">
+                          sin correo CUN
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-5 py-4 hidden md:table-cell text-slate-600">

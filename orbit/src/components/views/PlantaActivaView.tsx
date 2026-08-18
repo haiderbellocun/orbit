@@ -848,7 +848,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       ['withoutSchool', 'Sin escuela'],
                       ['withoutProgram', 'Sin programa'],
                       ['withoutRole', 'Sin rol'],
-                      ['withoutEduEmail', 'Sin correo institucional'],
+                      ['withoutEduEmail', 'Sin correo CUN'],
                     ] as const
                   ).map(([key, label]) => (
                     <label
@@ -975,7 +975,13 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                         </p>
                         <p className="text-xs text-slate-500 flex items-center gap-1 truncate">
                           <EnvelopeIcon className="h-3 w-3 shrink-0" />
-                          {row.edu_email || row.email || 'Sin correo'}
+                          {row.edu_email?.trim() ? (
+                            row.edu_email.trim()
+                          ) : (
+                            <span className="text-red-600 font-semibold">
+                              sin correo CUN
+                            </span>
+                          )}
                         </p>
                       </div>
                     </div>
