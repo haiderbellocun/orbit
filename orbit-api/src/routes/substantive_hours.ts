@@ -52,7 +52,8 @@ router.get("/substantive-hours/categories", async (_req, res) => {
  * Filtros:
  *  search, area_id, school_id, period (cátedra),
  *  contract_hours (21|42), availability (available|none|unknown),
- *  has_catedra (true|false), has_substantive (true|false)
+ *  has_catedra (true|false), has_substantive (true|false),
+ *  without_edu_email (true)
  */
 router.get("/substantive-hours/teachers", async (req: Request, res: Response) => {
   try {
@@ -93,6 +94,15 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
     )
       .trim()
       .toLowerCase();
+    const withoutEduEmailRaw = String(
+      req.query.without_edu_email ?? req.query.withoutEduEmail ?? ""
+    )
+      .trim()
+      .toLowerCase();
+    const withoutEduEmail =
+      withoutEduEmailRaw === "1" ||
+      withoutEduEmailRaw === "true" ||
+      withoutEduEmailRaw === "yes";
 
     const pageNum = Math.max(
       1,
@@ -169,6 +179,10 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
       conditions.push(`COALESCE(sub.substantive_hours, 0) = 0`);
     }
 
+    if (withoutEduEmail) {
+      conditions.push(`(p.edu_email IS NULL OR TRIM(p.edu_email) = '')`);
+    }
+
     const remainingExpr = `
       (${contractHoursExpr})
       - COALESCE(cath.catedra_hours, 0)
@@ -195,7 +209,7 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         p.id,
         p.document,
         p.full_name AS name,
-        COALESCE(p.edu_email, p.email, '') AS email,
+        NULLIF(TRIM(p.edu_email), '') AS email,
         a.name AS area,
         s.name AS school,
         ct.name AS contract_type,
