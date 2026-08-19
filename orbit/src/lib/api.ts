@@ -544,6 +544,79 @@ export async function getVacancies(): Promise<VacanciesListResponse> {
   return handleJson(response);
 }
 
+export type VacanciesExcelExportParams = {
+  search?: string;
+  status?: string;
+  areaId?: string;
+  schoolId?: string;
+  programId?: string;
+  dateField?: "createdAt" | "sentToCapitalAt";
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+function filenameFromContentDisposition(
+  header: string | null,
+  fallback: string
+): string {
+  if (!header) return fallback;
+  const star = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim());
+    } catch {
+      /* ignore */
+    }
+  }
+  const plain = header.match(/filename="([^"]+)"/i) ?? header.match(/filename=([^;]+)/i);
+  return plain?.[1]?.trim() || fallback;
+}
+
+/** Descarga Excel de vacantes (tabla "Vacantes", respeta filtros). */
+export async function downloadVacanciesExcel(
+  params?: VacanciesExcelExportParams
+): Promise<void> {
+  const qs = new URLSearchParams();
+  if (params?.search?.trim()) qs.set("search", params.search.trim());
+  if (params?.status?.trim()) qs.set("status", params.status.trim());
+  if (params?.areaId?.trim()) qs.set("areaId", params.areaId.trim());
+  if (params?.schoolId?.trim()) qs.set("schoolId", params.schoolId.trim());
+  if (params?.programId?.trim()) qs.set("programId", params.programId.trim());
+  if (params?.dateField) qs.set("dateField", params.dateField);
+  if (params?.dateFrom?.trim()) qs.set("dateFrom", params.dateFrom.trim());
+  if (params?.dateTo?.trim()) qs.set("dateTo", params.dateTo.trim());
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  const response = await authFetch(`${BASE_URL}/vacancies/export.xlsx${suffix}`);
+  if (response.status === 401) {
+    clearOrbitSession();
+  }
+  if (!response.ok) {
+    let msg = `HTTP ${response.status}`;
+    const text = await response.text().catch(() => "");
+    try {
+      const j = JSON.parse(text) as { error?: string };
+      if (typeof j.error === "string" && j.error.trim() !== "") msg = j.error.trim();
+      else if (text.trim()) msg = text.trim();
+    } catch {
+      if (text.trim()) msg = text.trim();
+    }
+    throw new Error(msg);
+  }
+  const blob = await response.blob();
+  const filename = filenameFromContentDisposition(
+    response.headers.get("Content-Disposition"),
+    "Gestion_de_Vacantes.xlsx"
+  );
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function getVacancy(id: string): Promise<VacancyDetail> {
   const response = await authFetch(
     `${BASE_URL}/vacancies/${encodeURIComponent(id)}`,

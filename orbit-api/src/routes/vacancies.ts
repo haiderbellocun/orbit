@@ -23,6 +23,10 @@ import {
 } from "../lib/dataValidators";
 import { toUpperAscii, toUpperAsciiOrNull } from "../lib/textNormalize";
 import { notifyVacancyCreated } from "../services/vacancyNotifyService";
+import {
+  buildVacanciesWorkbook,
+  vacanciesExportFilename,
+} from "../services/vacancyExcelExport";
 
 const router = Router();
 
@@ -817,6 +821,178 @@ router.get("/vacancies", async (req, res) => {
     res.json({ data: rows.map((r) => mapListRow(r as Record<string, unknown>)) });
   } catch (e) {
     console.error("GET /vacancies failed:", e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+type VacancyListItem = ReturnType<typeof mapListRow>;
+
+function queryString(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function vacancyDayValue(
+  v: VacancyListItem,
+  field: "createdAt" | "sentToCapitalAt"
+): string | null {
+  const raw = field === "createdAt" ? v.createdAt : v.sentToCapitalAt;
+  if (!raw?.trim()) return null;
+  return raw.slice(0, 10);
+}
+
+function filterVacanciesForExport(
+  rows: VacancyListItem[],
+  q: Request["query"]
+): { rows: VacancyListItem[]; summary: string } {
+  const search = queryString(q.search ?? q.q).toLowerCase();
+  const status = queryString(q.status);
+  const areaId = queryString(q.areaId);
+  const schoolId = queryString(q.schoolId);
+  const programId = queryString(q.programId);
+  const dateFieldRaw = queryString(q.dateField);
+  const dateField: "createdAt" | "sentToCapitalAt" =
+    dateFieldRaw === "sentToCapitalAt" ? "sentToCapitalAt" : "createdAt";
+  const dateFrom = queryString(q.dateFrom);
+  const dateTo = queryString(q.dateTo);
+
+  const statusLabels: Record<string, string> = {
+    open: "Abierta",
+    selected: "Seleccionado",
+    requisition_sent: "Requisición Enviada",
+    internal_movement: "Movimiento interno",
+    hired: "Contratado",
+    closed: "Cerrada",
+    cancelled: "Cancelada",
+    cancelled_by_capital: "Cancelada por capital",
+  };
+  const areaName = areaId
+    ? rows.find((v) => String(v.areaId) === areaId)?.areaName
+    : null;
+  const schoolName = schoolId
+    ? rows.find((v) => String(v.schoolId ?? "") === schoolId)?.schoolName
+    : null;
+  const programName = programId
+    ? rows.find((v) => String(v.programId ?? "") === programId)?.programName
+    : null;
+
+  const parts: string[] = [];
+  if (search) parts.push(`Búsqueda: "${queryString(q.search ?? q.q)}"`);
+  if (status) parts.push(`Estado: ${statusLabels[status] ?? status}`);
+  if (areaId) parts.push(`Área: ${areaName || areaId}`);
+  if (schoolId) parts.push(`Escuela: ${schoolName || schoolId}`);
+  if (programId) parts.push(`Programa: ${programName || programId}`);
+  if (dateFrom || dateTo) {
+    const fieldLabel =
+      dateField === "sentToCapitalAt" ? "enviada a capital" : "creación";
+    parts.push(
+      `Fecha ${fieldLabel}: ${dateFrom || "…"} → ${dateTo || "…"}`
+    );
+  }
+
+  const filtered = rows.filter((v) => {
+    if (status && v.operationStatus !== status) return false;
+    if (areaId && String(v.areaId) !== areaId) return false;
+    if (schoolId && String(v.schoolId ?? "") !== schoolId) return false;
+    if (programId && String(v.programId ?? "") !== programId) return false;
+    if (dateFrom || dateTo) {
+      const day = vacancyDayValue(v, dateField);
+      if (!day) return false;
+      if (dateFrom && day < dateFrom) return false;
+      if (dateTo && day > dateTo) return false;
+    }
+    if (!search) return true;
+    return (
+      v.positionName.toLowerCase().includes(search) ||
+      (v.programName ?? "").toLowerCase().includes(search) ||
+      (v.areaName ?? "").toLowerCase().includes(search) ||
+      (v.schoolName ?? "").toLowerCase().includes(search) ||
+      v.id.toLowerCase().includes(search) ||
+      (v.reqNumber ?? "").toLowerCase().includes(search)
+    );
+  });
+
+  return {
+    rows: filtered,
+    summary: parts.length > 0 ? parts.join(" · ") : "",
+  };
+}
+
+function contentDispositionAttachment(filename: string): string {
+  const ascii = filename.replace(/[^\x20-\x7E]/g, "_");
+  const encoded = encodeURIComponent(filename);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+/** GET /vacancies/export.xlsx — Excel con tabla "Vacantes" (antes de /vacancies/:id). */
+router.get("/vacancies/export.xlsx", async (req, res) => {
+  try {
+    const mode = await resolveCoreSchemaMode();
+    if (mode == null) {
+      res.status(503).json({
+        error: "CORE catalog (area/school/program) is not available",
+      });
+      return;
+    }
+    const areaT = qualifiedCoreTable(mode, "area");
+    const schoolT = qualifiedCoreTable(mode, "school");
+    const programT = qualifiedCoreTable(mode, "program");
+    const personT = qualifiedCoreTable(mode, "person");
+    const opNotesSql = sqlOperationNotesAgg(personT);
+    const schoolScope = schoolScopeFromRequest(req);
+    const schoolFilter = schoolScope ? `WHERE v.school_id = $1` : "";
+    const queryParams = schoolScope ? [schoolScope.schoolId] : [];
+
+    const { rows } = await pool.query(
+      `SELECT
+         v.id,
+         v.public_id,
+         v.area_id,
+         a.name AS area_name,
+         v.school_id,
+         s.name AS school_name,
+         v.program_id,
+         p.name AS program_name,
+         v.position_name,
+         v.curricular_line,
+         v.quantity,
+         v.hired_quantity,
+         v.operation_status,
+         ${opNotesSql} AS operation_notes_json,
+         ${SQL_REQUISITION_COMPLIANCE},
+         v.created_at,
+         v.updated_at,
+         v.closed_at,
+         v.direct_manager_identification,
+         r.req_number,
+         r.assigned_at AS req_assigned_at,
+         r.sent_to_capital_at,
+         r.capital_notes AS requisition_capital_notes
+       FROM vacancies.vacancy v
+       JOIN ${areaT} a ON a.id = v.area_id
+       LEFT JOIN ${schoolT} s ON s.id = v.school_id
+       LEFT JOIN ${programT} p ON p.id = v.program_id
+       LEFT JOIN vacancies.requisition r ON r.vacancy_id = v.id
+       ${schoolFilter}
+       ORDER BY v.created_at DESC`,
+      queryParams
+    );
+
+    const mapped = rows.map((r) => mapListRow(r as Record<string, unknown>));
+    const { rows: filtered, summary } = filterVacanciesForExport(mapped, req.query);
+    const buffer = await buildVacanciesWorkbook(filtered, {
+      generatedByName: req.orbitUser?.name ?? null,
+      generatedByEmail: req.orbitUser?.email ?? null,
+      filtersSummary: summary,
+    });
+    const filename = vacanciesExportFilename();
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", contentDispositionAttachment(filename));
+    res.send(buffer);
+  } catch (e) {
+    console.error("GET /vacancies/export.xlsx failed:", e);
     res.status(500).json({ error: "Internal server error" });
   }
 });
