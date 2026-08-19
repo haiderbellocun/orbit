@@ -58,4 +58,32 @@ export async function runStartupSchemaPatches(): Promise<void> {
     `);
     console.log("startupSchemaPatches: hired_quantity agregada");
   }
+
+  const statusConstraint = await pool.query<{ def: string | null }>(`
+    SELECT pg_get_constraintdef(c.oid) AS def
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE n.nspname = 'vacancies'
+      AND t.relname = 'vacancy'
+      AND c.conname = 'vacancy_operation_status_check'
+  `);
+  const statusDef = String(statusConstraint.rows[0]?.def ?? "");
+  if (statusDef.length > 0 && !statusDef.includes("internal_movement")) {
+    await pool.query(
+      `ALTER TABLE vacancies.vacancy DROP CONSTRAINT IF EXISTS vacancy_operation_status_check`
+    );
+    await pool.query(`
+      ALTER TABLE vacancies.vacancy
+      ADD CONSTRAINT vacancy_operation_status_check CHECK (
+        operation_status IN (
+          'open', 'selected', 'requisition_sent', 'internal_movement', 'hired',
+          'closed', 'cancelled', 'cancelled_by_capital'
+        )
+      )
+    `);
+    console.log(
+      "startupSchemaPatches: operation_status incluye internal_movement"
+    );
+  }
 }

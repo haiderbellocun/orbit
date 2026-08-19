@@ -37,6 +37,7 @@ const OPERATION_STATUSES = new Set([
   "open",
   "selected",
   "requisition_sent",
+  "internal_movement",
   "hired",
   "closed",
   "cancelled",

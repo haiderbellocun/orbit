@@ -35,6 +35,7 @@ const STATUS_ORDER: VacancyOperationStatus[] = [
   'open',
   'selected',
   'requisition_sent',
+  'internal_movement',
   'hired',
   'closed',
   'cancelled',
@@ -180,7 +181,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     for (const v of rows) {
       counts.set(v.operationStatus, (counts.get(v.operationStatus) ?? 0) + 1);
     }
-    return STATUS_ORDER.filter((s) => counts.has(s)).map((s) => ({
+    return STATUS_ORDER.map((s) => ({
       status: s,
       count: counts.get(s) ?? 0,
     }));
@@ -621,6 +622,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                             'bg-amber-50 text-amber-800 border-amber-100',
                           v.operationStatus === 'requisition_sent' &&
                             'bg-violet-50 text-violet-800 border-violet-100',
+                          v.operationStatus === 'internal_movement' &&
+                            'bg-cyan-50 text-cyan-800 border-cyan-100',
                           v.operationStatus === 'hired' &&
                             'bg-emerald-50 text-emerald-800 border-emerald-100',
                           (v.operationStatus === 'closed' ||
