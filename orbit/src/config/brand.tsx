@@ -5,10 +5,11 @@ import {
   BriefcaseIcon,
   LockOpenIcon,
   ChatBubbleLeftEllipsisIcon,
-  UserGroupIcon,
   ShieldCheckIcon,
   FolderIcon,
-  BookOpenIcon
+  BookOpenIcon,
+  BuildingOffice2Icon,
+  ClockIcon,
 } from '@heroicons/react/24/solid';
 import { BrandConfig } from '../types';
 
@@ -50,15 +51,13 @@ export const BRAND_CONFIG: BrandConfig = {
  */
 export const APP_ICONS = {
   dashboard: BoltIcon,
-  teachers: AcademicCapIcon,
   vacancies: BriefcaseIcon,
   reinstatements: LockOpenIcon,
   news: ChatBubbleLeftEllipsisIcon,
-  coordinators: UserGroupIcon,
   audit: ShieldCheckIcon,
   export: FolderIcon,
   programs: BookOpenIcon,
   'academic-load': AcademicCapIcon,
-  personal: UserGroupIcon,
-  lites: UserGroupIcon,
+  'substantive-hours': ClockIcon,
+  'planta-activa': BuildingOffice2Icon,
 };

@@ -98,7 +98,18 @@ router.get("/catalog/programs", async (req, res) => {
       return;
     }
     const table = qualifiedCoreTable(coreMode, "program");
+    const schoolT = qualifiedCoreTable(coreMode, "school");
+    const personT = qualifiedCoreTable(coreMode, "person");
     const schoolScope = schoolScopeFromRequest(req);
+
+    const areaIdRaw =
+      typeof req.query.area_id === "string" ? req.query.area_id.trim() : "";
+    const areaId = areaIdRaw ? Number.parseInt(areaIdRaw, 10) : null;
+    if (areaIdRaw && (areaId == null || Number.isNaN(areaId) || areaId <= 0)) {
+      res.status(400).json({ error: "Invalid area_id" });
+      return;
+    }
+
     const schoolIdRaw = schoolScope
       ? String(schoolScope.schoolId)
       : typeof req.query.school_id === "string"
@@ -110,34 +121,63 @@ router.get("/catalog/programs", async (req, res) => {
       return;
     }
 
-    const baseActive = `COALESCE(is_active, true) = true`;
-    if (schoolId == null) {
+    const baseActive = `COALESCE(pr.is_active, true) = true`;
+
+    // Por escuela: programas del catálogo + los ya asignados a personas de esa escuela.
+    if (schoolId != null) {
       const { rows } = await pool.query(
-        `SELECT id, name, school_id
-         FROM ${table}
+        `SELECT DISTINCT pr.id, pr.name, pr.school_id
+         FROM ${table} pr
          WHERE ${baseActive}
-         ORDER BY name ASC`
+           AND (
+             pr.school_id = $1
+             OR pr.id IN (
+               SELECT DISTINCT p.program_id
+               FROM ${personT} p
+               WHERE p.school_id = $1
+                 AND p.program_id IS NOT NULL
+             )
+           )
+         ORDER BY pr.name ASC`,
+        [schoolId]
       );
       res.json(rows);
       return;
     }
 
-    let result = await pool.query(
-      `SELECT id, name, school_id
-       FROM ${table}
-       WHERE ${baseActive} AND school_id = $1
-       ORDER BY name ASC`,
-      [schoolId]
-    );
-    if (result.rows.length === 0) {
-      result = await pool.query(
-        `SELECT id, name, school_id
-         FROM ${table}
-         WHERE ${baseActive} AND school_id IS NULL
-         ORDER BY name ASC`
+    // Por área: programas de escuelas del área + usados por personas del área.
+    if (areaId != null) {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT pr.id, pr.name, pr.school_id
+         FROM ${table} pr
+         WHERE ${baseActive}
+           AND (
+             pr.school_id IN (
+               SELECT s.id FROM ${schoolT} s
+               WHERE s.area_id = $1 AND COALESCE(s.is_active, true) = true
+             )
+             OR pr.id IN (
+               SELECT DISTINCT p.program_id
+               FROM ${personT} p
+               LEFT JOIN ${schoolT} s ON s.id = p.school_id
+               WHERE p.program_id IS NOT NULL
+                 AND COALESCE(p.area_id, s.area_id) = $1
+             )
+           )
+         ORDER BY pr.name ASC`,
+        [areaId]
       );
+      res.json(rows);
+      return;
     }
-    res.json(result.rows);
+
+    const { rows } = await pool.query(
+      `SELECT pr.id, pr.name, pr.school_id
+       FROM ${table} pr
+       WHERE ${baseActive}
+       ORDER BY pr.name ASC`
+    );
+    res.json(rows);
   } catch (e) {
     console.error("GET /catalog/programs failed:", e);
     res.status(500).json({ error: "Internal server error" });

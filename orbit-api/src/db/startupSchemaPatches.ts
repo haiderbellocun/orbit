@@ -86,4 +86,51 @@ export async function runStartupSchemaPatches(): Promise<void> {
       "startupSchemaPatches: operation_status incluye internal_movement"
     );
   }
+
+  await ensureCoreUserIdSequence();
+}
+
+/** `core.user.id` es NOT NULL sin DEFAULT ni sequence en algunas bases. */
+async function ensureCoreUserIdSequence(): Promise<void> {
+  const schema = (process.env.DB_SCHEMA ?? "public").trim() || "public";
+  const { rows } = await pool.query<{ column_default: string | null }>(
+    `SELECT column_default
+     FROM information_schema.columns
+     WHERE table_schema = $1
+       AND table_name = 'user'
+       AND column_name = 'id'`,
+    [schema]
+  );
+  if (rows.length === 0) return;
+  if (rows[0]?.column_default) return;
+
+  // Solo caracteres seguros para identificadores SQL (env controlado).
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schema)) {
+    console.warn(
+      `startupSchemaPatches: DB_SCHEMA inválido para parche user.id (${schema})`
+    );
+    return;
+  }
+
+  const seqName = "user_id_seq";
+  const qualifiedSeq = `"${schema}"."${seqName}"`;
+  const qualifiedTable = `"${schema}"."user"`;
+  const regclassLiteral = `'${schema}.${seqName}'::regclass`;
+
+  await pool.query(`CREATE SEQUENCE IF NOT EXISTS ${qualifiedSeq}`);
+  await pool.query(
+    `SELECT setval(
+       ${regclassLiteral},
+       GREATEST((SELECT COALESCE(MAX(id), 1) FROM ${qualifiedTable}), 1),
+       true
+     )`
+  );
+  await pool.query(
+    `ALTER TABLE ${qualifiedTable}
+       ALTER COLUMN id SET DEFAULT nextval(${regclassLiteral})`
+  );
+  await pool.query(
+    `ALTER SEQUENCE ${qualifiedSeq} OWNED BY ${qualifiedTable}.id`
+  );
+  console.log(`startupSchemaPatches: ${schema}.user.id → sequence ${seqName}`);
 }

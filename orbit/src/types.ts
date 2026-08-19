@@ -1,20 +1,39 @@
 export type View = 
   | 'login' 
   | 'home' 
-  | 'teachers' 
-  | 'teacher-detail' 
   | 'vacancies' 
   | 'vacancy-detail'
   | 'vacancy-informative-panel'
   | 'reinstatements' 
   | 'news' 
-  | 'coordinators' 
-  | 'lites'
   | 'academic-load'
+  | 'substantive-hours'
   | 'audit' 
   | 'export'
   | 'programs'
-  | 'personal';
+  | 'planta-activa';
+
+export interface PlantaPerson {
+  id: string;
+  document: string;
+  type_document?: string;
+  name: string;
+  email: string;
+  edu_email: string;
+  phone: string;
+  address?: string;
+  area_id: number | null;
+  area: string;
+  school_id: number | null;
+  school: string;
+  program_id: number | null;
+  program: string;
+  role_id: number | null;
+  role_name: string;
+  status: 'active' | 'inactive';
+  /** Si el usuario actual puede editar esta persona (API). */
+  can_edit?: boolean;
+}
 
 export interface Teacher {
   id: string;
@@ -204,20 +223,20 @@ export interface BrandConfig {
 
 export const NAV_ITEMS = [
   { id: 'home', label: 'Command Center', iconKey: 'dashboard' },
-  { id: 'teachers', label: 'Docentes', iconKey: 'teachers' },
+  { id: 'planta-activa', label: 'Planta Activa', iconKey: 'planta-activa' },
   { id: 'academic-load', label: 'Carga Académica', iconKey: 'academic-load' },
-  { id: 'coordinators', label: 'Coordinadores', iconKey: 'coordinators' },
-  { id: 'lites', label: 'LITEs', iconKey: 'lites' },
+  {
+    id: 'substantive-hours',
+    label: 'Balance carga',
+    iconKey: 'substantive-hours',
+  },
   { id: 'vacancies', label: 'Vacantes', iconKey: 'vacancies' },
   {
     id: 'vacancy-informative-panel',
     label: 'Panel informativo',
     iconKey: 'audit',
   },
-  { id: 'personal', label: 'Personal', iconKey: 'personal' },
   { id: 'news', label: 'Novedades', iconKey: 'news' },
-  // { id: 'reinstatements', label: 'Reintegros', iconKey: 'reinstatements' },
-  // { id: 'audit', label: 'Auditoría', iconKey: 'audit' },
 ] as const;
 
 export type NavItem = (typeof NAV_ITEMS)[number];

@@ -1,12 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
-import { MagnifyingGlassIcon } from '@heroicons/react/24/solid';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  MagnifyingGlassIcon,
+  FunnelIcon,
+  ChevronDownIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
 import { Teacher, Vacancy, Coordinator } from '@/src/types';
 import {
   getAcademicLoad,
-  getAcademicLoadSummary,
+  getAcademicLoadFilterOptions,
+  getCatalogAreas,
+  getCatalogSchools,
+  type CatalogArea,
+  type CatalogSchool,
 } from '@/src/lib/api';
 
 interface AcademicLoadRow {
@@ -14,9 +23,12 @@ interface AcademicLoadRow {
   teacherName: string;
   program: string;
   subjectName: string;
+  subjectCode: string;
+  groupCode: string;
   credits: string;
   modality: string;
   modalityLabel: string;
+  block: string;
   period: string;
   type: string;
 }
@@ -48,32 +60,40 @@ function mapRow(r: Record<string, unknown>): AcademicLoadRow {
     teacherName: String(r.teacher_name ?? ''),
     program,
     subjectName: String(r.subject_name ?? ''),
+    subjectCode: String(r.subject_code ?? ''),
+    groupCode: String(r.group_code ?? ''),
     credits,
     modality: mod,
     modalityLabel,
+    block: String(r.block ?? '') || '—',
     period: String(r.period ?? ''),
-    type: String(r.type ?? 'current'),
+    type: String(r.type ?? 'projection'),
   };
 }
 
-function parseSummaryPeriods(raw: unknown): string[] {
-  const fallback = ['26V01', '25V06', '25T05', '2025D'];
-  if (raw == null || typeof raw !== 'object') return fallback;
-  const o = raw as Record<string, unknown>;
-  if (Array.isArray(o.periods)) {
-    return o.periods.map((p) => String(p));
-  }
-  if (Array.isArray(o.data)) {
-    return (o.data as unknown[])
-      .map((x) =>
-        x && typeof x === 'object' && 'period' in x
-          ? String((x as { period: unknown }).period)
-          : ''
-      )
-      .filter(Boolean);
-  }
-  return fallback;
-}
+type Filters = {
+  search: string;
+  period: string;
+  modality: string;
+  areaId: string;
+  schoolId: string;
+  program: string;
+  subject: string;
+  groupCode: string;
+  block: string;
+};
+
+const EMPTY_FILTERS: Filters = {
+  search: '',
+  period: '',
+  modality: '',
+  areaId: '',
+  schoolId: '',
+  program: '',
+  subject: '',
+  groupCode: '',
+  block: '',
+};
 
 interface AcademicLoadViewProps {
   searchQuery?: string;
@@ -83,40 +103,46 @@ interface AcademicLoadViewProps {
     vacancies: Vacancy[];
     coordinators: Coordinator[];
   } | null;
+  onOpenVacancyFromNotification?: (vacancyId: string) => void;
 }
 
 export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
-  searchQuery: headerSearchQuery = '',
-  setSearchQuery: setHeaderSearchQuery,
-  searchResults,
+  onOpenVacancyFromNotification,
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [periodFilter, setPeriodFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [modalityFilter, setModalityFilter] = useState('');
-  const [periodOptions, setPeriodOptions] = useState<string[]>([
-    '26V01',
-    '25V06',
-    '25T05',
-    '2025D',
-  ]);
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [periodOptions, setPeriodOptions] = useState<string[]>([]);
+  const [blockOptions, setBlockOptions] = useState<string[]>([]);
+  const [programOptions, setProgramOptions] = useState<string[]>([]);
+  const [areas, setAreas] = useState<CatalogArea[]>([]);
+  const [schools, setSchools] = useState<CatalogSchool[]>([]);
   const [rows, setRows] = useState<AcademicLoadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
-  const filterKeyRef = useRef<string | null>(null);
+
+  const selectClass =
+    'w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-400/40';
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const summary = await getAcademicLoadSummary();
+        const [opts, a, s] = await Promise.all([
+          getAcademicLoadFilterOptions(),
+          getCatalogAreas(),
+          getCatalogSchools(),
+        ]);
         if (cancelled) return;
-        const periods = parseSummaryPeriods(summary);
-        if (periods.length > 0) setPeriodOptions(periods);
+        setPeriodOptions(opts.periods);
+        setBlockOptions(opts.blocks);
+        setProgramOptions(opts.programs);
+        setAreas(Array.isArray(a) ? a : []);
+        setSchools(Array.isArray(s) ? s : []);
       } catch {
-        /* se mantienen periodos por defecto */
+        /* catálogos opcionales */
       }
     })();
     return () => {
@@ -124,57 +150,81 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const filterKey = `${searchQuery}|${periodFilter}|${typeFilter}|${modalityFilter}`;
-        let pageToUse = currentPage;
-        if (filterKeyRef.current !== filterKey) {
-          if (filterKeyRef.current !== null) {
-            pageToUse = 1;
-            if (currentPage !== 1) setCurrentPage(1);
-          }
-          filterKeyRef.current = filterKey;
-        }
+  const schoolOptions = useMemo(() => {
+    if (!filters.areaId) return schools;
+    return schools.filter((s) => String(s.area_id ?? '') === filters.areaId);
+  }, [schools, filters.areaId]);
 
-        const res = await getAcademicLoad({
-          unit_name: searchQuery.trim() || undefined,
-          period: periodFilter || undefined,
-          type: typeFilter || undefined,
-          modality: modalityFilter || undefined,
-          page: pageToUse,
-          limit: 100,
-        });
-        if (!cancelled) {
-          const list = Array.isArray(res.data)
-            ? res.data.map((r) => mapRow(r as Record<string, unknown>))
-            : [];
-          setRows(list);
-          setTotalCount(res.pagination?.total ?? 0);
-          setTotalPages(res.pagination?.totalPages ?? 0);
-        }
-      } catch {
-        if (!cancelled) {
-          setRows([]);
-          setTotalCount(0);
-          setTotalPages(0);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    currentPage,
-    searchQuery,
-    periodFilter,
-    typeFilter,
-    modalityFilter,
-  ]);
+  const loadList = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await getAcademicLoad({
+        unit_name: applied.search.trim() || undefined,
+        period: applied.period || undefined,
+        modality: applied.modality || undefined,
+        area_id: applied.areaId ? Number(applied.areaId) : undefined,
+        school_id: applied.schoolId ? Number(applied.schoolId) : undefined,
+        program: applied.program || undefined,
+        subject: applied.subject.trim() || undefined,
+        group_code: applied.groupCode.trim() || undefined,
+        block: applied.block || undefined,
+        page: currentPage,
+        limit: 100,
+      });
+      const list = Array.isArray(res.data)
+        ? res.data.map((r) => mapRow(r as Record<string, unknown>))
+        : [];
+      setRows(list);
+      setTotalCount(res.pagination?.total ?? 0);
+      setTotalPages(res.pagination?.totalPages ?? 0);
+    } catch {
+      setRows([]);
+      setTotalCount(0);
+      setTotalPages(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [applied, currentPage]);
+
+  useEffect(() => {
+    void loadList();
+  }, [loadList]);
+
+  useEffect(() => {
+    if (filters.search === applied.search) return;
+    const t = setTimeout(() => {
+      setCurrentPage(1);
+      setApplied((prev) => ({ ...prev, search: filters.search }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [filters.search, applied.search]);
+
+  const applyFilters = () => {
+    setCurrentPage(1);
+    setApplied({ ...filters });
+  };
+
+  const clearFilters = () => {
+    setFilters(EMPTY_FILTERS);
+    setApplied(EMPTY_FILTERS);
+    setCurrentPage(1);
+  };
+
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (applied.period) n++;
+    if (applied.modality) n++;
+    if (applied.areaId) n++;
+    if (applied.schoolId) n++;
+    if (applied.program) n++;
+    if (applied.subject.trim()) n++;
+    if (applied.groupCode.trim()) n++;
+    if (applied.block) n++;
+    return n;
+  }, [applied]);
+
+  const hasActive =
+    Boolean(applied.search.trim()) || activeFilterCount > 0;
 
   return (
     <div className="space-y-8 relative">
@@ -184,54 +234,254 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
       <Header
         title="Carga Académica"
         subtitle="Asignación docente por periodo"
-        searchQuery={headerSearchQuery}
-        setSearchQuery={setHeaderSearchQuery}
-        searchResults={searchResults}
+        onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
-      <div className="glass-panel p-4 flex flex-col xl:flex-row flex-wrap gap-4 items-stretch xl:items-end relative z-10">
-        <div className="relative flex-1 min-w-[200px]">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar docente o materia..."
-            className="glass-input w-full pl-9 pr-4 py-2.5 text-sm"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      <div data-tutorial="academic-filters" className="glass-panel p-4 space-y-3 relative z-10">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+          <div className="relative flex-1">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar por docente, email, documento, materia o programa…"
+              className={cn(selectClass, 'pl-10')}
+              value={filters.search}
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, search: e.target.value }))
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') applyFilters();
+              }}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((o) => !o)}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors',
+                filtersOpen || activeFilterCount > 0
+                  ? 'bg-violet-50 border-violet-200 text-violet-700'
+                  : 'bg-white/80 border-slate-200/80 text-slate-600 hover:bg-slate-50'
+              )}
+              aria-expanded={filtersOpen}
+            >
+              <FunnelIcon className="h-4 w-4" />
+              Filtros
+              {activeFilterCount > 0 && (
+                <span className="min-w-5 h-5 px-1.5 rounded-md bg-violet-600 text-white text-[10px] flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+              <ChevronDownIcon
+                className={cn(
+                  'h-4 w-4 transition-transform',
+                  filtersOpen && 'rotate-180'
+                )}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={applyFilters}
+              className="glass-button-primary px-4 py-2.5 text-sm font-bold"
+            >
+              Buscar
+            </button>
+            {hasActive && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50/60 transition-colors"
+                title="Limpiar filtros"
+              >
+                <XMarkIcon className="h-4 w-4" />
+                Limpiar
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3 flex-1 min-w-0">
-          <select
-            className="glass-input py-2.5 text-sm min-w-[140px]"
-            value={periodFilter}
-            onChange={(e) => setPeriodFilter(e.target.value)}
-          >
-            <option value="">Todos</option>
-            {periodOptions.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-          <select
-            className="glass-input py-2.5 text-sm min-w-[160px]"
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-          >
-            <option value="">Todos</option>
-            <option value="current">Actual</option>
-            <option value="projection">Proyección</option>
-          </select>
-          <select
-            className="glass-input py-2.5 text-sm min-w-[160px]"
-            value={modalityFilter}
-            onChange={(e) => setModalityFilter(e.target.value)}
-          >
-            <option value="">Todos</option>
-            <option value="P">Presencial / P</option>
-            <option value="V">Virtual / V</option>
-          </select>
-        </div>
+
+        <AnimatePresence initial={false}>
+          {filtersOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="pt-3 border-t border-slate-100">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Periodo
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={filters.period}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, period: e.target.value }))
+                      }
+                    >
+                      <option value="">Todos los periodos</option>
+                      {periodOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Modalidad
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={filters.modality}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, modality: e.target.value }))
+                      }
+                    >
+                      <option value="">Todas</option>
+                      <option value="P">Presencial</option>
+                      <option value="V">Virtual</option>
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Bloque
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={filters.block}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, block: e.target.value }))
+                      }
+                    >
+                      <option value="">Todos</option>
+                      {blockOptions.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Área
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={filters.areaId}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          areaId: e.target.value,
+                          schoolId: '',
+                        }))
+                      }
+                    >
+                      <option value="">Todas</option>
+                      {areas.map((a) => (
+                        <option key={a.id} value={String(a.id)}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Escuela
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={filters.schoolId}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          schoolId: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">
+                        {filters.areaId ? 'Todas del área' : 'Todas'}
+                      </option>
+                      {schoolOptions.map((s) => (
+                        <option key={s.id} value={String(s.id)}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Programa
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={filters.program}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, program: e.target.value }))
+                      }
+                    >
+                      <option value="">Todos</option>
+                      {programOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Materia / código
+                    </span>
+                    <input
+                      type="text"
+                      className={selectClass}
+                      placeholder="Nombre o código…"
+                      value={filters.subject}
+                      onChange={(e) =>
+                        setFilters((f) => ({ ...f, subject: e.target.value }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') applyFilters();
+                      }}
+                    />
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Grupo
+                    </span>
+                    <input
+                      type="text"
+                      className={selectClass}
+                      placeholder="Código de grupo…"
+                      value={filters.groupCode}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          groupCode: e.target.value,
+                        }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') applyFilters();
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {loading ? (
@@ -253,16 +503,17 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
       ) : (
         <>
           <div className="glass-panel overflow-x-auto relative z-10">
-            <table className="w-full text-left text-sm min-w-[800px]">
+            <table className="w-full text-left text-sm min-w-[960px]">
               <thead>
                 <tr className="border-b border-white/40 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                   <th className="py-4 px-4">Docente</th>
                   <th className="py-4 px-4">Programa</th>
                   <th className="py-4 px-4">Materia</th>
+                  <th className="py-4 px-4 w-24">Grupo</th>
                   <th className="py-4 px-4 w-24">Créditos</th>
                   <th className="py-4 px-4">Modalidad</th>
+                  <th className="py-4 px-4">Bloque</th>
                   <th className="py-4 px-4">Periodo</th>
-                  <th className="py-4 px-4">Tipo</th>
                 </tr>
               </thead>
               <tbody>
@@ -275,8 +526,16 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                       {r.teacherName || '—'}
                     </td>
                     <td className="py-3 px-4 text-slate-600">{r.program}</td>
-                    <td className="py-3 px-4 text-slate-600 max-w-[220px] truncate">
-                      {r.subjectName || '—'}
+                    <td className="py-3 px-4 text-slate-600 max-w-[220px]">
+                      <div className="truncate">{r.subjectName || '—'}</div>
+                      {r.subjectCode ? (
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {r.subjectCode}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="py-3 px-4 text-slate-600 font-mono text-xs">
+                      {r.groupCode || '—'}
                     </td>
                     <td className="py-3 px-4 text-slate-600 font-mono text-xs">
                       {r.credits}
@@ -284,26 +543,15 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                     <td className="py-3 px-4 text-slate-600">
                       {r.modalityLabel}
                     </td>
+                    <td className="py-3 px-4 text-slate-600">{r.block}</td>
                     <td className="py-3 px-4 text-slate-600">{r.period}</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={cn(
-                          'text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border',
-                          r.type === 'current'
-                            ? 'bg-sky-50 text-sky-700 border-sky-100'
-                            : 'bg-violet-50 text-violet-700 border-violet-100'
-                        )}
-                      >
-                        {r.type === 'current' ? 'Actual' : 'Proyección'}
-                      </span>
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          {!loading && totalCount > 0 && (
+          {totalCount > 0 && (
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 py-8 relative z-10">
               <button
                 type="button"

@@ -7,9 +7,9 @@ import {
 } from "../middleware/orbitAuth";
 import {
   canAccessVacancyInformativePanel,
+  canVacancyAdmin,
   hasCapability,
   ORBIT_CAPABILITY,
-  VACANCY_ADMIN_ROLE_ID,
 } from "../lib/orbitCapabilities";
 import {
   qualifiedCoreTable,
@@ -108,11 +108,7 @@ function denyUnlessVacancyInformativePanel(req: Request, res: Response): boolean
 
 function denyUnlessVacancyAdmin(req: Request, res: Response): boolean {
   const u = req.orbitUser;
-  if (
-    u == null ||
-    u.roleId !== VACANCY_ADMIN_ROLE_ID ||
-    !hasCapability(u.capabilities, ORBIT_CAPABILITY.VACANCIES_ADMIN)
-  ) {
+  if (u == null || !canVacancyAdmin(u.capabilities, u.email)) {
     res.status(403).json({ error: "No tienes permiso para esta acción" });
     return true;
   }

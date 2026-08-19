@@ -2,16 +2,19 @@ import express, { Router, type Request, type Response } from "express";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { pool } from "../db/connection";
-import { buildLiteProgramIds } from "../lib/orbitRoles";
 import {
-  finalizeOrbitCapabilities,
-  isRole51StaffRoleId,
-  resolveOrbitAccess,
+  ensureVacancyAdminCapabilities,
+  isEmailAuthorizedForOrbit,
+  isEmailOnOrbitAllowlist,
+  isEmailVacancyAdmin,
+  resolveAllowlistAdminAccess,
+  resolvePlantaActivaGrantAccess,
+  VACANCIES_ADMIN_CAPABILITIES,
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
-import { isNewsAreaRoleId } from "../lib/newsScope";
-import { resolveLoginSchoolId } from "../lib/resolveLoginSchool";
+import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
+import { recordAppLoginAsync } from "../lib/loginAppsLog";
 
 const router = Router();
 
@@ -179,73 +182,95 @@ type OrbitGate =
       schoolId: number | null;
       areaId: number | null;
       programIds: number[];
+      /** `null` = sin recorte (admin) o ver todas. */
+      plantaViewAreaIds: number[] | null;
+      /** `null` = puede editar cualquier área (admin). */
+      plantaEditAreaIds: number[] | null;
     }
   | { ok: false; status: number; error: string };
 
-async function gateOrbitRoleAndLite(person: PersonRow): Promise<OrbitGate> {
-  const roleId = person.role_id != null ? Number(person.role_id) : null;
-  const resolved = resolveOrbitAccess({
-    roleId,
-    roleCode: person.role_code,
-    roleName: person.role_name,
-  });
+async function gateOrbitRoleAndLite(
+  person: PersonRow,
+  loginEmail: string
+): Promise<OrbitGate> {
+  const emailNorm = loginEmail.trim().toLowerCase();
+  const personEmailNorm = (person.email ?? "").trim().toLowerCase();
 
-  if (resolved == null) {
+  // Reborn: allowlist admin (acceso total) o grant acotado de Planta Activa.
+  const authorized =
+    isEmailAuthorizedForOrbit(emailNorm) ||
+    isEmailAuthorizedForOrbit(personEmailNorm);
+  if (!authorized) {
     return {
       ok: false,
       status: 403,
       error:
-        "Tu rol no tiene acceso a ORBIT. Solo pueden ingresar perfiles autorizados.",
+        "ORBIT está en reestructuración. Tu cuenta aún no tiene acceso autorizado.",
     };
   }
 
-  const finalized = finalizeOrbitCapabilities(resolved, roleId);
-  const { orbitAccess, capabilities } = finalized;
-
-  let schoolId: number | null = null;
-  let programIds: number[] = [];
-
-  if (orbitAccess === "lite") {
-    schoolId = person.school_id != null ? Number(person.school_id) : null;
-    programIds = buildLiteProgramIds(
-      person.program_id != null ? Number(person.program_id) : null,
-      person.programs_id
-    );
-    if (schoolId == null || Number.isNaN(schoolId) || programIds.length === 0) {
-      return {
-        ok: false,
-        status: 403,
-        error:
-          "Tu perfil LITE no tiene escuela o programa asignado. Completa los datos en el sistema central antes de usar ORBIT.",
-      };
-    }
+  if (
+    isEmailOnOrbitAllowlist(emailNorm) ||
+    isEmailOnOrbitAllowlist(personEmailNorm)
+  ) {
+    const { orbitAccess, capabilities } = resolveAllowlistAdminAccess();
+    return {
+      ok: true,
+      orbitAccess,
+      capabilities: ensureVacancyAdminCapabilities(
+        capabilities,
+        emailNorm || personEmailNorm
+      ),
+      schoolId: null,
+      areaId: null,
+      programIds: [],
+      plantaViewAreaIds: null,
+      plantaEditAreaIds: null,
+    };
   }
 
-  if (orbitAccess === "school") {
-    schoolId = await resolveLoginSchoolId({
-      school_id: person.school_id,
-      area_id: person.area_id,
-      program_id: person.program_id,
-    });
-    if (schoolId == null || Number.isNaN(schoolId)) {
-      const isRole51 = roleId != null && isRole51StaffRoleId(roleId);
-      return {
-        ok: false,
-        status: 403,
-        error: isRole51
-          ? "Tu perfil no tiene escuela asignada (school_id) ni se pudo inferir desde área o programa en Core. Asigna la escuela en el sistema central antes de usar ORBIT."
-          : "Tu perfil de coordinador de escuela no tiene escuela asignada. Completa los datos en el sistema central antes de usar ORBIT.",
-      };
-    }
+  const grant =
+    getPlantaActivaGrant(emailNorm) ?? getPlantaActivaGrant(personEmailNorm);
+  if (grant) {
+    const { orbitAccess, capabilities } = resolvePlantaActivaGrantAccess(grant);
+    return {
+      ok: true,
+      orbitAccess,
+      capabilities: ensureVacancyAdminCapabilities(
+        capabilities,
+        emailNorm || personEmailNorm
+      ),
+      schoolId: null,
+      areaId: null,
+      programIds: [],
+      plantaViewAreaIds: grant.viewAreaIds ?? null,
+      plantaEditAreaIds: grant.editAreaIds ?? [],
+    };
   }
 
-  let areaId: number | null = null;
-  if (roleId != null && isNewsAreaRoleId(roleId) && person.area_id != null) {
-    const aid = Number(person.area_id);
-    if (Number.isFinite(aid) && aid > 0) areaId = aid;
+  // Solo admin de vacantes (p. ej. Yesid): acceso a vacantes + eliminar.
+  if (isEmailVacancyAdmin(emailNorm) || isEmailVacancyAdmin(personEmailNorm)) {
+    return {
+      ok: true,
+      orbitAccess: "full",
+      capabilities: ensureVacancyAdminCapabilities(
+        [...VACANCIES_ADMIN_CAPABILITIES],
+        emailNorm || personEmailNorm
+      ),
+      schoolId: null,
+      areaId: null,
+      programIds: [],
+      plantaViewAreaIds: null,
+      plantaEditAreaIds: null,
+    };
   }
 
-  return { ok: true, orbitAccess, capabilities, schoolId, areaId, programIds };
+  return {
+    ok: false,
+    status: 403,
+    error:
+      "ORBIT está en reestructuración. Tu cuenta aún no tiene acceso autorizado.",
+  };
 }
 
 async function upsertUserForLogin(params: {
@@ -314,7 +339,25 @@ async function upsertUserForLogin(params: {
         userId = Number(insert.rows[0].id);
       } catch (e: unknown) {
         const err = e as { code?: string };
-        if (err.code === "23505") {
+        // 23502: id NOT NULL sin DEFAULT/sequence — asignar MAX(id)+1
+        if (err.code === "23502") {
+          const insert = await pool.query(
+            `INSERT INTO "user" (
+               id,
+               person_id,
+               username,
+               auth_provider,
+               auth_provider_id,
+               last_login_at
+             )
+             SELECT
+               COALESCE((SELECT MAX(u.id) FROM "user" u), 0) + 1,
+               $1, $2, $3, $4, NOW()
+             RETURNING id`,
+            [personId, email, authProvider, authProviderId]
+          );
+          userId = Number(insert.rows[0].id);
+        } else if (err.code === "23505") {
           const insert = await pool.query(
             `INSERT INTO "user" (
                person_id,
@@ -352,6 +395,11 @@ type AuthSuccessBody = {
     roleName: string | null;
     orbitAccess: OrbitAccess;
     capabilities: OrbitCapability[];
+    /** Presente en grants de Planta Activa; admin no lo necesita. */
+    plantaActivaAccess?: {
+      viewAreaIds: number[] | null;
+      editAreaIds: number[] | null;
+    };
   };
 };
 
@@ -362,6 +410,8 @@ async function buildTokenResponse(params: {
   schoolId: number | null;
   areaId: number | null;
   programIds: number[];
+  plantaViewAreaIds: number[] | null;
+  plantaEditAreaIds: number[] | null;
   email: string;
   displayName: string;
   picture: string;
@@ -380,6 +430,8 @@ async function buildTokenResponse(params: {
     schoolId,
     areaId,
     programIds,
+    plantaViewAreaIds,
+    plantaEditAreaIds,
     email,
     displayName,
     picture,
@@ -408,10 +460,22 @@ async function buildTokenResponse(params: {
         orbitAccess === "lite" || orbitAccess === "school" ? schoolId : null,
       areaId: areaId != null && Number.isFinite(areaId) ? areaId : null,
       programIds: orbitAccess === "lite" ? programIds : [],
+      plantaViewAreaIds,
+      plantaEditAreaIds,
     },
     jwtSecret,
     signOptions
   );
+
+  const plantaActivaAccess =
+    plantaEditAreaIds != null
+      ? {
+          viewAreaIds: plantaViewAreaIds,
+          editAreaIds: plantaEditAreaIds,
+        }
+      : undefined;
+
+  recordAppLoginAsync(email, "orbit");
 
   return {
     token,
@@ -426,6 +490,7 @@ async function buildTokenResponse(params: {
       roleName: person.role_name ?? null,
       orbitAccess,
       capabilities,
+      ...(plantaActivaAccess ? { plantaActivaAccess } : {}),
     },
   };
 }
@@ -478,7 +543,7 @@ async function completeGoogleSignInWithIdToken(
       };
     }
 
-    const gate = await gateOrbitRoleAndLite(person);
+    const gate = await gateOrbitRoleAndLite(person, email);
     if (!gate.ok) {
       return { ok: false, status: gate.status, error: gate.error };
     }
@@ -499,6 +564,8 @@ async function completeGoogleSignInWithIdToken(
       schoolId: gate.schoolId,
       areaId: gate.areaId,
       programIds: gate.programIds,
+      plantaViewAreaIds: gate.plantaViewAreaIds,
+      plantaEditAreaIds: gate.plantaEditAreaIds,
       email,
       displayName: name,
       picture,
@@ -613,7 +680,7 @@ router.post("/auth/local-email", async (req, res) => {
       return;
     }
 
-    const gate = await gateOrbitRoleAndLite(person);
+    const gate = await gateOrbitRoleAndLite(person, raw);
     if (!gate.ok) {
       res.status(gate.status).json({ error: gate.error });
       return;
@@ -639,6 +706,8 @@ router.post("/auth/local-email", async (req, res) => {
       schoolId: gate.schoolId,
       areaId: gate.areaId,
       programIds: gate.programIds,
+      plantaViewAreaIds: gate.plantaViewAreaIds,
+      plantaEditAreaIds: gate.plantaEditAreaIds,
       email: canonicalEmail,
       displayName: person.full_name || canonicalEmail,
       picture: "",
