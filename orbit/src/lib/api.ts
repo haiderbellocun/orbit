@@ -1,11 +1,11 @@
-import type {
-  Teacher,
+﻿import type {
   Vacancy,
   VacancyDetail,
   VacancyOperationNoteEntry,
   VacancyOperationStatus,
   OrbitNotification,
 } from "@/src/types";
+import { getPlantaActivaGrantByEmail } from "@/src/lib/plantaActivaAccess";
 
 const DEFAULT_API_BASE = "http://localhost:4000/api";
 
@@ -30,32 +30,10 @@ const BASE_URL = normalizeOrbitApiBase(
   import.meta.env.VITE_API_URL as string | undefined,
   DEFAULT_API_BASE
 );
-/** Por defecto igual que la API; solo define `VITE_IMPORT_API_URL` si el import debe ir a otro host. */
-const IMPORT_BASE_URL = normalizeOrbitApiBase(
-  import.meta.env.VITE_IMPORT_API_URL as string | undefined,
-  BASE_URL
-);
-
 /**
- * El import por multipart no puede ir al mismo host que el SPA si ese host es solo nginx estático
+ * El import por multipart no puede ir al mismo host que el SPA si ese host es solo nginx estÃ¡tico
  * (p. ej. Cloud Run `orbit-frontend`): devuelve 413. Mismo host con reverse proxy a Express: `VITE_ALLOW_SAME_ORIGIN_API=true`.
  */
-function assertImportUsesBackendHost(apiBase: string): void {
-  if (!import.meta.env.PROD || typeof window === "undefined") return;
-  if (import.meta.env.VITE_ALLOW_SAME_ORIGIN_API === "true") return;
-  let host: string;
-  try {
-    host = new URL(apiBase).hostname;
-  } catch {
-    return;
-  }
-  if (host === window.location.hostname) {
-    throw new Error(
-      "La importación está configurada contra el mismo host que esta página. En Cloud Run el frontend suele ser solo nginx: usa en el build VITE_API_URL con la URL del servicio backend (p. ej. https://orbit-backend-…us-central1.run.app/api), no la del frontend. Luego reconstruye y redespliega."
-    );
-  }
-}
-
 export type PaginationMeta = {
   total: number;
   page: number;
@@ -68,50 +46,9 @@ export type PaginatedResponse<T = unknown> = {
   pagination: PaginationMeta;
 };
 
-export type ImportTeachersResponse = {
-  success: boolean;
-  importId: string;
-  summary: {
-    totalRows: number;
-    processedRows: number;
-    skippedRows: number;
-    academicSourceRows?: {
-      cargaActual: number;
-      proyeccion: number;
-    };
-    created: {
-      persons: number;
-      contractTypes: number;
-      roles: number;
-      cities: number;
-      schools: number;
-      programs: number;
-      subjects?: number;
-      classGroups?: number;
-      classPreparations?: number;
-      academicLoads?: number;
-      projects?: number;
-      substantiveFunctions?: number;
-    };
-    updated: {
-      persons: number;
-    };
-    errors: Array<{
-      row: number;
-      reason: string;
-    }>;
-    warnings?: Array<{
-      row: number;
-      reason: string;
-    }>;
-    duration_ms: number;
-  };
-};
-
 /** Listados / lecturas habituales */
 const DEFAULT_FETCH_TIMEOUT_MS = 120_000;
 /** Solo subida del archivo al POST /import/docentes?async=1; el progreso sigue por SSE */
-const IMPORT_UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;
 
 export type OrbitAccess = "lite" | "full" | "school";
 
@@ -182,7 +119,7 @@ function parseStoredUserCapabilities(): string[] | null {
   }
 }
 
-/** Sesión local válida (JWT con orbitAccess, capabilities y no expirado en ~30s). */
+/** SesiÃ³n local vÃ¡lida (JWT con orbitAccess, capabilities y no expirado en ~30s). */
 export function isStoredJwtValid(): boolean {
   const token = getStoredJwt();
   if (!token) return false;
@@ -205,12 +142,130 @@ export function isStoredJwtValid(): boolean {
 
 export function getStoredCapabilities(): string[] {
   const fromUser = parseStoredUserCapabilities();
-  if (fromUser && fromUser.length > 0) return fromUser;
   const token = getStoredJwt();
   const p = token ? parseJwtPayload(token) : null;
-  if (p?.capabilities && p.capabilities.length > 0) return p.capabilities;
-  return [];
+  const base =
+    fromUser && fromUser.length > 0
+      ? fromUser
+      : p?.capabilities && p.capabilities.length > 0
+        ? p.capabilities
+        : [];
+
+  // Reborn: allowlist admin ve todas las capabilities aunque el JWT sea anterior.
+  if (isStoredEmailOnOrbitAllowlist()) {
+    return [...new Set([...ORBIT_ALLOWLIST_ADMIN_CAPABILITIES, ...base])];
+  }
+  // Admin de vacantes (eliminar / estado forzado).
+  if (isStoredEmailVacancyAdmin()) {
+    return [
+      ...new Set([
+        ...base,
+        "view:vacancies",
+        "vacancies:admin",
+      ]),
+    ];
+  }
+  return base;
 }
+
+/** Email de sesiÃ³n (orbit_user o JWT). */
+export function getStoredUserEmail(): string | null {
+  if (typeof localStorage !== "undefined") {
+    try {
+      const raw = localStorage.getItem(ORBIT_USER_STORAGE_KEY);
+      if (raw) {
+        const u = JSON.parse(raw) as { email?: unknown };
+        if (typeof u.email === "string" && u.email.trim()) {
+          return u.email.trim().toLowerCase();
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const token = getStoredJwt();
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+    const payload = JSON.parse(atob(b64 + pad)) as { email?: unknown };
+    if (typeof payload.email === "string" && payload.email.trim()) {
+      return payload.email.trim().toLowerCase();
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+const DEFAULT_ORBIT_ACCESS_ALLOWLIST = [
+  "camilo_quintero@cun.edu.co",
+  "haider_bello@cun.edu.co",
+  "raul_valencia@cun.edu.co",
+  "zuany_acuna@cun.edu.co",
+] as const;
+
+const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
+  "camilo_quintero@cun.edu.co",
+  "yesid_rocha@cun.edu.co",
+  "sara_murillofo@cun.edu.co",
+] as const;
+
+/** Misma allowlist de reborn que el API. Override: VITE_ORBIT_ACCESS_ALLOWLIST */
+function getOrbitAccessAllowlist(): string[] {
+  const raw = (
+    (import.meta.env.VITE_ORBIT_ACCESS_ALLOWLIST as string | undefined) ?? ""
+  ).trim();
+  if (!raw) return [...DEFAULT_ORBIT_ACCESS_ALLOWLIST];
+  const emails = raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0);
+  return emails.length > 0
+    ? [...new Set(emails)]
+    : [...DEFAULT_ORBIT_ACCESS_ALLOWLIST];
+}
+
+function isStoredEmailOnOrbitAllowlist(): boolean {
+  const email = getStoredUserEmail();
+  if (!email) return false;
+  return getOrbitAccessAllowlist().includes(email);
+}
+
+function getVacancyAdminAllowlist(): string[] {
+  const raw = (
+    (import.meta.env.VITE_ORBIT_VACANCY_ADMIN_ALLOWLIST as string | undefined) ??
+    ""
+  ).trim();
+  if (!raw) return [...DEFAULT_VACANCY_ADMIN_ALLOWLIST];
+  const emails = raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0);
+  return emails.length > 0
+    ? [...new Set(emails)]
+    : [...DEFAULT_VACANCY_ADMIN_ALLOWLIST];
+}
+
+function isStoredEmailVacancyAdmin(): boolean {
+  const email = getStoredUserEmail();
+  if (!email) return false;
+  return getVacancyAdminAllowlist().includes(email);
+}
+
+/** Capabilities de bootstrap admin (alineadas con SUPER_ADMIN del API). */
+const ORBIT_ALLOWLIST_ADMIN_CAPABILITIES: readonly string[] = [
+  "view:home",
+  "view:academic_load",
+  "view:substantive_hours",
+  "view:vacancies",
+  "vacancies:informative_panel",
+  "vacancies:admin",
+  "view:planta_activa",
+  "view:news",
+];
 
 export function getStoredOrbitAccess(): OrbitAccess | null {
   if (typeof localStorage !== "undefined") {
@@ -242,6 +297,41 @@ export function getStoredOrbitAccess(): OrbitAccess | null {
   return null;
 }
 
+/** Alcance de Planta Activa (grants). `null` editAreaIds = admin sin lÃ­mite. */
+export function getStoredPlantaActivaAccess(): {
+  viewAreaIds: number[] | null;
+  editAreaIds: number[] | null;
+} | null {
+  if (typeof localStorage !== "undefined") {
+    try {
+      const raw = localStorage.getItem(ORBIT_USER_STORAGE_KEY);
+      if (raw) {
+        const u = JSON.parse(raw) as {
+          email?: string;
+          plantaActivaAccess?: {
+            viewAreaIds?: number[] | null;
+            editAreaIds?: number[] | null;
+          };
+        };
+        if (u.plantaActivaAccess) {
+          return {
+            viewAreaIds: u.plantaActivaAccess.viewAreaIds ?? null,
+            editAreaIds: u.plantaActivaAccess.editAreaIds ?? null,
+          };
+        }
+        // Fallback por email (misma tabla que el API) si el JWT es anterior.
+        const grant = getPlantaActivaGrantByEmail(
+          typeof u.email === "string" ? u.email : getStoredUserEmail()
+        );
+        if (grant) return grant;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
 async function fetchWithTimeout(
   input: string,
   init: RequestInit,
@@ -262,18 +352,23 @@ async function fetchWithTimeout(
 function abortErrorMessage(timeoutMs: number): string {
   const sec = Math.round(timeoutMs / 1000);
   if (sec < 120) {
-    return `La solicitud superó el tiempo de espera (${sec}s). Comprueba que la API responda y que la base de datos sea alcanzable desde Cloud Run (p. ej. conector Cloud SQL en DB_HOST).`;
+    return `La solicitud superÃ³ el tiempo de espera (${sec}s). Comprueba que la API responda y que la base de datos sea alcanzable desde Cloud Run (p. ej. conector Cloud SQL en DB_HOST).`;
   }
   const min = Math.round(timeoutMs / 60_000);
-  return `La solicitud superó el tiempo de espera (${min} min). Comprueba que la API responda y la base de datos no esté bloqueada.`;
+  return `La solicitud superÃ³ el tiempo de espera (${min} min). Comprueba que la API responda y la base de datos no estÃ© bloqueada.`;
 }
 
 export type DashboardTrendType = "up" | "down" | "flat";
+
+export type DashboardTrendUnit = "percent" | "absolute" | "none";
 
 export type DashboardSummaryMetric = {
   value: number;
   trend: number;
   trendType: DashboardTrendType;
+  trendUnit: DashboardTrendUnit;
+  /** La direcciÃ³n de la tendencia es favorable (define el color en UI). */
+  trendGood: boolean;
   detail: string;
 };
 
@@ -283,6 +378,16 @@ export type DashboardSummaryResponse = {
   };
   openVacancies: DashboardSummaryMetric & {
     averageDaysToClose: number | null;
+    positionsOpen: number;
+  };
+  monthlyHires: DashboardSummaryMetric & {
+    positionsFilled: number;
+  };
+  timeToHire: DashboardSummaryMetric & {
+    sampleSize: number;
+  };
+  agingVacancies: DashboardSummaryMetric & {
+    oldestDays: number | null;
   };
   todayNews: DashboardSummaryMetric & {
     criticalCount: number;
@@ -336,6 +441,10 @@ export type GoogleAuthResponse = {
     roleName?: string | null;
     orbitAccess?: OrbitAccess;
     capabilities?: string[];
+    plantaActivaAccess?: {
+      viewAreaIds: number[] | null;
+      editAreaIds: number[] | null;
+    };
   };
 };
 
@@ -396,114 +505,7 @@ export async function loginWithLocalEmail(
   }
 }
 
-// Teachers
-export async function getTeachers(params?: {
-  search?: string;
-  status?: string;
-  program?: string;
-  campus?: string;
-  page?: number;
-  limit?: number;
-}): Promise<PaginatedResponse> {
-  const url = new URL(`${BASE_URL}/teachers`);
-  if (params?.search) url.searchParams.set("search", params.search);
-  if (params?.status) url.searchParams.set("status", params.status);
-  if (params?.program) url.searchParams.set("program", params.program);
-  if (params?.campus) url.searchParams.set("campus", params.campus);
-  if (params?.page != null) url.searchParams.set("page", String(params.page));
-  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
-  try {
-    const response = await fetchWithTimeout(
-      url.toString(),
-      { headers: jsonHeaders },
-      DEFAULT_FETCH_TIMEOUT_MS
-    );
-    return handleJson(response);
-  } catch (e) {
-    if (e instanceof Error && e.name === "AbortError") {
-      throw new Error(abortErrorMessage(DEFAULT_FETCH_TIMEOUT_MS));
-    }
-    throw e;
-  }
-}
 
-export async function getTeacher(id: number): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/teachers/${id}`, {
-    headers: jsonHeaders,
-  });
-  return handleJson(response);
-}
-
-export async function getTeacherByDocument(
-  document: string
-): Promise<unknown> {
-  const url = new URL(`${BASE_URL}/teachers`);
-  url.searchParams.set("search", document);
-  url.searchParams.set("limit", "1");
-  const res = await authFetch(url.toString(), { headers: jsonHeaders });
-  if (res.status === 401) {
-    clearOrbitSession();
-  }
-  if (!res.ok) throw new Error("Error");
-  const data = (await res.json()) as { data?: unknown[] };
-  return data.data?.[0] ?? null;
-}
-
-export async function createTeacher(data: Partial<Teacher>): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/teachers`, {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify(data),
-  });
-  return handleJson(response);
-}
-
-export async function updateTeacher(
-  id: number,
-  data: Partial<Teacher>
-): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/teachers/${id}`, {
-    method: "PUT",
-    headers: jsonHeaders,
-    body: JSON.stringify(data),
-  });
-  return handleJson(response);
-}
-
-/** CORE / legado: actualiza solo is_active (person o teachers.status). */
-export async function patchTeacherActive(
-  id: number,
-  is_active: boolean
-): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/teachers/${id}`, {
-    method: "PATCH",
-    headers: jsonHeaders,
-    body: JSON.stringify({ is_active }),
-  });
-  return handleJson(response);
-}
-
-/** CORE (person): coordinador + program_id; docente también `programs_id` + `academic_line` → `person_program_assignments`. */
-export async function updateTeacherProfile(
-  id: number,
-  data: {
-    school_id?: number | null;
-    phone?: string | null;
-    personal_email?: string | null;
-    address?: string | null;
-    program_id?: number | null;
-    programs_id?: number[];
-    academic_line?: string | null;
-    is_active?: boolean;
-  }
-): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/teachers/${id}`, {
-    method: "PATCH",
-    headers: jsonHeaders,
-    body: JSON.stringify(data),
-  });
-  return handleJson(response);
-}
 
 // Vacancies (schema `vacancies.vacancy`)
 export type CreateVacancyPayload = {
@@ -516,7 +518,7 @@ export type CreateVacancyPayload = {
   /** Nombre del jefe inmediato (opcional). */
   directManagerIdentification?: string | null;
   quantity: number;
-  /** Primer comentario de operación (opcional). */
+  /** Primer comentario de operaciÃ³n (opcional). */
   operationNotes?: string | null;
 };
 
@@ -768,34 +770,6 @@ export async function markAllNotificationsRead(): Promise<void> {
   }
 }
 
-// Coordinators
-export async function getCoordinators(params?: {
-  status?: string;
-  campus?: string;
-}): Promise<unknown[]> {
-  const url = new URL(`${BASE_URL}/coordinators`);
-  if (params?.status) url.searchParams.set("status", params.status);
-  if (params?.campus) url.searchParams.set("campus", params.campus);
-  const response = await authFetch(url.toString(), { headers: jsonHeaders });
-  return handleJson(response);
-}
-
-export async function getCoordinator(id: number): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/coordinators/${id}`, {
-    headers: jsonHeaders,
-  });
-  return handleJson(response);
-}
-
-export type CreatePersonalPayload = {
-  document: string;
-  full_name: string;
-  email?: string | null;
-  phone?: string | null;
-  role_id: number;
-  program_id?: number | null;
-};
-
 export async function getPersonal(params?: {
   search?: string;
   page?: number;
@@ -809,57 +783,101 @@ export async function getPersonal(params?: {
   return handleJson(response);
 }
 
-export async function createPersonal(
-  payload: CreatePersonalPayload
-): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/personal`, {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify(payload),
-  });
-  return handleJson(response);
-}
+export type PlantaActivaFilters = {
+  search?: string;
+  area_id?: number;
+  school_id?: number;
+  program_id?: number;
+  role_id?: number;
+  without_school?: boolean;
+  without_program?: boolean;
+  without_role?: boolean;
+  without_edu_email?: boolean;
+  /** `active` (default) | `inactive` */
+  status?: "active" | "inactive";
+  page?: number;
+  limit?: number;
+};
 
-export async function getPersonalById(id: number): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/personal/${id}`, {
-    headers: jsonHeaders,
-  });
-  return handleJson(response);
-}
-
-export type UpdatePersonalPayload = {
+export type UpdatePlantaPersonPayload = {
   full_name?: string;
-  /** Solo si la persona aún no tiene cédula registrada. */
   document?: string;
-  /** Correo personal (columna email); no modifica edu_email. */
-  personal_email?: string | null;
+  email?: string | null;
+  edu_email?: string | null;
   phone?: string | null;
+  address?: string | null;
+  area_id?: number | null;
+  school_id?: number | null;
+  program_id?: number | null;
+  role_id?: number | null;
+  is_active?: boolean;
+  /** Al inactivar: crear vacante (default true). Ignorado si el rol no aplica. */
+  create_vacancy?: boolean;
+};
+
+export type CreatePlantaPersonPayload = {
+  full_name: string;
+  document: string;
+  type_document?: string | null;
+  email?: string | null;
+  edu_email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  area_id?: number | null;
+  school_id?: number | null;
+  program_id?: number | null;
+  role_id?: number | null;
   is_active?: boolean;
 };
 
-export async function updatePersonalProfile(
-  id: number,
-  data: UpdatePersonalPayload
+export async function getPlantaActiva(
+  params?: PlantaActivaFilters
+): Promise<PaginatedResponse> {
+  const url = new URL(`${BASE_URL}/planta-activa`);
+  if (params?.search) url.searchParams.set("search", params.search);
+  if (params?.area_id != null)
+    url.searchParams.set("area_id", String(params.area_id));
+  if (params?.school_id != null)
+    url.searchParams.set("school_id", String(params.school_id));
+  if (params?.program_id != null)
+    url.searchParams.set("program_id", String(params.program_id));
+  if (params?.role_id != null)
+    url.searchParams.set("role_id", String(params.role_id));
+  if (params?.without_school) url.searchParams.set("without_school", "1");
+  if (params?.without_program) url.searchParams.set("without_program", "1");
+  if (params?.without_role) url.searchParams.set("without_role", "1");
+  if (params?.without_edu_email)
+    url.searchParams.set("without_edu_email", "1");
+  if (params?.status) url.searchParams.set("status", params.status);
+  if (params?.page != null) url.searchParams.set("page", String(params.page));
+  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
+  return handleJson(response);
+}
+
+export async function getPlantaPerson(id: number): Promise<unknown> {
+  const response = await authFetch(`${BASE_URL}/planta-activa/${id}`, {
+    headers: jsonHeaders,
+  });
+  return handleJson(response);
+}
+
+export async function createPlantaPerson(
+  data: CreatePlantaPersonPayload
 ): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/personal/${id}`, {
-    method: "PATCH",
+  const response = await authFetch(`${BASE_URL}/planta-activa`, {
+    method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify(data),
   });
   return handleJson(response);
 }
 
-export async function updateCoordinatorProfile(
+export async function updatePlantaPerson(
   id: number,
-  data: {
-    school_id?: number | null;
-    phone?: string | null;
-    personal_email?: string | null;
-    address?: string | null;
-    is_active?: boolean;
-  }
+  data: UpdatePlantaPersonPayload
 ): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/coordinators/${id}`, {
+  const response = await authFetch(`${BASE_URL}/planta-activa/${id}`, {
     method: "PATCH",
     headers: jsonHeaders,
     body: JSON.stringify(data),
@@ -889,55 +907,6 @@ export async function updateReinstatement(
 ): Promise<unknown> {
   const response = await authFetch(`${BASE_URL}/reinstatements/${id}`, {
     method: "PUT",
-    headers: jsonHeaders,
-    body: JSON.stringify(data),
-  });
-  return handleJson(response);
-}
-
-// LITEs
-export async function getLites(params?: {
-  search?: string;
-  school?: string;
-  status?: string;
-  coordinator_document?: string;
-  page?: number;
-  limit?: number;
-}): Promise<PaginatedResponse> {
-  const url = new URL(`${BASE_URL}/lites`);
-  if (params?.search) url.searchParams.set("search", params.search);
-  if (params?.school) url.searchParams.set("school", params.school);
-  if (params?.status) url.searchParams.set("status", params.status);
-  if (params?.coordinator_document) {
-    url.searchParams.set("coordinator_document", params.coordinator_document);
-  }
-  if (params?.page != null) url.searchParams.set("page", String(params.page));
-  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
-  const response = await authFetch(url.toString(), { headers: jsonHeaders });
-  return handleJson(response);
-}
-
-export async function getLite(id: number): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/lites/${id}`, {
-    headers: jsonHeaders,
-  });
-  return handleJson(response);
-}
-
-export async function updateLiteProfile(
-  id: number,
-  data: {
-    school_id?: number | null;
-    phone?: string | null;
-    personal_email?: string | null;
-    address?: string | null;
-    programs_id?: number[];
-    academic_line?: string | null;
-    is_active?: boolean;
-  }
-): Promise<unknown> {
-  const response = await authFetch(`${BASE_URL}/lites/${id}`, {
-    method: "PATCH",
     headers: jsonHeaders,
     body: JSON.stringify(data),
   });
@@ -978,14 +947,18 @@ export async function getCatalogRoles(): Promise<CatalogRole[]> {
 
 export async function getCatalogPrograms(params?: {
   school_id?: number;
+  area_id?: number;
 }): Promise<CatalogProgram[]> {
   const url = new URL(`${BASE_URL}/catalog/programs`);
-  if (params?.school_id != null) url.searchParams.set("school_id", String(params.school_id));
+  if (params?.school_id != null)
+    url.searchParams.set("school_id", String(params.school_id));
+  if (params?.area_id != null)
+    url.searchParams.set("area_id", String(params.area_id));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });
   return handleJson(response);
 }
 
-/** Líneas académicas ya usadas en `person_program_assignments` (sugerencias). */
+/** LÃ­neas acadÃ©micas ya usadas en `person_program_assignments` (sugerencias). */
 export async function getCatalogAcademicLines(): Promise<string[]> {
   const response = await authFetch(`${BASE_URL}/catalog/academic-lines`, {
     headers: jsonHeaders,
@@ -994,12 +967,47 @@ export async function getCatalogAcademicLines(): Promise<string[]> {
 }
 
 // Carga académica
+export type AcademicLoadFilterOptions = {
+  periods: string[];
+  blocks: string[];
+  programs: string[];
+  modalities: { value: string; label: string }[];
+};
+
+export async function getAcademicLoadFilterOptions(): Promise<AcademicLoadFilterOptions> {
+  const response = await authFetch(`${BASE_URL}/academic-load/filter-options`, {
+    headers: jsonHeaders,
+  });
+  const json = (await handleJson(response)) as Partial<AcademicLoadFilterOptions>;
+  return {
+    periods: Array.isArray(json.periods) ? json.periods.map(String) : [],
+    blocks: Array.isArray(json.blocks) ? json.blocks.map(String) : [],
+    programs: Array.isArray(json.programs) ? json.programs.map(String) : [],
+    modalities: Array.isArray(json.modalities)
+      ? json.modalities.map((m) => ({
+          value: String((m as { value: string }).value),
+          label: String((m as { label: string }).label),
+        }))
+      : [
+          { value: "P", label: "Presencial" },
+          { value: "V", label: "Virtual" },
+        ],
+  };
+}
+
 export async function getAcademicLoad(params?: {
   teacher_document?: string;
   period?: string;
   unit_name?: string;
+  search?: string;
   modality?: string;
   type?: string;
+  area_id?: number;
+  school_id?: number;
+  program?: string;
+  subject?: string;
+  group_code?: string;
+  block?: string;
   page?: number;
   limit?: number;
 }): Promise<PaginatedResponse> {
@@ -1009,8 +1017,17 @@ export async function getAcademicLoad(params?: {
   }
   if (params?.period) url.searchParams.set("period", params.period);
   if (params?.unit_name) url.searchParams.set("unit_name", params.unit_name);
+  if (params?.search) url.searchParams.set("search", params.search);
   if (params?.modality) url.searchParams.set("modality", params.modality);
   if (params?.type) url.searchParams.set("type", params.type);
+  if (params?.area_id != null)
+    url.searchParams.set("area_id", String(params.area_id));
+  if (params?.school_id != null)
+    url.searchParams.set("school_id", String(params.school_id));
+  if (params?.program) url.searchParams.set("program", params.program);
+  if (params?.subject) url.searchParams.set("subject", params.subject);
+  if (params?.group_code) url.searchParams.set("group_code", params.group_code);
+  if (params?.block) url.searchParams.set("block", params.block);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });
@@ -1024,12 +1041,147 @@ export async function getAcademicLoadSummary(): Promise<unknown> {
   return handleJson(response);
 }
 
-export async function getTeacherAcademicLoad(document: string): Promise<unknown> {
-  const enc = encodeURIComponent(document);
-  const response = await authFetch(`${BASE_URL}/academic-load/teacher/${enc}`, {
+export type SubstantiveHoursTeacher = {
+  id: string;
+  document: string;
+  name: string;
+  email: string;
+  area: string;
+  school: string;
+  contractType: string;
+  workSchedule: string;
+  contractHoursWeekly: number | null;
+  catedraHours: number;
+  preparationHours: number;
+  substantiveHoursAssigned: number;
+  substantiveHoursRemaining: number | null;
+};
+
+export type SubstantiveHoursCategory = {
+  id: number | null;
+  name: string;
+};
+
+export type SubstantiveHoursAssignmentTask = {
+  id: number;
+  description: string;
+  sortOrder: number;
+};
+
+export type SubstantiveHoursAssignment = {
+  id: number;
+  personId: number;
+  categoryId: number | null;
+  categoryName: string;
+  hoursQuantity: number;
+  createdAt: string;
+  updatedAt: string;
+  tasks: SubstantiveHoursAssignmentTask[];
+};
+
+export async function getSubstantiveHoursTeachers(params?: {
+  search?: string;
+  area_id?: number;
+  school_id?: number;
+  period?: string;
+  contract_hours?: 21 | 42;
+  availability?: "available" | "none" | "unknown";
+  has_catedra?: boolean;
+  has_substantive?: boolean;
+  without_edu_email?: boolean;
+  page?: number;
+  limit?: number;
+}): Promise<PaginatedResponse<SubstantiveHoursTeacher>> {
+  const url = new URL(`${BASE_URL}/substantive-hours/teachers`);
+  if (params?.search) url.searchParams.set("search", params.search);
+  if (params?.area_id != null)
+    url.searchParams.set("area_id", String(params.area_id));
+  if (params?.school_id != null)
+    url.searchParams.set("school_id", String(params.school_id));
+  if (params?.period) url.searchParams.set("period", params.period);
+  if (params?.contract_hours != null)
+    url.searchParams.set("contract_hours", String(params.contract_hours));
+  if (params?.availability)
+    url.searchParams.set("availability", params.availability);
+  if (params?.has_catedra != null)
+    url.searchParams.set("has_catedra", String(params.has_catedra));
+  if (params?.has_substantive != null)
+    url.searchParams.set("has_substantive", String(params.has_substantive));
+  if (params?.without_edu_email)
+    url.searchParams.set("without_edu_email", "1");
+  if (params?.page != null) url.searchParams.set("page", String(params.page));
+  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
+  return handleJson(response);
+}
+
+export async function getSubstantiveHoursCategories(): Promise<
+  SubstantiveHoursCategory[]
+> {
+  const response = await authFetch(`${BASE_URL}/substantive-hours/categories`, {
     headers: jsonHeaders,
   });
+  const json = (await handleJson(response)) as {
+    data?: SubstantiveHoursCategory[];
+  };
+  return Array.isArray(json.data) ? json.data : [];
+}
+
+export async function getSubstantiveHoursAssignments(
+  personId: number
+): Promise<SubstantiveHoursAssignment[]> {
+  const response = await authFetch(
+    `${BASE_URL}/substantive-hours/teachers/${personId}/assignments`,
+    { headers: jsonHeaders }
+  );
+  const json = (await handleJson(response)) as {
+    data?: SubstantiveHoursAssignment[];
+  };
+  return Array.isArray(json.data) ? json.data : [];
+}
+
+export async function createSubstantiveHoursAssignment(body: {
+  personId: number;
+  categoryId?: number | null;
+  hoursQuantity: number;
+  tasks: string[];
+}): Promise<unknown> {
+  const response = await authFetch(`${BASE_URL}/substantive-hours/assignments`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(body),
+  });
   return handleJson(response);
+}
+
+export type ClassPreparationUpdateResult = {
+  id: number;
+  personId: number;
+  preparationHours: number;
+  contractHoursWeekly: number | null;
+  catedraHours: number;
+  substantiveHoursAssigned: number;
+  substantiveHoursRemaining: number | null;
+  updatedAt: string;
+};
+
+/** Upsert horas semanales de preparación de clase del docente. */
+export async function updateClassPreparationHours(
+  personId: number,
+  hoursQuantity: number
+): Promise<ClassPreparationUpdateResult> {
+  const response = await authFetch(
+    `${BASE_URL}/substantive-hours/teachers/${personId}/class-preparation`,
+    {
+      method: "PUT",
+      headers: jsonHeaders,
+      body: JSON.stringify({ hoursQuantity }),
+    }
+  );
+  const json = (await handleJson(response)) as {
+    data: ClassPreparationUpdateResult;
+  };
+  return json.data;
 }
 
 // Dashboard
@@ -1038,173 +1190,6 @@ export async function getDashboardSummary(): Promise<DashboardSummaryResponse> {
     headers: jsonHeaders,
   });
   return handleJson(response);
-}
-
-/** Evento de progreso emitido por GET /import/docentes/stream (SSE) */
-export type ImportStreamProgress = {
-  type: "progress";
-  phase: string;
-  label: string;
-  current?: number;
-  total?: number;
-  percent?: number;
-};
-
-/**
- * Abre la conexión SSE y resuelve con el ImportResult final.
- * `onProgress` se invoca con cada evento de fase (validación, CORE, carga actual, proyección, etc.)
- */
-function listenImportDocentesStream(
-  importId: string,
-  onProgress?: (e: ImportStreamProgress) => void
-): Promise<ImportTeachersResponse> {
-  const base = `${IMPORT_BASE_URL}/import/docentes/stream/${encodeURIComponent(importId)}`;
-  const token = getStoredJwt();
-  const url =
-    token != null && token.length > 0
-      ? `${base}?access_token=${encodeURIComponent(token)}`
-      : base;
-
-  return new Promise((resolve, reject) => {
-    let finished = false;
-    const es = new EventSource(url);
-
-    const cleanup = () => {
-      es.close();
-    };
-
-    es.onmessage = (ev: MessageEvent<string>) => {
-      try {
-        const raw = JSON.parse(ev.data) as unknown;
-        if (
-          typeof raw !== "object" ||
-          raw === null ||
-          !("type" in raw)
-        ) {
-          return;
-        }
-        const item = raw as
-          | ImportStreamProgress
-          | { type: "complete"; result: ImportTeachersResponse }
-          | { type: "error"; message: string };
-
-        if (item.type === "progress") {
-          onProgress?.(item);
-          return;
-        }
-        if (item.type === "complete") {
-          finished = true;
-          cleanup();
-          resolve(item.result);
-          return;
-        }
-        if (item.type === "error") {
-          finished = true;
-          cleanup();
-          reject(new Error(item.message || "Error en importación"));
-        }
-      } catch (err) {
-        finished = true;
-        cleanup();
-        reject(
-          err instanceof Error ? err : new Error("Respuesta inválida del servidor")
-        );
-      }
-    };
-
-    es.onerror = () => {
-      if (finished) return;
-      finished = true;
-      cleanup();
-      reject(
-        new Error(
-          "Se perdió la conexión de progreso con la API. Comprueba que el servidor siga en ejecución."
-        )
-      );
-    };
-  });
-}
-
-// Importacion docentes (async + SSE para ver el proceso en vivo)
-export async function importTeachersExcel(
-  file: File,
-  options?: { onProgress?: (e: ImportStreamProgress) => void }
-): Promise<ImportTeachersResponse> {
-  assertImportUsesBackendHost(IMPORT_BASE_URL);
-
-  const formData = new FormData();
-  formData.append("file", file);
-
-  let response: Response;
-  try {
-    response = await fetchWithTimeout(
-      `${IMPORT_BASE_URL}/import/docentes?async=1`,
-      {
-        method: "POST",
-        body: formData,
-      },
-      IMPORT_UPLOAD_TIMEOUT_MS
-    );
-  } catch (e) {
-    if (e instanceof Error && e.name === "AbortError") {
-      throw new Error(
-        "La subida del archivo tardó demasiado. Prueba un archivo más pequeño o revisa la red."
-      );
-    }
-    throw e;
-  }
-
-  if (response.status === 401) {
-    clearOrbitSession();
-    throw new Error("Sesión expirada. Vuelve a iniciar sesión.");
-  }
-
-  if (response.status === 413) {
-    throw new Error(
-      "413: cuerpo de la petición rechazado. Si el Excel pesa menos de ~30 MB, lo más habitual es que la subida esté yendo al host del frontend (nginx suele limitar a ~1 MB), no a la API: revisa que VITE_API_URL en el build apunte a la URL completa del backend (p. ej. …run.app/api). Si el archivo es muy grande (>~32 MB en Cloud Run), reduce el archivo o usa subida a almacenamiento (p. ej. Cloud Storage)."
-    );
-  }
-
-  if (response.status === 202) {
-    const meta = (await response.json()) as { importId?: string };
-    if (!meta.importId) {
-      throw new Error("Respuesta 202 sin importId");
-    }
-    return listenImportDocentesStream(meta.importId, options?.onProgress);
-  }
-
-  const text = await response.text();
-  let data: unknown;
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    throw new Error(
-      text.trim() || `Error HTTP ${response.status} al importar`
-    );
-  }
-
-  const isImportShape =
-    typeof data === "object" &&
-    data !== null &&
-    "importId" in data &&
-    "summary" in data &&
-    typeof (data as { summary?: unknown }).summary === "object" &&
-    (data as { summary?: { errors?: unknown } }).summary !== null;
-
-  if (isImportShape) {
-    return data as ImportTeachersResponse;
-  }
-
-  if (!response.ok) {
-    const errObj = data as { error?: string };
-    throw new Error(
-      errObj.error?.trim() ||
-        text.trim() ||
-        `Error al importar (HTTP ${response.status})`
-    );
-  }
-
-  return data as ImportTeachersResponse;
 }
 
 export type WorkforceEventStatus =
@@ -1329,7 +1314,7 @@ export async function getWorkforceEventStatusLog(
   return json.data ?? [];
 }
 
-/** Actualiza únicamente el estado; el backend registra el historial. */
+/** Actualiza Ãºnicamente el estado; el backend registra el historial. */
 export async function patchWorkforceEventStatus(
   id: string,
   status: WorkforceEventStatus

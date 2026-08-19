@@ -14,8 +14,9 @@ CREATE SEQUENCE IF NOT EXISTS academic_workload.class_preparation_id_seq;
 CREATE SEQUENCE IF NOT EXISTS core.campus_id_seq;
 CREATE SEQUENCE IF NOT EXISTS core.region_id_seq;
 CREATE SEQUENCE IF NOT EXISTS logs.logs_orbit_docentes_id_seq;
-CREATE SEQUENCE IF NOT EXISTS substantive_hours.project_id_seq;
-CREATE SEQUENCE IF NOT EXISTS substantive_hours.substantive_function_id_seq;
+CREATE SEQUENCE IF NOT EXISTS substantive_hours.category_id_seq;
+CREATE SEQUENCE IF NOT EXISTS substantive_hours.assignment_id_seq;
+CREATE SEQUENCE IF NOT EXISTS substantive_hours.assignment_task_id_seq;
 
 CREATE TABLE IF NOT EXISTS academic_workload.academic_load (
   id integer DEFAULT nextval('academic_workload.academic_load_id_seq'::regclass) NOT NULL,
@@ -26,11 +27,12 @@ CREATE TABLE IF NOT EXISTS academic_workload.academic_load (
   program_name character varying(250) NULL,
   subject_code character varying(50) NOT NULL,
   group_code character varying(50) NOT NULL,
+  aca_group_id character varying(50) NULL,
   enrolled_quantity integer DEFAULT 0 NOT NULL,
   region_id integer NULL,
   city_id integer NULL,
   campus_id integer NULL,
-  project_id integer NULL,
+  substantive_category_id integer NULL,
   substantive_hours_quantity numeric(6,2) DEFAULT 0 NOT NULL,
   created_at timestamp without time zone DEFAULT now() NOT NULL,
   updated_at timestamp without time zone DEFAULT now() NOT NULL,
@@ -229,21 +231,29 @@ CREATE TABLE IF NOT EXISTS logs.logs_orbit_docentes (
   created_at timestamp without time zone DEFAULT now() NULL
 );
 
-CREATE TABLE IF NOT EXISTS substantive_hours.project (
-  id integer DEFAULT nextval('substantive_hours.project_id_seq'::regclass) NOT NULL,
+CREATE TABLE IF NOT EXISTS substantive_hours.category (
+  id integer DEFAULT nextval('substantive_hours.category_id_seq'::regclass) NOT NULL,
   name character varying(200) NOT NULL,
   is_active boolean DEFAULT true NOT NULL,
   created_at timestamp without time zone DEFAULT now() NOT NULL,
   updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS substantive_hours.substantive_function (
-  id integer DEFAULT nextval('substantive_hours.substantive_function_id_seq'::regclass) NOT NULL,
-  project_id integer NOT NULL,
-  hours_quantity numeric(6,2) DEFAULT 0 NOT NULL,
-  observations text NULL,
+CREATE TABLE IF NOT EXISTS substantive_hours.assignment (
+  id integer DEFAULT nextval('substantive_hours.assignment_id_seq'::regclass) NOT NULL,
+  person_id bigint NOT NULL,
+  category_id integer NULL,
+  hours_quantity integer NOT NULL,
   created_at timestamp without time zone DEFAULT now() NOT NULL,
   updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS substantive_hours.assignment_task (
+  id integer DEFAULT nextval('substantive_hours.assignment_task_id_seq'::regclass) NOT NULL,
+  assignment_id integer NOT NULL,
+  description text NOT NULL,
+  sort_order integer DEFAULT 0 NOT NULL,
+  created_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 -- PRIMARY KEY: academic_workload.academic_load.academic_load_pkey
@@ -314,13 +324,17 @@ ALTER TABLE ONLY core.user
 ALTER TABLE ONLY logs.logs_orbit_docentes
   ADD CONSTRAINT logs_orbit_docentes_pkey PRIMARY KEY (id);
 
--- PRIMARY KEY: substantive_hours.project.project_pkey
-ALTER TABLE ONLY substantive_hours.project
-  ADD CONSTRAINT project_pkey PRIMARY KEY (id);
+-- PRIMARY KEY: substantive_hours.category.category_pkey
+ALTER TABLE ONLY substantive_hours.category
+  ADD CONSTRAINT category_pkey PRIMARY KEY (id);
 
--- PRIMARY KEY: substantive_hours.substantive_function.substantive_function_pkey
-ALTER TABLE ONLY substantive_hours.substantive_function
-  ADD CONSTRAINT substantive_function_pkey PRIMARY KEY (id);
+-- PRIMARY KEY: substantive_hours.assignment.assignment_pkey
+ALTER TABLE ONLY substantive_hours.assignment
+  ADD CONSTRAINT assignment_pkey PRIMARY KEY (id);
+
+-- PRIMARY KEY: substantive_hours.assignment_task.assignment_task_pkey
+ALTER TABLE ONLY substantive_hours.assignment_task
+  ADD CONSTRAINT assignment_task_pkey PRIMARY KEY (id);
 
 -- UNIQUE: academic_workload.class_group.uq_class_group_subject_group
 ALTER TABLE ONLY academic_workload.class_group
@@ -398,9 +412,9 @@ ALTER TABLE ONLY academic_workload.subject
 ALTER TABLE ONLY academic_workload.subject
   ADD CONSTRAINT chk_subject_hours CHECK (hours_quantity >= 0::numeric);
 
--- CHECK: substantive_hours.substantive_function.chk_substantive_function_hours
-ALTER TABLE ONLY substantive_hours.substantive_function
-  ADD CONSTRAINT chk_substantive_function_hours CHECK (hours_quantity >= 0::numeric);
+-- CHECK: substantive_hours.assignment.chk_assignment_hours
+ALTER TABLE ONLY substantive_hours.assignment
+  ADD CONSTRAINT chk_assignment_hours CHECK (hours_quantity >= 1);
 
 -- FOREIGN KEY: academic_workload.academic_load.fk_academic_load_campus
 ALTER TABLE ONLY academic_workload.academic_load
@@ -426,9 +440,9 @@ ALTER TABLE ONLY academic_workload.academic_load
 ALTER TABLE ONLY academic_workload.academic_load
   ADD CONSTRAINT fk_academic_load_program FOREIGN KEY (program_id) REFERENCES core.program (id) ON UPDATE CASCADE ON DELETE SET NULL;
 
--- FOREIGN KEY: academic_workload.academic_load.fk_academic_load_project
+-- FOREIGN KEY: academic_workload.academic_load.fk_academic_load_substantive_category
 ALTER TABLE ONLY academic_workload.academic_load
-  ADD CONSTRAINT fk_academic_load_project FOREIGN KEY (project_id) REFERENCES substantive_hours.project(id) ON UPDATE CASCADE ON DELETE SET NULL;
+  ADD CONSTRAINT fk_academic_load_substantive_category FOREIGN KEY (substantive_category_id) REFERENCES substantive_hours.category(id) ON UPDATE CASCADE ON DELETE SET NULL;
 
 -- FOREIGN KEY: academic_workload.academic_load.fk_academic_load_region
 ALTER TABLE ONLY academic_workload.academic_load
@@ -510,7 +524,15 @@ ALTER TABLE ONLY core.school
 ALTER TABLE ONLY core.user
   ADD CONSTRAINT fk_user_person FOREIGN KEY (person_id) REFERENCES core.person (id) ON UPDATE CASCADE ON DELETE CASCADE;
 
--- FOREIGN KEY: substantive_hours.substantive_function.fk_substantive_function_project
-ALTER TABLE ONLY substantive_hours.substantive_function
-  ADD CONSTRAINT fk_substantive_function_project FOREIGN KEY (project_id) REFERENCES substantive_hours.project(id) ON UPDATE CASCADE ON DELETE RESTRICT;
+-- FOREIGN KEY: substantive_hours.assignment.fk_assignment_category
+ALTER TABLE ONLY substantive_hours.assignment
+  ADD CONSTRAINT fk_assignment_category FOREIGN KEY (category_id) REFERENCES substantive_hours.category(id) ON UPDATE CASCADE ON DELETE SET NULL;
+
+-- FOREIGN KEY: substantive_hours.assignment.fk_assignment_person
+ALTER TABLE ONLY substantive_hours.assignment
+  ADD CONSTRAINT fk_assignment_person FOREIGN KEY (person_id) REFERENCES core.person (id) ON UPDATE CASCADE ON DELETE RESTRICT;
+
+-- FOREIGN KEY: substantive_hours.assignment_task.fk_assignment_task_assignment
+ALTER TABLE ONLY substantive_hours.assignment_task
+  ADD CONSTRAINT fk_assignment_task_assignment FOREIGN KEY (assignment_id) REFERENCES substantive_hours.assignment(id) ON UPDATE CASCADE ON DELETE CASCADE;
 

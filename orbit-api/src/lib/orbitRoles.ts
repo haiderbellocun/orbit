@@ -9,6 +9,57 @@ export function getLiteRoleId(): number {
   return Number.isFinite(n) ? n : 9;
 }
 
+function normalizeRoleLabel(s: string | null | undefined): string {
+  return (s ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+}
+
+/** Roles LITE / LIDER (mismo perfil Orbit LITE). */
+export function isLiteOrLiderRole(input: {
+  roleId: number | null;
+  roleCode?: string | null;
+  roleName?: string | null;
+}): boolean {
+  const roleId = input.roleId;
+  if (roleId != null && roleId === getLiteRoleId()) return true;
+  const nameNorm = normalizeRoleLabel(input.roleName);
+  const codeNorm = normalizeRoleLabel(input.roleCode);
+  return (
+    nameNorm === "LITE" ||
+    codeNorm === "LITE" ||
+    nameNorm === "LIDER" ||
+    codeNorm === "LIDER"
+  );
+}
+
+/** Roles docentes: DOCENTE, DOCENTES, DOCENTES PENSIONADOS, etc. */
+export function isDocenteRole(input: {
+  roleCode?: string | null;
+  roleName?: string | null;
+}): boolean {
+  const nameNorm = normalizeRoleLabel(input.roleName);
+  const codeNorm = normalizeRoleLabel(input.roleCode);
+  const labels = [nameNorm, codeNorm].filter(Boolean);
+  return labels.some(
+    (l) => l === "DOCENTE" || l === "DOCENTES" || l.startsWith("DOCENTES ")
+  );
+}
+
+/**
+ * Al inactivar persona no se auto-crea vacante para DOCENTE / LIDER / LITE.
+ */
+export function shouldSkipVacancyOnInactivation(input: {
+  roleId: number | null;
+  roleCode?: string | null;
+  roleName?: string | null;
+}): boolean {
+  return isDocenteRole(input) || isLiteOrLiderRole(input);
+}
+
 /**
  * Coincide con `resolveOrbitAccess` (perfil LITE en ORBIT): id configurable o rol LITE/LIDER en catálogo.
  * Requiere `LEFT JOIN …role ${roleAlias} ON ${roleAlias}.id = ${personAlias}.role_id`.

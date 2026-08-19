@@ -1,11 +1,19 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import {
+  ensureVacancyAdminCapabilities,
   hasCapability,
+  isEmailAuthorizedForOrbit,
+  isEmailOnOrbitAllowlist,
+  isEmailVacancyAdmin,
   ORBIT_CAPABILITY,
+  resolvePlantaActivaGrantAccess,
+  SUPER_ADMIN_CAPABILITIES,
+  VACANCIES_ADMIN_CAPABILITIES,
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
+import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
 export {
   schoolScopeFromRequest,
   vacancyAllowedForSchoolScope,
@@ -26,6 +34,10 @@ export type OrbitJwtUser = {
   schoolId: number | null;
   areaId: number | null;
   programIds: number[];
+  /** `null` = sin recorte de vista (admin o ver todas). */
+  plantaViewAreaIds: number[] | null;
+  /** `null` = puede editar cualquier área (admin). */
+  plantaEditAreaIds: number[] | null;
 };
 
 declare global {
@@ -40,27 +52,6 @@ declare global {
 function asNum(v: unknown, fallback = 0): number {
   const n = typeof v === "number" ? v : Number.parseInt(String(v), 10);
   return Number.isFinite(n) ? n : fallback;
-}
-
-function parseProgramIds(v: unknown): number[] {
-  if (!Array.isArray(v)) return [];
-  const out: number[] = [];
-  for (const x of v) {
-    const n = typeof x === "number" ? x : Number.parseInt(String(x), 10);
-    if (Number.isFinite(n)) out.push(n);
-  }
-  return [...new Set(out)];
-}
-
-function parseCapabilities(v: unknown): OrbitCapability[] {
-  if (!Array.isArray(v)) return [];
-  const out: OrbitCapability[] = [];
-  for (const x of v) {
-    if (typeof x === "string" && x.trim() !== "") {
-      out.push(x.trim() as OrbitCapability);
-    }
-  }
-  return [...new Set(out)];
 }
 
 function extractBearerToken(req: Request): string | null {
@@ -121,18 +112,42 @@ export function orbitAuthMiddleware(
       res.status(401).json({ error: "Token inválido o expirado" });
       return;
     }
-    const orbitAccess = decoded.orbitAccess;
-    const capabilities = parseCapabilities(decoded.capabilities);
-    if (capabilities.length === 0) {
-      res.status(401).json({ error: "Token inválido o expirado" });
+
+    const email = String(decoded.email ?? "").trim().toLowerCase();
+    if (!isEmailAuthorizedForOrbit(email)) {
+      res.status(401).json({
+        error:
+          "ORBIT está en reestructuración. Tu cuenta aún no tiene acceso autorizado.",
+      });
       return;
     }
 
-    const schoolIdRaw = decoded.schoolId;
-    const schoolId =
-      schoolIdRaw != null && schoolIdRaw !== ""
-        ? asNum(schoolIdRaw, NaN)
-        : null;
+    let orbitAccess: OrbitAccess = "full";
+    let capabilities: OrbitCapability[];
+    let plantaViewAreaIds: number[] | null = null;
+    let plantaEditAreaIds: number[] | null = null;
+
+    if (isEmailOnOrbitAllowlist(email)) {
+      // Allowlist admin = acceso total (ignora capabilities antiguas del JWT).
+      capabilities = [...SUPER_ADMIN_CAPABILITIES];
+    } else {
+      const grant = getPlantaActivaGrant(email);
+      if (grant) {
+        capabilities = resolvePlantaActivaGrantAccess(grant).capabilities;
+        plantaViewAreaIds = grant.viewAreaIds;
+        plantaEditAreaIds = [...grant.editAreaIds];
+      } else if (isEmailVacancyAdmin(email)) {
+        capabilities = [...VACANCIES_ADMIN_CAPABILITIES];
+      } else {
+        res.status(401).json({
+          error:
+            "ORBIT está en reestructuración. Tu cuenta aún no tiene acceso autorizado.",
+        });
+        return;
+      }
+    }
+
+    capabilities = ensureVacancyAdminCapabilities(capabilities, email);
 
     const roleIdRaw = decoded.roleId;
     const roleId =
@@ -143,7 +158,7 @@ export function orbitAuthMiddleware(
     req.orbitUser = {
       userId: asNum(decoded.userId, 0),
       personId: asNum(decoded.personId, 0),
-      email: String(decoded.email ?? ""),
+      email,
       name: String(decoded.name ?? ""),
       picture:
         decoded.picture != null ? String(decoded.picture) : undefined,
@@ -152,10 +167,8 @@ export function orbitAuthMiddleware(
       roleId: Number.isFinite(roleId) ? roleId : null,
       orbitAccess,
       capabilities,
-      schoolId:
-        (orbitAccess === "lite" || orbitAccess === "school") && Number.isFinite(schoolId)
-          ? schoolId
-          : null,
+      // Acceso total / planta grant: sin recorte por escuela ni programa.
+      schoolId: null,
       areaId: (() => {
         const aid =
           typeof decoded.areaId === "number"
@@ -163,7 +176,9 @@ export function orbitAuthMiddleware(
             : Number.parseInt(String(decoded.areaId ?? ""), 10);
         return Number.isFinite(aid) && aid > 0 ? aid : null;
       })(),
-      programIds: orbitAccess === "lite" ? parseProgramIds(decoded.programIds) : [],
+      programIds: [],
+      plantaViewAreaIds,
+      plantaEditAreaIds,
     };
     next();
   } catch {
@@ -194,7 +209,7 @@ export function liteTeacherScopeFromRequest(
 
 /**
  * Valida capability según el path de la petición (evita que middleware apilados en `/api`
- * exijan HOME/TEACHERS en rutas de vacantes, catálogo, etc.).
+ * exijan HOME en rutas de vacantes, catálogo, etc.).
  */
 export function orbitCapabilityByPathMiddleware(
   req: Request,
@@ -219,12 +234,12 @@ export function orbitCapabilityByPathMiddleware(
     return;
   }
 
-  if (path.startsWith("/import")) {
-    if (!hasCapability(u.capabilities, ORBIT_CAPABILITY.TEACHERS)) {
-      res.status(403).json({ error: "No tienes permiso para este recurso" });
-      return;
-    }
-    if (u.orbitAccess === "lite") {
+  // Selector de personas en Novedades (GET /personal).
+  if (path.startsWith("/personal")) {
+    if (
+      !hasCapability(u.capabilities, ORBIT_CAPABILITY.NEWS) &&
+      !hasCapability(u.capabilities, ORBIT_CAPABILITY.HOME)
+    ) {
       res.status(403).json({ error: "No tienes permiso para este recurso" });
       return;
     }
@@ -234,13 +249,13 @@ export function orbitCapabilityByPathMiddleware(
 
   let required: OrbitCapability | null = null;
   if (path.startsWith("/dashboard")) required = ORBIT_CAPABILITY.HOME;
-  else if (path.startsWith("/teachers")) required = ORBIT_CAPABILITY.TEACHERS;
-  else if (path.startsWith("/personal")) required = ORBIT_CAPABILITY.PERSONAL;
+  else if (path.startsWith("/planta-activa"))
+    required = ORBIT_CAPABILITY.PLANTA_ACTIVA;
   else if (path.startsWith("/vacancies")) required = ORBIT_CAPABILITY.VACANCIES;
-  else if (path.startsWith("/coordinators")) required = ORBIT_CAPABILITY.COORDINATORS;
   else if (path.startsWith("/reinstatements")) required = ORBIT_CAPABILITY.VACANCIES;
-  else if (path.startsWith("/lites")) required = ORBIT_CAPABILITY.LITES;
   else if (path.startsWith("/academic-load")) required = ORBIT_CAPABILITY.ACADEMIC_LOAD;
+  else if (path.startsWith("/substantive-hours"))
+    required = ORBIT_CAPABILITY.SUBSTANTIVE_HOURS;
   else if (path.startsWith("/workforce-events")) required = ORBIT_CAPABILITY.NEWS;
 
   if (required == null) {

@@ -6,11 +6,24 @@ import {
   ROLE_51_STAFF_ROLE_ID,
   ROLE_9_OPERATIONS_CAPABILITIES,
   SCHOOL_COORDINATOR_ROLE_IDS,
+  SUPER_ADMIN_CAPABILITIES,
   VACANCIES_ADMIN_CAPABILITIES,
   ROLE_37_VACANCIES_CAPABILITIES,
   VACANCIES_ONLY_CAPABILITIES,
+  isEmailAuthorizedForOrbit,
+  isEmailOnOrbitAllowlist,
+  isEmailVacancyAdmin,
+  canVacancyAdmin,
+  ensureVacancyAdminCapabilities,
+  resolveAllowlistAdminAccess,
   resolveOrbitAccess,
+  resolvePlantaActivaGrantAccess,
 } from "./orbitCapabilities";
+import {
+  canEditPlantaArea,
+  canViewPlantaArea,
+  getPlantaActivaGrant,
+} from "./plantaActivaAccess";
 
 function test(name: string, fn: () => void): void {
   try {
@@ -57,7 +70,7 @@ test("role 9 all panels + full data scope (not LITE login)", () => {
   }
 });
 
-test("role 51 personal + vacancies school scope", () => {
+test("role 51 vacancies + news school scope", () => {
   const r = resolveOrbitAccess({
     roleId: ROLE_51_STAFF_ROLE_ID,
     roleCode: null,
@@ -66,7 +79,7 @@ test("role 51 personal + vacancies school scope", () => {
   assert.ok(r);
   assert.equal(r.orbitAccess, "school");
   assert.deepEqual(r.capabilities, [...ROLE_51_STAFF_CAPABILITIES]);
-  assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.PERSONAL), true);
+  assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.NEWS), true);
   assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.VACANCIES), true);
   assert.equal(r.capabilities.includes(ORBIT_CAPABILITY.HOME), false);
 });
@@ -129,8 +142,6 @@ test("LITE by configured role id (not 9)", () => {
     assert.equal(r.orbitAccess, "lite");
     assert.deepEqual(r.capabilities, [
       ORBIT_CAPABILITY.HOME,
-      ORBIT_CAPABILITY.TEACHERS,
-      ORBIT_CAPABILITY.NEWS,
     ]);
   } finally {
     if (prev === undefined) delete process.env.ORBIT_LITE_ROLE_ID;
@@ -164,6 +175,158 @@ test("unknown role is denied", () => {
     roleName: "OTRO ROL",
   });
   assert.equal(r, null);
+});
+
+test("allowlist default includes camilo, haider, raul and zuany", () => {
+  const prev = process.env.ORBIT_ACCESS_ALLOWLIST;
+  delete process.env.ORBIT_ACCESS_ALLOWLIST;
+  try {
+    assert.equal(isEmailOnOrbitAllowlist("camilo_quintero@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("CAMILO_QUINTERO@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("haider_bello@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("raul_valencia@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("zuany_acuna@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("otro@cun.edu.co"), false);
+    const admin = resolveAllowlistAdminAccess();
+    assert.equal(admin.orbitAccess, "full");
+    assert.deepEqual(admin.capabilities, [...SUPER_ADMIN_CAPABILITIES]);
+    assert.equal(admin.capabilities.includes(ORBIT_CAPABILITY.PLANTA_ACTIVA), true);
+    assert.equal(admin.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN), true);
+  } finally {
+    if (prev === undefined) delete process.env.ORBIT_ACCESS_ALLOWLIST;
+    else process.env.ORBIT_ACCESS_ALLOWLIST = prev;
+  }
+});
+
+test("allowlist env override", () => {
+  const prev = process.env.ORBIT_ACCESS_ALLOWLIST;
+  process.env.ORBIT_ACCESS_ALLOWLIST = "a@cun.edu.co, b@cun.edu.co";
+  try {
+    assert.equal(isEmailOnOrbitAllowlist("a@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("b@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("camilo_quintero@cun.edu.co"), false);
+  } finally {
+    if (prev === undefined) delete process.env.ORBIT_ACCESS_ALLOWLIST;
+    else process.env.ORBIT_ACCESS_ALLOWLIST = prev;
+  }
+});
+
+test("vacancy admin allowlist: camilo, yesid, sara", () => {
+  const prev = process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST;
+  delete process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST;
+  try {
+    assert.equal(isEmailVacancyAdmin("camilo_quintero@cun.edu.co"), true);
+    assert.equal(isEmailVacancyAdmin("yesid_rocha@cun.edu.co"), true);
+    assert.equal(isEmailVacancyAdmin("sara_murillofo@cun.edu.co"), true);
+    assert.equal(isEmailVacancyAdmin("otro@cun.edu.co"), false);
+    assert.equal(isEmailAuthorizedForOrbit("yesid_rocha@cun.edu.co"), true);
+    assert.equal(
+      canVacancyAdmin([], "yesid_rocha@cun.edu.co"),
+      true
+    );
+    assert.equal(
+      canVacancyAdmin([ORBIT_CAPABILITY.VACANCIES_ADMIN], "otro@cun.edu.co"),
+      true
+    );
+    const caps = ensureVacancyAdminCapabilities(
+      [ORBIT_CAPABILITY.HOME],
+      "yesid_rocha@cun.edu.co"
+    );
+    assert.equal(caps.includes(ORBIT_CAPABILITY.VACANCIES), true);
+    assert.equal(caps.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN), true);
+  } finally {
+    if (prev === undefined) delete process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST;
+    else process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST = prev;
+  }
+});
+
+test("planta activa grants: sara/leidy/tania", () => {
+  const sara = getPlantaActivaGrant("sara_murillofo@cun.edu.co");
+  assert.ok(sara);
+  assert.equal(sara!.viewAreaIds, null);
+  assert.deepEqual(sara!.editAreaIds, [2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(sara!.extraCapabilities, [
+    "view:home",
+    "view:vacancies",
+    "vacancies:informative_panel",
+    "vacancies:admin",
+    "view:news",
+  ]);
+  assert.equal(canViewPlantaArea(sara, 1), true);
+  assert.equal(canEditPlantaArea(sara, 1), false);
+  assert.equal(canEditPlantaArea(sara, 3), true);
+  const saraAccess = resolvePlantaActivaGrantAccess(sara);
+  assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.PLANTA_ACTIVA), true);
+  assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.HOME), true);
+  assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.VACANCIES), true);
+  assert.equal(
+    saraAccess.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL),
+    true
+  );
+  assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.NEWS), true);
+  assert.equal(
+    saraAccess.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN),
+    true
+  );
+
+  const leidy = getPlantaActivaGrant("LEIDY_BERNAL@cun.edu.co");
+  assert.ok(leidy);
+  assert.deepEqual(leidy!.viewAreaIds, [1]);
+  assert.deepEqual(leidy!.extraCapabilities, [
+    "view:academic_load",
+    "view:news",
+  ]);
+  assert.equal(canViewPlantaArea(leidy, 1), true);
+  assert.equal(canViewPlantaArea(leidy, 2), false);
+  assert.equal(canEditPlantaArea(leidy, 1), true);
+  assert.equal(canEditPlantaArea(leidy, 2), false);
+  assert.equal(
+    resolvePlantaActivaGrantAccess(leidy).capabilities.includes(
+      ORBIT_CAPABILITY.ACADEMIC_LOAD
+    ),
+    true
+  );
+  assert.equal(
+    resolvePlantaActivaGrantAccess(leidy).capabilities.includes(
+      ORBIT_CAPABILITY.NEWS
+    ),
+    true
+  );
+
+  const tania = getPlantaActivaGrant("tania_rocha@cun.edu.co");
+  assert.ok(tania);
+  assert.deepEqual(tania!.viewAreaIds, [9]);
+  assert.deepEqual(tania!.extraCapabilities, [
+    "view:academic_load",
+    "view:news",
+  ]);
+  assert.equal(canViewPlantaArea(tania, 9), true);
+  assert.equal(canViewPlantaArea(tania, 2), false);
+  assert.equal(canEditPlantaArea(tania, 9), true);
+  assert.equal(canEditPlantaArea(tania, 1), false);
+  assert.equal(
+    resolvePlantaActivaGrantAccess(tania).capabilities.includes(
+      ORBIT_CAPABILITY.ACADEMIC_LOAD
+    ),
+    true
+  );
+  assert.equal(
+    resolvePlantaActivaGrantAccess(tania).capabilities.includes(
+      ORBIT_CAPABILITY.NEWS
+    ),
+    true
+  );
+
+  assert.equal(getPlantaActivaGrant("camilo_quintero@cun.edu.co"), null);
+});
+
+test("isEmailAuthorizedForOrbit includes planta grants", () => {
+  assert.equal(isEmailAuthorizedForOrbit("sara_murillofo@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("leidy_bernal@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("tania_rocha@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("otro@cun.edu.co"), false);
+  assert.equal(isEmailAuthorizedForOrbit("camilo_quintero@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("zuany_acuna@cun.edu.co"), true);
 });
 
 console.log("orbitCapabilities tests passed");

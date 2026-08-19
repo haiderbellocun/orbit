@@ -14,6 +14,7 @@ import {
   createWorkforceEvent,
   getCatalogAreas,
   getCatalogSchools,
+  getStoredPlantaActivaAccess,
   getWorkforceEventTypes,
   getWorkforceEvents,
   patchWorkforceEventStatus,
@@ -51,11 +52,19 @@ export const NewsView: React.FC<NewsViewProps> = ({
   setSearchQuery,
   searchResults,
 }) => {
+  const plantaAccess = useMemo(() => getStoredPlantaActivaAccess(), []);
+  const lockedViewAreaIds = plantaAccess?.viewAreaIds ?? null;
+  const lockedAreaId =
+    lockedViewAreaIds != null && lockedViewAreaIds.length === 1
+      ? String(lockedViewAreaIds[0])
+      : '';
+
   const [feedSearch, setFeedSearch] = useState('');
+  const [appliedFeedSearch, setAppliedFeedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<WorkforceEventStatus | ''>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [schoolFilter, setSchoolFilter] = useState<string>('');
-  const [areaFilter, setAreaFilter] = useState<string>('');
+  const [areaFilter, setAreaFilter] = useState<string>(lockedAreaId);
 
   const [events, setEvents] = useState<WorkforceEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,7 +90,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
     try {
       const res = await getWorkforceEvents({
         limit: 100,
-        search: feedSearch.trim() || undefined,
+        search: appliedFeedSearch.trim() || undefined,
         status: statusFilter || undefined,
         event_type_id: typeFilter ? Number.parseInt(typeFilter, 10) : undefined,
         school_id: schoolFilter ? Number.parseInt(schoolFilter, 10) : undefined,
@@ -94,11 +103,19 @@ export const NewsView: React.FC<NewsViewProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [feedSearch, statusFilter, typeFilter, schoolFilter, areaFilter]);
+  }, [appliedFeedSearch, statusFilter, typeFilter, schoolFilter, areaFilter]);
 
   useEffect(() => {
     void loadEvents();
   }, [loadEvents]);
+
+  useEffect(() => {
+    if (feedSearch === appliedFeedSearch) return;
+    const t = window.setTimeout(() => {
+      setAppliedFeedSearch(feedSearch);
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [feedSearch, appliedFeedSearch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,7 +130,12 @@ export const NewsView: React.FC<NewsViewProps> = ({
         ]);
         if (!cancelled) {
           setEventTypes(types);
-          setAreas(areasRes.map((a) => ({ id: a.id, name: a.name })));
+          const mappedAreas = areasRes.map((a) => ({ id: a.id, name: a.name }));
+          setAreas(
+            lockedViewAreaIds == null
+              ? mappedAreas
+              : mappedAreas.filter((a) => lockedViewAreaIds.includes(a.id))
+          );
           setSchools(schoolsRes.map((s) => ({ id: s.id, name: s.name })));
           if (types.length > 0 && !formTypeId) {
             setFormTypeId(String(types[0].id));
@@ -130,7 +152,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [areaFilter]);
+  }, [areaFilter, lockedViewAreaIds]);
 
   const criticalCount = useMemo(
     () => events.filter((e) => e.status === 'NOT_TAKEN' || e.status === 'PENDING').length,
@@ -215,7 +237,10 @@ export const NewsView: React.FC<NewsViewProps> = ({
               <h3 className="text-lg font-bold text-slate-900 font-display">
                 Feed de Novedades
               </h3>
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <div
+                data-tutorial="news-filters"
+                className="flex flex-wrap items-center gap-2 w-full sm:w-auto"
+              >
                 <div className="glass-panel p-1 flex items-center gap-2 flex-1 min-w-[140px] sm:flex-none">
                   <MagnifyingGlassIcon className="ml-2 h-3.5 w-3.5 text-slate-400" />
                   <input
@@ -256,12 +281,13 @@ export const NewsView: React.FC<NewsViewProps> = ({
                   <select
                     className="glass-input py-1.5 text-xs max-w-[120px]"
                     value={areaFilter}
+                    disabled={Boolean(lockedAreaId)}
                     onChange={(e) => {
                       setAreaFilter(e.target.value);
                       setSchoolFilter('');
                     }}
                   >
-                    <option value="">Área</option>
+                    {!lockedAreaId ? <option value="">Área</option> : null}
                     {areas.map((a) => (
                       <option key={a.id} value={String(a.id)}>
                         {a.name}

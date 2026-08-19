@@ -10,6 +10,7 @@ export interface SubjectInput {
   subjectCode: string;
   name: string;
   creditsQuantity: number | null;
+  hoursQuantity?: number | null;
 }
 
 export interface ClassGroupInput {
@@ -17,6 +18,8 @@ export interface ClassGroupInput {
   groupCode: string;
   startDate: string | null;
   endDate: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
   classroomName: string | null;
   capacity: number | null;
   block: string | null;
@@ -37,11 +40,12 @@ export interface AcademicLoadInput {
   programName: string | null;
   subjectCode: string;
   groupCode: string;
+  acaGroupId?: string | null;
   enrolledQuantity: number | null;
   regionId: number | null;
   cityId: number | null;
   campusId: number | null;
-  projectId: number | null;
+  substantiveCategoryId: number | null;
   substantiveHoursQuantity: number | null;
   classPreparationId: number | null;
 }
@@ -57,6 +61,10 @@ export async function upsertSubject(
 ): Promise<UpsertResult> {
   const subjectCode = truncateUtf(input.subjectCode, VW50) ?? "";
   const subjectName = truncateUtf(input.name, VW250) ?? "";
+  const hoursQuantity =
+    input.hoursQuantity == null || Number.isNaN(Number(input.hoursQuantity))
+      ? null
+      : Number(input.hoursQuantity);
 
   const found = await pool.query(
     `SELECT subject_code
@@ -66,15 +74,25 @@ export async function upsertSubject(
     [subjectCode]
   );
   if (found.rows.length > 0) {
+    await pool.query(
+      `UPDATE academic_workload.subject
+       SET
+         name = COALESCE($2, name),
+         credits_quantity = COALESCE($3, credits_quantity),
+         hours_quantity = COALESCE($4, hours_quantity),
+         updated_at = NOW()
+       WHERE subject_code = $1`,
+      [subjectCode, subjectName || null, input.creditsQuantity, hoursQuantity]
+    );
     return { id: null, isNew: false };
   }
 
-  const inserted = await pool.query(
+  await pool.query(
     `INSERT INTO academic_workload.subject (
-      subject_code, name, credits_quantity, is_active
-    ) VALUES ($1, $2, $3, true)
+      subject_code, name, credits_quantity, hours_quantity, is_active
+    ) VALUES ($1, $2, $3, COALESCE($4, 0), true)
     RETURNING subject_code`,
-    [subjectCode, subjectName, input.creditsQuantity]
+    [subjectCode, subjectName, input.creditsQuantity, hoursQuantity]
   );
   return {
     id: null,
@@ -108,15 +126,20 @@ export async function upsertClassGroup(
        SET
          start_date = COALESCE($1, start_date),
          end_date = COALESCE($2, end_date),
-         classroom_name = COALESCE($3, classroom_name),
-         capacity = COALESCE($4, capacity),
-         block = COALESCE($5, block),
-         schedule_type = COALESCE($6, schedule_type),
-         modality = COALESCE($7, modality)
-       WHERE id = $8`,
+         start_time = COALESCE($3::time, start_time),
+         end_time = COALESCE($4::time, end_time),
+         classroom_name = COALESCE($5, classroom_name),
+         capacity = COALESCE($6, capacity),
+         block = COALESCE($7, block),
+         schedule_type = COALESCE($8, schedule_type),
+         modality = COALESCE($9, modality),
+         updated_at = NOW()
+       WHERE id = $10`,
       [
         input.startDate,
         input.endDate,
+        input.startTime ?? null,
+        input.endTime ?? null,
         classroomName,
         input.capacity,
         block,
@@ -130,15 +153,17 @@ export async function upsertClassGroup(
 
   const inserted = await pool.query(
     `INSERT INTO academic_workload.class_group (
-      subject_code, group_code, start_date, end_date, classroom_name,
-      capacity, block, schedule_type, modality
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      subject_code, group_code, start_date, end_date, start_time, end_time,
+      classroom_name, capacity, block, schedule_type, modality
+    ) VALUES ($1, $2, $3, $4, $5::time, $6::time, $7, $8, $9, $10, $11)
     RETURNING id`,
     [
       subjectCode,
       groupCode,
       input.startDate,
       input.endDate,
+      input.startTime ?? null,
+      input.endTime ?? null,
       classroomName,
       input.capacity,
       block,
@@ -200,6 +225,7 @@ export async function upsertAcademicLoad(
   const semester = truncateUtf(input.semester, VW50);
   const subjectCode = truncateUtf(input.subjectCode, VW50) ?? "";
   const groupCode = truncateUtf(input.groupCode, VW50) ?? "";
+  const acaGroupId = truncateUtf(input.acaGroupId, VW50);
   const programName = truncateUtf(input.programName, VW250);
 
   const found = await pool.query(
@@ -209,8 +235,14 @@ export async function upsertAcademicLoad(
        AND subject_code = $2
        AND group_code = $3
        AND COALESCE(period_code, '') = COALESCE($4, '')
+       AND (
+         $5::varchar IS NULL
+         OR aca_group_id = $5
+         OR aca_group_id IS NULL
+       )
+     ORDER BY CASE WHEN aca_group_id = $5 THEN 0 ELSE 1 END
      LIMIT 1`,
-    [input.personId, subjectCode, groupCode, periodCode]
+    [input.personId, subjectCode, groupCode, periodCode, acaGroupId]
   );
 
   if (found.rows.length > 0) {
@@ -225,10 +257,11 @@ export async function upsertAcademicLoad(
          region_id = COALESCE($5, region_id),
          city_id = COALESCE($6, city_id),
          campus_id = COALESCE($7, campus_id),
-         project_id = COALESCE($8, project_id),
+         substantive_category_id = COALESCE($8, substantive_category_id),
          substantive_hours_quantity = $9,
-         class_preparation_id = COALESCE($10, class_preparation_id)
-       WHERE id = $11`,
+         class_preparation_id = COALESCE($10, class_preparation_id),
+         aca_group_id = COALESCE($11, aca_group_id)
+       WHERE id = $12`,
       [
         semester,
         input.programId,
@@ -237,9 +270,10 @@ export async function upsertAcademicLoad(
         input.regionId,
         input.cityId,
         input.campusId,
-        input.projectId,
+        input.substantiveCategoryId,
         safeSubstantiveHoursQuantity,
         input.classPreparationId,
+        acaGroupId,
         existingId,
       ]
     );
@@ -249,12 +283,12 @@ export async function upsertAcademicLoad(
   const inserted = await pool.query(
     `INSERT INTO academic_workload.academic_load (
       person_id, period_code, semester, program_id, program_name, subject_code,
-      group_code, enrolled_quantity, region_id, city_id, campus_id, project_id,
+      group_code, aca_group_id, enrolled_quantity, region_id, city_id, campus_id, substantive_category_id,
       substantive_hours_quantity, class_preparation_id
     ) VALUES (
       $1, $2, $3, $4, $5, $6,
-      $7, $8, $9, $10, $11, $12,
-      $13, $14
+      $7, $8, $9, $10, $11, $12, $13,
+      $14, $15
     )
     RETURNING id`,
     [
@@ -265,11 +299,12 @@ export async function upsertAcademicLoad(
       programName,
       subjectCode,
       groupCode,
+      acaGroupId,
       enrolledForInsert,
       input.regionId,
       input.cityId,
       input.campusId,
-      input.projectId,
+      input.substantiveCategoryId,
       safeSubstantiveHoursQuantity,
       input.classPreparationId,
     ]
