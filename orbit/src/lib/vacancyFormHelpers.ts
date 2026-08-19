@@ -7,6 +7,7 @@ export const STATUS_LABEL: Record<VacancyOperationStatus, string> = {
   open: 'Abierta',
   selected: 'Seleccionado',
   requisition_sent: 'Requisición Enviada',
+  internal_movement: 'Movimiento interno',
   hired: 'Contratado',
   closed: 'Cerrada',
   cancelled: 'Cancelada',

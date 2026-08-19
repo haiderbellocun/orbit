@@ -11,11 +11,17 @@ import {
   FunnelIcon,
   ChevronDownIcon,
   XMarkIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
 import type { Vacancy, Teacher, Coordinator, VacancyOperationStatus } from '@/src/types';
-import { getVacancies, getStoredCapabilities, deleteVacancy } from '@/src/lib/api';
+import {
+  getVacancies,
+  getStoredCapabilities,
+  deleteVacancy,
+  downloadVacanciesExcel,
+} from '@/src/lib/api';
 import {
   computeVacancyActiveDaysFromSent,
   formatVacancyActiveDaysLabel,
@@ -28,6 +34,7 @@ import {
 import { canVacancyAdmin } from '@/src/lib/permissions';
 import { ConfirmTextModal } from '@/src/components/common/ConfirmTextModal';
 import { VacancyManageModal } from '@/src/components/views/VacancyManageModal';
+import { VacancyStatusChart } from '@/src/components/views/VacancyStatusChart';
 
 type ManagePanel =
   | null
@@ -38,6 +45,7 @@ const STATUS_ORDER: VacancyOperationStatus[] = [
   'open',
   'selected',
   'requisition_sent',
+  'internal_movement',
   'hired',
   'closed',
   'cancelled',
@@ -89,6 +97,38 @@ function matchesDateRange(
   return true;
 }
 
+function matchesSearch(v: Vacancy, search: string): boolean {
+  const q = search.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    v.positionName.toLowerCase().includes(q) ||
+    (v.programName ?? '').toLowerCase().includes(q) ||
+    (v.areaName ?? '').toLowerCase().includes(q) ||
+    (v.schoolName ?? '').toLowerCase().includes(q) ||
+    v.id.toLowerCase().includes(q) ||
+    (v.reqNumber ?? '').toLowerCase().includes(q)
+  );
+}
+
+function vacancyMatchesFilters(
+  v: Vacancy,
+  applied: Filters,
+  options?: { ignoreStatus?: boolean }
+): boolean {
+  if (!options?.ignoreStatus && applied.status && v.operationStatus !== applied.status) {
+    return false;
+  }
+  if (applied.areaId && String(v.areaId) !== applied.areaId) return false;
+  if (applied.schoolId && String(v.schoolId ?? '') !== applied.schoolId) return false;
+  if (applied.programId && String(v.programId ?? '') !== applied.programId) return false;
+  if (
+    !matchesDateRange(v, applied.dateField, applied.dateFrom, applied.dateTo)
+  ) {
+    return false;
+  }
+  return matchesSearch(v, applied.search);
+}
+
 function uniqueSortedOptions(
   rows: Vacancy[],
   getLabel: (v: Vacancy) => string | null | undefined,
@@ -134,6 +174,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const isVacancyAdmin = canVacancyAdmin(getStoredCapabilities());
 
   const selectClass =
@@ -217,41 +258,21 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     for (const v of rows) {
       counts.set(v.operationStatus, (counts.get(v.operationStatus) ?? 0) + 1);
     }
-    return STATUS_ORDER.filter((s) => counts.has(s)).map((s) => ({
+    return STATUS_ORDER.map((s) => ({
       status: s,
       count: counts.get(s) ?? 0,
     }));
   }, [rows]);
 
-  const filtered = useMemo(() => {
-    const q = applied.search.trim().toLowerCase();
-    return rows.filter((v) => {
-      if (applied.status && v.operationStatus !== applied.status) return false;
-      if (applied.areaId && String(v.areaId) !== applied.areaId) return false;
-      if (applied.schoolId && String(v.schoolId ?? '') !== applied.schoolId)
-        return false;
-      if (applied.programId && String(v.programId ?? '') !== applied.programId)
-        return false;
-      if (
-        !matchesDateRange(
-          v,
-          applied.dateField,
-          applied.dateFrom,
-          applied.dateTo
-        )
-      )
-        return false;
-      if (!q) return true;
-      return (
-        v.positionName.toLowerCase().includes(q) ||
-        (v.programName ?? '').toLowerCase().includes(q) ||
-        (v.areaName ?? '').toLowerCase().includes(q) ||
-        (v.schoolName ?? '').toLowerCase().includes(q) ||
-        v.id.toLowerCase().includes(q) ||
-        (v.reqNumber ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [rows, applied]);
+  const filtered = useMemo(
+    () => rows.filter((v) => vacancyMatchesFilters(v, applied)),
+    [rows, applied]
+  );
+
+  const chartRows = useMemo(
+    () => rows.filter((v) => vacancyMatchesFilters(v, applied, { ignoreStatus: true })),
+    [rows, applied]
+  );
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
@@ -285,6 +306,34 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
     setFilters(EMPTY_FILTERS);
     setApplied(EMPTY_FILTERS);
   };
+
+  function selectStatusFromChart(status: VacancyOperationStatus | '') {
+    setFilters((f) => ({ ...f, status }));
+    setApplied((a) => ({ ...a, status }));
+  }
+
+  async function handleExportExcel() {
+    setExporting(true);
+    setLoadError(null);
+    try {
+      await downloadVacanciesExcel({
+        search: applied.search,
+        status: applied.status || undefined,
+        areaId: applied.areaId || undefined,
+        schoolId: applied.schoolId || undefined,
+        programId: applied.programId || undefined,
+        dateField: applied.dateField,
+        dateFrom: applied.dateFrom || undefined,
+        dateTo: applied.dateTo || undefined,
+      });
+    } catch (e) {
+      setLoadError(
+        e instanceof Error ? e.message : 'No se pudo descargar el Excel'
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function openEdit(v: Vacancy) {
     setSaveBanner(null);
@@ -362,6 +411,13 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         </div>
       </div>
 
+      <VacancyStatusChart
+        vacancies={chartRows}
+        loading={loading}
+        activeStatus={applied.status}
+        onSelectStatus={selectStatusFromChart}
+      />
+
       <div data-tutorial="vacancies-filters" className="relative z-10 flex flex-col gap-4">
         <div className="glass-panel p-4 space-y-3 w-full">
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -425,6 +481,20 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   Limpiar
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => void handleExportExcel()}
+                disabled={exporting || loading || filtered.length === 0}
+                title={
+                  hasActiveFilters
+                    ? 'Descarga las vacantes visibles (respeta filtros)'
+                    : 'Descargar Excel de vacantes'
+                }
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200/80 bg-white/80 text-slate-700 hover:bg-violet-50 hover:border-violet-200 hover:text-violet-800 transition-colors disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap"
+              >
+                <ArrowDownTrayIcon className="h-4 w-4" />
+                {exporting ? 'Generando…' : 'Descargar Excel'}
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -758,6 +828,8 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                               'bg-amber-50 text-amber-800 border-amber-100',
                             v.operationStatus === 'requisition_sent' &&
                               'bg-violet-50 text-violet-800 border-violet-100',
+                            v.operationStatus === 'internal_movement' &&
+                              'bg-cyan-50 text-cyan-800 border-cyan-100',
                             v.operationStatus === 'hired' &&
                               'bg-emerald-50 text-emerald-800 border-emerald-100',
                             (v.operationStatus === 'closed' ||
