@@ -35,6 +35,7 @@ export type VacancyOperationStatus =
   | 'open'
   | 'selected'
   | 'requisition_sent'
+  | 'internal_movement'
   | 'hired'
   | 'closed'
   | 'cancelled'

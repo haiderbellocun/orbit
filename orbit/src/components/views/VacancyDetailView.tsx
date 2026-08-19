@@ -27,6 +27,7 @@ const STATUS_LABEL: Record<Vacancy['operationStatus'], string> = {
   open: 'Abierta',
   selected: 'Seleccionado',
   requisition_sent: 'Requisición Enviada',
+  internal_movement: 'Movimiento interno',
   hired: 'Contratado',
   closed: 'Cerrada',
   cancelled: 'Cancelada',
@@ -150,6 +151,8 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                   v.operationStatus === 'selected' && 'bg-amber-50 text-amber-600 border-amber-100',
                   v.operationStatus === 'requisition_sent' &&
                     'bg-violet-50 text-violet-700 border-violet-100',
+                  v.operationStatus === 'internal_movement' &&
+                    'bg-cyan-50 text-cyan-700 border-cyan-100',
                   v.operationStatus === 'hired' && 'bg-emerald-50 text-emerald-700 border-emerald-100',
                   (v.operationStatus === 'closed' ||
                     v.operationStatus === 'cancelled' ||

@@ -3,7 +3,7 @@ import { pool } from "./connection";
 /**
  * Migración incremental vacantes:
  * - req_number opcional en requisition
- * - operation_status cancelled_by_capital
+ * - operation_status cancelled_by_capital, internal_movement
  * - direct_manager_identification en vacancy
  * - hired_quantity (personas contratadas vs quantity solicitada)
  */
@@ -44,7 +44,7 @@ export async function migrateVacanciesUpdates(): Promise<void> {
       AND c.conname = 'vacancy_operation_status_check'
   `);
   const def = String(constraint.rows[0]?.def ?? "");
-  if (!def.includes("cancelled_by_capital")) {
+  if (!def.includes("internal_movement")) {
     await pool.query(
       `ALTER TABLE vacancies.vacancy DROP CONSTRAINT IF EXISTS vacancy_operation_status_check`
     );
@@ -52,13 +52,13 @@ export async function migrateVacanciesUpdates(): Promise<void> {
       ALTER TABLE vacancies.vacancy
       ADD CONSTRAINT vacancy_operation_status_check CHECK (
         operation_status IN (
-          'open', 'selected', 'requisition_sent', 'hired', 'closed',
-          'cancelled', 'cancelled_by_capital'
+          'open', 'selected', 'requisition_sent', 'internal_movement', 'hired',
+          'closed', 'cancelled', 'cancelled_by_capital'
         )
       )
     `);
     console.log(
-      "migrate_vacancies_updates: operation_status incluye cancelled_by_capital"
+      "migrate_vacancies_updates: operation_status incluye internal_movement"
     );
   }
 
