@@ -112,8 +112,25 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
           getAcademicLoadSummary(),
         ]);
         if (cancelled) return;
-        setAreas(Array.isArray(a) ? a : []);
-        setSchools(Array.isArray(s) ? s : []);
+        const isHarveyArea = (name: string) => {
+          const n = name.toLowerCase();
+          return n.includes('investigativ') || n.includes('harvey');
+        };
+        const areasList = (Array.isArray(a) ? a : []).filter(
+          (area) => !isHarveyArea(area.name ?? '')
+        );
+        const harveyAreaIds = new Set(
+          (Array.isArray(a) ? a : [])
+            .filter((area) => isHarveyArea(area.name ?? ''))
+            .map((area) => area.id)
+        );
+        setAreas(areasList);
+        setSchools(
+          (Array.isArray(s) ? s : []).filter(
+            (school) =>
+              school.area_id == null || !harveyAreaIds.has(Number(school.area_id))
+          )
+        );
         const raw = summary as { periods?: unknown[] };
         const periods = Array.isArray(raw?.periods)
           ? raw.periods.map(String).filter(Boolean)

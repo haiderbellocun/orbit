@@ -183,6 +183,15 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
       conditions.push(`(p.edu_email IS NULL OR TRIM(p.edu_email) = '')`);
     }
 
+    // Balance carga: excluir Área investigativa (Harvey).
+    conditions.push(`(
+      a.id IS NULL
+      OR (
+        COALESCE(a.name, '') NOT ILIKE '%investigativ%'
+        AND COALESCE(a.name, '') NOT ILIKE '%harvey%'
+      )
+    )`);
+
     const remainingExpr = `
       (${contractHoursExpr})
       - COALESCE(cath.catedra_hours, 0)
