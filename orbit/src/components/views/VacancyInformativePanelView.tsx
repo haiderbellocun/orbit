@@ -164,7 +164,7 @@ export const VacancyInformativePanelView: React.FC = () => {
         data-tutorial="informative-actions"
         className="glass-panel p-4 flex flex-col sm:flex-row flex-wrap gap-3 items-end"
       >
-        <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest min-w-[140px] flex-1">
+        <label className="flex flex-col gap-1 text-xs font-bold uppercase text-orbit-muted tracking-widest min-w-[140px] flex-1">
           Buscar
           <input
             type="search"
@@ -174,7 +174,7 @@ export const VacancyInformativePanelView: React.FC = () => {
             onChange={(e) => setQ(e.target.value)}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest">
+        <label className="flex flex-col gap-1 text-xs font-bold uppercase text-orbit-muted tracking-widest">
           Desde
           <input
             type="date"
@@ -183,7 +183,7 @@ export const VacancyInformativePanelView: React.FC = () => {
             onChange={(e) => setFrom(e.target.value)}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-bold uppercase text-slate-500 tracking-widest">
+        <label className="flex flex-col gap-1 text-xs font-bold uppercase text-orbit-muted tracking-widest">
           Hasta
           <input
             type="date"
@@ -207,13 +207,13 @@ export const VacancyInformativePanelView: React.FC = () => {
       </div>
 
       {error && (
-        <div className="glass-panel p-4 text-sm text-rose-700">{error}</div>
+        <div className="glass-panel p-4 text-sm text-orbit-danger">{error}</div>
       )}
 
       <div className="glass-panel p-0 overflow-x-auto rounded-2xl">
         <table className="w-full min-w-[900px] text-left text-sm">
           <thead>
-            <tr className="border-b border-slate-200/80 bg-slate-50/80 text-xs uppercase tracking-widest text-slate-500">
+            <tr className="border-b border-orbit-border/80 bg-orbit-bg-secondary/80 text-xs uppercase tracking-widest text-orbit-muted">
               <th className="py-3 px-4 font-bold">Fecha</th>
               <th className="py-3 px-4 font-bold">Vacante</th>
               <th className="py-3 px-4 font-bold">Acción</th>
@@ -224,13 +224,13 @@ export const VacancyInformativePanelView: React.FC = () => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="py-12 text-center text-slate-500">
+                <td colSpan={5} className="py-12 text-center text-orbit-muted">
                   Cargando…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-12 text-center text-slate-500">
+                <td colSpan={5} className="py-12 text-center text-orbit-muted">
                   Sin registros para los filtros seleccionados.
                 </td>
               </tr>
@@ -238,13 +238,13 @@ export const VacancyInformativePanelView: React.FC = () => {
               rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-b border-slate-100/80 hover:bg-violet-50/20"
+                  className="border-b border-orbit-border/80 hover:bg-orbit-interactive/20"
                 >
-                  <td className="py-3 px-4 text-slate-600 whitespace-nowrap text-xs">
+                  <td className="py-3 px-4 text-orbit-text-secondary whitespace-nowrap text-xs">
                     {formatVacancyDt(row.createdAt)}
                   </td>
                   <td className="py-3 px-4">
-                    <p className="font-medium text-slate-900">
+                    <p className="font-medium text-orbit-text">
                       {row.positionName || '—'}
                       {row.vacancyDeleted && (
                         <span className="ml-1 text-[10px] uppercase text-red-600 font-bold">
@@ -252,7 +252,7 @@ export const VacancyInformativePanelView: React.FC = () => {
                         </span>
                       )}
                     </p>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-orbit-muted">
                       {row.areaName || '—'}
                       {row.vacancyPublicId != null
                         ? ` · #${row.vacancyPublicId}`
@@ -260,13 +260,13 @@ export const VacancyInformativePanelView: React.FC = () => {
                       {row.reqNumber ? ` · ${row.reqNumber}` : ''}
                     </p>
                   </td>
-                  <td className="py-3 px-4 text-slate-800 text-xs font-semibold">
+                  <td className="py-3 px-4 text-orbit-text text-xs font-semibold">
                     {row.actionLabel}
                   </td>
-                  <td className="py-3 px-4 text-slate-700">
+                  <td className="py-3 px-4 text-orbit-text-secondary">
                     {row.actorName ?? '—'}
                   </td>
-                  <td className="py-3 px-4 text-slate-600 text-xs max-w-xs">
+                  <td className="py-3 px-4 text-orbit-text-secondary text-xs max-w-xs">
                     {formatAuditDetail(row)}
                   </td>
                 </tr>

@@ -100,7 +100,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
 
   const selectClass =
-    'w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-400/40';
+    'w-full rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary px-3 py-2.5 text-sm text-orbit-text shadow-sm focus:outline-none focus:ring-2 focus:ring-orbit-primary/30';
 
   useEffect(() => {
     let cancelled = false;
@@ -371,7 +371,6 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
 
   return (
     <div className="space-y-8 relative">
-      <div className="absolute -top-20 -right-20 w-64 h-64 bg-violet-200/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 rounded-full blur-3xl pointer-events-none" />
 
       <Header
@@ -390,8 +389,8 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
           className={cn(
             'flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-sm font-bold transition-colors',
             actionMode === 'substantive'
-              ? 'bg-violet-600 text-white shadow-sm shadow-violet-500/20'
-              : 'text-slate-600 hover:bg-slate-100'
+              ? 'bg-orbit-primary text-white shadow-sm '
+              : 'text-orbit-text-secondary hover:bg-orbit-interactive'
           )}
         >
           Horas sustantivas
@@ -402,8 +401,8 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
           className={cn(
             'flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-sm font-bold transition-colors',
             actionMode === 'preparation'
-              ? 'bg-violet-600 text-white shadow-sm shadow-violet-500/20'
-              : 'text-slate-600 hover:bg-slate-100'
+              ? 'bg-orbit-primary text-white shadow-sm '
+              : 'text-orbit-text-secondary hover:bg-orbit-interactive'
           )}
         >
           Preparación clase
@@ -412,7 +411,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
       <div data-tutorial="substantive-filters" className="glass-panel p-4 space-y-3 relative z-10">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
           <div className="relative flex-1">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orbit-muted" />
             <input
               type="text"
               placeholder="Buscar por nombre, documento o correo…"
@@ -434,15 +433,15 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               className={cn(
                 'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors',
                 filtersOpen || activeFilterCount > 0
-                  ? 'bg-violet-50 border-violet-200 text-violet-700'
-                  : 'bg-white/80 border-slate-200/80 text-slate-600 hover:bg-slate-50'
+                  ? 'bg-orbit-primary/10 border-orbit-primary/30 text-orbit-primary'
+                  : 'bg-orbit-bg-secondary border-orbit-border/80 text-orbit-text-secondary hover:bg-orbit-bg-secondary'
               )}
               aria-expanded={filtersOpen}
             >
               <FunnelIcon className="h-4 w-4" />
               Filtros
               {activeFilterCount > 0 && (
-                <span className="min-w-5 h-5 px-1.5 rounded-md bg-violet-600 text-white text-[10px] flex items-center justify-center">
+                <span className="min-w-5 h-5 px-1.5 rounded-md bg-orbit-primary text-white text-[10px] flex items-center justify-center">
                   {activeFilterCount}
                 </span>
               )}
@@ -464,7 +463,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               <button
                 type="button"
                 onClick={clearFilters}
-                className="inline-flex items-center gap-1 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-100"
+                className="inline-flex items-center gap-1 px-3 py-2.5 rounded-xl text-sm font-semibold text-orbit-muted hover:bg-orbit-interactive"
               >
                 <XMarkIcon className="h-4 w-4" />
                 Limpiar
@@ -481,9 +480,9 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-slate-200/60">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-orbit-border/60">
                 <label className="space-y-1">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                     Área
                   </span>
                   <select
@@ -506,7 +505,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   </select>
                 </label>
                 <label className="space-y-1">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                     Escuela
                   </span>
                   <select
@@ -527,7 +526,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   </select>
                 </label>
                 <label className="space-y-1">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                     Periodo (cátedra)
                   </span>
                   <select
@@ -546,7 +545,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   </select>
                 </label>
                 <label className="space-y-1">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                     Jornada
                   </span>
                   <select
@@ -565,7 +564,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   </select>
                 </label>
                 <label className="space-y-1">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                     Disponibilidad
                   </span>
                   <select
@@ -586,7 +585,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   </select>
                 </label>
                 <label className="space-y-1">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                     Cátedra
                   </span>
                   <select
@@ -605,7 +604,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   </select>
                 </label>
                 <label className="space-y-1">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                     Sustantivas
                   </span>
                   <select
@@ -624,7 +623,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                     <option value="false">Sin horas sustantivas</option>
                   </select>
                 </label>
-                <label className="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer sm:col-span-2 lg:col-span-3 pt-1">
+                <label className="inline-flex items-center gap-2 text-sm text-orbit-text-secondary cursor-pointer sm:col-span-2 lg:col-span-3 pt-1">
                   <input
                     type="checkbox"
                     checked={filters.withoutEduEmail}
@@ -634,7 +633,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                         withoutEduEmail: e.target.checked,
                       }))
                     }
-                    className="rounded border-slate-300 text-violet-600 focus:ring-violet-400"
+                    className="rounded border-orbit-border text-orbit-primary focus:ring-violet-400"
                   />
                   Sin correo CUN
                 </label>
@@ -645,8 +644,8 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
       </div>
 
       <div className="glass-panel overflow-hidden relative z-10">
-        <div className="px-5 py-3 border-b border-slate-200/60 flex items-center justify-between">
-          <p className="text-sm text-slate-500 font-medium">
+        <div className="px-5 py-3 border-b border-orbit-border/60 flex items-center justify-between">
+          <p className="text-sm text-orbit-muted font-medium">
             {loading
               ? 'Cargando…'
               : `${totalCount} docente${totalCount === 1 ? '' : 's'}`}
@@ -656,7 +655,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-slate-400 border-b border-slate-200/60">
+              <tr className="text-xs uppercase tracking-wide text-orbit-muted border-b border-orbit-border/60">
                 <th className="px-5 py-3 font-bold">Docente</th>
                 <th className="px-5 py-3 font-bold hidden md:table-cell">
                   Área / Escuela
@@ -673,7 +672,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                 <tr>
                   <td
                     colSpan={5}
-                    className="px-5 py-12 text-center text-slate-400"
+                    className="px-5 py-12 text-center text-orbit-muted"
                   >
                     No hay docentes para mostrar
                   </td>
@@ -682,11 +681,11 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               {rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-b border-slate-100/80 hover:bg-violet-50/30 transition-colors"
+                  className="border-b border-orbit-border/80 hover:bg-orbit-interactive/30 transition-colors"
                 >
                   <td className="px-5 py-4">
-                    <div className="font-semibold text-slate-800">{row.name}</div>
-                    <div className="text-xs text-slate-400 mt-0.5">
+                    <div className="font-semibold text-orbit-text">{row.name}</div>
+                    <div className="text-xs text-orbit-muted mt-0.5">
                       {row.document || '—'}
                       {' · '}
                       {row.email?.trim() ? (
@@ -698,40 +697,40 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       )}
                     </div>
                   </td>
-                  <td className="px-5 py-4 hidden md:table-cell text-slate-600">
+                  <td className="px-5 py-4 hidden md:table-cell text-orbit-text-secondary">
                     <div>{row.area || '—'}</div>
-                    <div className="text-xs text-slate-400">{row.school || '—'}</div>
+                    <div className="text-xs text-orbit-muted">{row.school || '—'}</div>
                   </td>
-                  <td className="px-5 py-4 hidden lg:table-cell text-slate-600">
+                  <td className="px-5 py-4 hidden lg:table-cell text-orbit-text-secondary">
                     <div>{row.contractType || '—'}</div>
-                    <div className="text-xs text-slate-400">
+                    <div className="text-xs text-orbit-muted">
                       {row.contractHoursWeekly != null
                         ? `${row.contractHoursWeekly} h/sem`
                         : row.workSchedule || '—'}
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-right text-slate-600">
+                  <td className="px-5 py-4 text-right text-orbit-text-secondary">
                     <div className="text-xs space-y-0.5 tabular-nums">
                       <div>
-                        <span className="text-slate-400">Cátedra:</span>{' '}
-                        <span className="font-medium text-slate-700">
+                        <span className="text-orbit-muted">Cátedra:</span>{' '}
+                        <span className="font-medium text-orbit-text-secondary">
                           {row.catedraHours}
                         </span>
                       </div>
                       <div>
-                        <span className="text-slate-400">Preparación clase:</span>{' '}
-                        <span className="font-medium text-slate-700">
+                        <span className="text-orbit-muted">Preparación clase:</span>{' '}
+                        <span className="font-medium text-orbit-text-secondary">
                           {row.preparationHours}
                         </span>
                       </div>
                       <div>
-                        <span className="text-slate-400">Sustantivas:</span>{' '}
-                        <span className="font-medium text-slate-700">
+                        <span className="text-orbit-muted">Sustantivas:</span>{' '}
+                        <span className="font-medium text-orbit-text-secondary">
                           {row.substantiveHoursAssigned}
                         </span>
                       </div>
                       {row.substantiveHoursRemaining != null && (
-                        <div className="font-semibold text-violet-700">
+                        <div className="font-semibold text-orbit-primary">
                           Disponibles: {row.substantiveHoursRemaining}
                         </div>
                       )}
@@ -741,7 +740,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                     <button
                       type="button"
                       onClick={() => openActionForRow(row)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-violet-600 text-white hover:bg-violet-700 shadow-sm shadow-violet-500/20"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-orbit-primary text-white hover:bg-orbit-primary-hover shadow-sm "
                     >
                       {actionMode === 'preparation' ? (
                         <>
@@ -763,16 +762,16 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
         </div>
 
         {totalPages > 1 && (
-          <div className="px-5 py-3 border-t border-slate-200/60 flex items-center justify-between gap-3">
+          <div className="px-5 py-3 border-t border-orbit-border/60 flex items-center justify-between gap-3">
             <button
               type="button"
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="px-3 py-1.5 rounded-lg text-sm font-semibold disabled:opacity-40 hover:bg-slate-100"
+              className="px-3 py-1.5 rounded-lg text-sm font-semibold disabled:opacity-40 hover:bg-orbit-interactive"
             >
               Anterior
             </button>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-orbit-muted">
               Página {currentPage} de {totalPages}
             </span>
             <button
@@ -781,7 +780,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               onClick={() =>
                 setCurrentPage((p) => Math.min(totalPages, p + 1))
               }
-              className="px-3 py-1.5 rounded-lg text-sm font-semibold disabled:opacity-40 hover:bg-slate-100"
+              className="px-3 py-1.5 rounded-lg text-sm font-semibold disabled:opacity-40 hover:bg-orbit-interactive"
             >
               Siguiente
             </button>
@@ -792,7 +791,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
       <AnimatePresence>
         {modalTeacher && (
           <motion.div
-            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -807,7 +806,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-2 text-violet-600 mb-1">
+                  <div className="flex items-center gap-2 text-orbit-primary mb-1">
                     {modalKind === 'preparation' ? (
                       <PencilSquareIcon className="h-5 w-5" />
                     ) : (
@@ -819,17 +818,17 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                         : 'Horas sustantivas'}
                     </span>
                   </div>
-                  <h2 className="text-lg font-bold text-slate-900">
+                  <h2 className="text-lg font-bold text-orbit-text">
                     {modalTeacher.name}
                   </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className="text-xs text-orbit-muted mt-0.5">
                     {modalTeacher.document || 'Sin documento'}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="p-2 rounded-lg text-slate-400 hover:bg-slate-100"
+                  className="p-2 rounded-lg text-orbit-muted hover:bg-orbit-interactive"
                   aria-label="Cerrar"
                 >
                   <XMarkIcon className="h-5 w-5" />
@@ -838,10 +837,10 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
 
               {modalKind === 'preparation' ? (
                 <>
-                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 text-xs text-slate-600 space-y-1 tabular-nums">
+                  <div className="rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary/60 p-3 text-xs text-orbit-text-secondary space-y-1 tabular-nums">
                     <div className="flex justify-between gap-3">
                       <span>Jornada semanal</span>
-                      <span className="font-semibold text-slate-800">
+                      <span className="font-semibold text-orbit-text">
                         {modalTeacher.contractHoursWeekly != null
                           ? `${modalTeacher.contractHoursWeekly} h`
                           : '—'}
@@ -849,26 +848,26 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                     </div>
                     <div className="flex justify-between gap-3">
                       <span>Cátedra</span>
-                      <span className="font-semibold text-slate-800">
+                      <span className="font-semibold text-orbit-text">
                         {modalTeacher.catedraHours} h
                       </span>
                     </div>
                     <div className="flex justify-between gap-3">
                       <span>Sustantivas</span>
-                      <span className="font-semibold text-slate-800">
+                      <span className="font-semibold text-orbit-text">
                         {modalTeacher.substantiveHoursAssigned} h
                       </span>
                     </div>
                     <div className="flex justify-between gap-3">
                       <span>Preparación actual</span>
-                      <span className="font-semibold text-slate-800">
+                      <span className="font-semibold text-orbit-text">
                         {modalTeacher.preparationHours} h
                       </span>
                     </div>
                   </div>
 
                   <label className="block space-y-1.5">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                       Horas de preparación (semanal)
                     </span>
                     <input
@@ -880,7 +879,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       value={prepHoursInput}
                       onChange={(e) => onPrepHoursChange(e.target.value)}
                     />
-                    <span className="text-[11px] text-slate-400">
+                    <span className="text-[11px] text-orbit-muted">
                       Entero ≥ 0. No puede dejar el balance semanal en negativo.
                     </span>
                   </label>
@@ -890,8 +889,8 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       className={cn(
                         'text-sm font-semibold',
                         prepBalancePreview < 0
-                          ? 'text-rose-600'
-                          : 'text-violet-700'
+                          ? 'text-orbit-danger'
+                          : 'text-orbit-primary'
                       )}
                     >
                       Disponibles tras el cambio: {prepBalancePreview} h/sem
@@ -899,7 +898,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   )}
 
                   {formError && (
-                    <p className="text-sm text-rose-600 font-medium">
+                    <p className="text-sm text-orbit-danger font-medium">
                       {formError}
                     </p>
                   )}
@@ -909,7 +908,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       type="button"
                       onClick={closeModal}
                       disabled={saving}
-                      className="px-4 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100"
+                      className="px-4 py-2.5 rounded-xl text-sm font-bold text-orbit-text-secondary hover:bg-orbit-interactive"
                     >
                       Cancelar
                     </button>
@@ -926,30 +925,30 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               ) : (
                 <>
                   {assignmentsLoading ? (
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-orbit-muted">
                       Cargando asignaciones…
                     </p>
                   ) : existingAssignments.length > 0 ? (
                     <div className="space-y-2">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                         Asignaciones registradas
                       </span>
-                      <ul className="space-y-2 max-h-40 overflow-y-auto rounded-xl border border-slate-200/80 bg-slate-50/50 p-3">
+                      <ul className="space-y-2 max-h-40 overflow-y-auto rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary/50 p-3">
                         {existingAssignments.map((a) => (
                           <li
                             key={a.id}
-                            className="text-sm text-slate-700 border-b border-slate-200/60 last:border-0 pb-2 last:pb-0"
+                            className="text-sm text-orbit-text-secondary border-b border-orbit-border/60 last:border-0 pb-2 last:pb-0"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="font-semibold">
                                 {a.categoryName}
                               </span>
-                              <span className="text-violet-700 font-bold shrink-0">
+                              <span className="text-orbit-primary font-bold shrink-0">
                                 {a.hoursQuantity} h
                               </span>
                             </div>
                             {a.tasks.length > 0 && (
-                              <ul className="mt-1 text-xs text-slate-500 list-disc list-inside">
+                              <ul className="mt-1 text-xs text-orbit-muted list-disc list-inside">
                                 {a.tasks.map((t) => (
                                   <li key={t.id}>{t.description}</li>
                                 ))}
@@ -962,7 +961,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   ) : null}
 
                   <label className="block space-y-1.5">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                       Categoría
                     </span>
                     <select
@@ -982,7 +981,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   </label>
 
                   <label className="block space-y-1.5">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                       Cantidad de horas
                     </span>
                     <input
@@ -994,7 +993,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       value={hoursInput}
                       onChange={(e) => onHoursChange(e.target.value)}
                     />
-                    <span className="text-[11px] text-slate-400">
+                    <span className="text-[11px] text-orbit-muted">
                       Solo admite enteros (≥ 1). No se permiten decimales (0.5,
                       etc.).
                     </span>
@@ -1002,13 +1001,13 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                         Lista de tareas
                       </span>
                       <button
                         type="button"
                         onClick={addTaskRow}
-                        className="inline-flex items-center gap-1 text-xs font-bold text-violet-700 hover:text-violet-900"
+                        className="inline-flex items-center gap-1 text-xs font-bold text-orbit-primary hover:text-orbit-primary"
                       >
                         <PlusIcon className="h-3.5 w-3.5" />
                         Añadir tarea
@@ -1027,7 +1026,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                           <button
                             type="button"
                             onClick={() => removeTaskRow(idx)}
-                            className="shrink-0 p-2.5 rounded-xl border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50"
+                            className="shrink-0 p-2.5 rounded-xl border border-orbit-border text-orbit-muted hover:text-orbit-danger hover:border-orbit-danger/40 hover:bg-orbit-danger/10"
                             aria-label="Eliminar tarea"
                           >
                             <TrashIcon className="h-4 w-4" />
@@ -1038,7 +1037,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   </div>
 
                   {formError && (
-                    <p className="text-sm text-rose-600 font-medium">
+                    <p className="text-sm text-orbit-danger font-medium">
                       {formError}
                     </p>
                   )}
@@ -1048,7 +1047,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       type="button"
                       onClick={closeModal}
                       disabled={saving}
-                      className="px-4 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100"
+                      className="px-4 py-2.5 rounded-xl text-sm font-bold text-orbit-text-secondary hover:bg-orbit-interactive"
                     >
                       Cancelar
                     </button>

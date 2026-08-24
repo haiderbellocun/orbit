@@ -4,6 +4,8 @@ import {
   MagnifyingGlassIcon,
   FunnelIcon,
   InformationCircleIcon,
+  ChevronDownIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -47,6 +49,9 @@ function formatEventDate(iso: string) {
   }).format(new Date(iso));
 }
 
+const selectClass =
+  'w-full min-w-0 max-w-full rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary px-3 py-2.5 text-sm text-orbit-text shadow-sm focus:outline-none focus:ring-2 focus:ring-orbit-primary/30';
+
 export const NewsView: React.FC<NewsViewProps> = ({
   searchQuery = '',
   setSearchQuery,
@@ -65,6 +70,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [schoolFilter, setSchoolFilter] = useState<string>('');
   const [areaFilter, setAreaFilter] = useState<string>(lockedAreaId);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [events, setEvents] = useState<WorkforceEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -217,11 +223,24 @@ export const NewsView: React.FC<NewsViewProps> = ({
     }
   };
 
-  return (
-    <div className="space-y-8 relative">
-      <div className="absolute -top-20 -right-20 w-64 h-64 bg-violet-200/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 rounded-full blur-3xl pointer-events-none" />
+  const activeFilterCount = [
+    statusFilter,
+    typeFilter,
+    schoolFilter,
+    !lockedAreaId && areaFilter ? areaFilter : '',
+  ].filter(Boolean).length;
 
+  const clearFilters = () => {
+    setFeedSearch('');
+    setAppliedFeedSearch('');
+    setStatusFilter('');
+    setTypeFilter('');
+    setSchoolFilter('');
+    setAreaFilter(lockedAreaId);
+  };
+
+  return (
+    <div className="space-y-5 relative">
       <Header
         title="Novedades y Reportes"
         subtitle="Seguimiento de novedades por escuela o área"
@@ -230,115 +249,176 @@ export const NewsView: React.FC<NewsViewProps> = ({
         searchResults={searchResults}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-10">
-        <div className="lg:col-span-8 space-y-6">
-          <div className="glass-panel p-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-              <h3 className="text-lg font-bold text-slate-900 font-display">
-                Feed de Novedades
-              </h3>
-              <div
-                data-tutorial="news-filters"
-                className="flex flex-wrap items-center gap-2 w-full sm:w-auto"
-              >
-                <div className="glass-panel p-1 flex items-center gap-2 flex-1 min-w-[140px] sm:flex-none">
-                  <MagnifyingGlassIcon className="ml-2 h-3.5 w-3.5 text-slate-400" />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10">
+        <div className="lg:col-span-8 space-y-4">
+          <div className="glass-panel p-5">
+            <h3 className="text-lg font-bold text-orbit-text font-display mb-4">
+              Feed de Novedades
+            </h3>
+
+            <div data-tutorial="news-filters" className="space-y-3 mb-5">
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                <div className="relative flex-1">
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orbit-muted" />
                   <input
-                    type="text"
-                    placeholder="Buscar…"
+                    type="search"
+                    placeholder="Buscar por persona o descripción…"
                     value={feedSearch}
                     onChange={(e) => setFeedSearch(e.target.value)}
-                    className="bg-transparent border-none focus:ring-0 text-xs py-1 w-full sm:w-40"
+                    className={cn(selectClass, 'pl-10')}
                   />
                 </div>
-                <select
-                  className="glass-input py-1.5 text-xs max-w-[130px]"
-                  value={statusFilter}
-                  onChange={(e) =>
-                    setStatusFilter(e.target.value as WorkforceEventStatus | '')
-                  }
-                >
-                  <option value="">Estado</option>
-                  {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
-                    <option key={st} value={st}>
-                      {WORKFORCE_EVENT_STATUS_LABELS[st]}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="glass-input py-1.5 text-xs max-w-[120px]"
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
-                >
-                  <option value="">Tipo</option>
-                  {eventTypes.map((t) => (
-                    <option key={t.id} value={String(t.id)}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-                {areas.length > 0 ? (
-                  <select
-                    className="glass-input py-1.5 text-xs max-w-[120px]"
-                    value={areaFilter}
-                    disabled={Boolean(lockedAreaId)}
-                    onChange={(e) => {
-                      setAreaFilter(e.target.value);
-                      setSchoolFilter('');
-                    }}
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setFiltersOpen((o) => !o)}
+                    className={cn(
+                      'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors',
+                      filtersOpen || activeFilterCount > 0
+                        ? 'bg-orbit-primary/10 border-orbit-primary/30 text-orbit-primary'
+                        : 'bg-orbit-bg-secondary border-orbit-border/80 text-orbit-text-secondary hover:bg-orbit-bg-secondary'
+                    )}
+                    aria-expanded={filtersOpen}
                   >
-                    {!lockedAreaId ? <option value="">Área</option> : null}
-                    {areas.map((a) => (
-                      <option key={a.id} value={String(a.id)}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                {schools.length > 0 ? (
-                  <select
-                    className="glass-input py-1.5 text-xs max-w-[140px]"
-                    value={schoolFilter}
-                    onChange={(e) => setSchoolFilter(e.target.value)}
-                  >
-                    <option value="">Escuela</option>
-                    {schools.map((s) => (
-                      <option key={s.id} value={String(s.id)}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                <button
-                  type="button"
-                  className="glass-button-secondary p-2 shrink-0"
-                  title="Aplicar filtros"
-                  onClick={() => void loadEvents()}
-                >
-                  <FunnelIcon className="h-4 w-4" />
-                </button>
+                    <FunnelIcon className="h-4 w-4" />
+                    Filtros
+                    {activeFilterCount > 0 && (
+                      <span className="min-w-5 h-5 px-1.5 rounded-md bg-orbit-primary text-white text-[10px] flex items-center justify-center">
+                        {activeFilterCount}
+                      </span>
+                    )}
+                    <ChevronDownIcon
+                      className={cn(
+                        'h-4 w-4 transition-transform',
+                        filtersOpen && 'rotate-180'
+                      )}
+                    />
+                  </button>
+                  {(activeFilterCount > 0 || appliedFeedSearch.trim()) && (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium text-orbit-muted hover:text-orbit-danger hover:bg-orbit-danger/10 transition-colors"
+                      title="Limpiar filtros"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                      Limpiar
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {filtersOpen && (
+                <div className="pt-3 border-t border-orbit-border">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                    <label className="space-y-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                        Estado
+                      </span>
+                      <select
+                        className={selectClass}
+                        value={statusFilter}
+                        onChange={(e) =>
+                          setStatusFilter(
+                            e.target.value as WorkforceEventStatus | ''
+                          )
+                        }
+                      >
+                        <option value="">Todos</option>
+                        {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
+                          <option key={st} value={st}>
+                            {WORKFORCE_EVENT_STATUS_LABELS[st]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="space-y-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                        Tipo
+                      </span>
+                      <select
+                        className={selectClass}
+                        value={typeFilter}
+                        onChange={(e) => setTypeFilter(e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        {eventTypes.map((t) => (
+                          <option key={t.id} value={String(t.id)}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    {areas.length > 0 ? (
+                      <label className="space-y-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                          Área
+                        </span>
+                        <select
+                          className={selectClass}
+                          value={areaFilter}
+                          disabled={Boolean(lockedAreaId)}
+                          onChange={(e) => {
+                            setAreaFilter(e.target.value);
+                            setSchoolFilter('');
+                          }}
+                        >
+                          {!lockedAreaId ? <option value="">Todas</option> : null}
+                          {areas.map((a) => (
+                            <option key={a.id} value={String(a.id)}>
+                              {a.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+
+                    {schools.length > 0 ? (
+                      <label className="space-y-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                          Escuela
+                        </span>
+                        <select
+                          className={selectClass}
+                          value={schoolFilter}
+                          onChange={(e) => setSchoolFilter(e.target.value)}
+                        >
+                          <option value="">Todas</option>
+                          {schools.map((s) => (
+                            <option key={s.id} value={String(s.id)}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                  </div>
+                </div>
+              )}
             </div>
 
             {error ? (
-              <p className="mb-4 text-sm text-red-600">{error}</p>
+              <p className="mb-4 text-sm text-orbit-danger">{error}</p>
             ) : null}
 
             <div className="space-y-6">
               {loading ? (
-                <p className="py-12 text-center text-sm text-slate-500">
+                <p className="py-12 text-center text-sm text-orbit-muted">
                   Cargando novedades…
                 </p>
               ) : events.length === 0 ? (
                 <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
-                  <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 border border-white/50 shadow-inner">
+                  <div className="w-16 h-16 rounded-full bg-orbit-bg-secondary flex items-center justify-center text-orbit-muted border border-orbit-border shadow-inner">
                     <MagnifyingGlassIcon className="h-8 w-8" />
                   </div>
                   <div className="space-y-1">
-                    <h3 className="text-lg font-bold text-slate-900 font-display">
+                    <h3 className="text-lg font-bold text-orbit-text font-display">
                       No hay novedades
                     </h3>
-                    <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                    <p className="text-xs text-orbit-muted max-w-xs mx-auto">
                       Registre una novedad o ajuste los filtros de búsqueda.
                     </p>
                   </div>
@@ -349,29 +429,29 @@ export const NewsView: React.FC<NewsViewProps> = ({
                     key={news.id}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    className="relative pl-6 border-l-2 border-slate-200/50 hover:border-violet-400 transition-colors group"
+                    className="relative pl-6 border-l-2 border-orbit-border/50 hover:border-orbit-primary/50 transition-colors group"
                   >
                     <div
                       className={cn(
                         'absolute -left-[9px] top-0 w-4 h-4 rounded-full border-4 border-white shadow-sm',
                         news.status === 'NOT_TAKEN' || news.status === 'PENDING'
-                          ? 'bg-amber-500'
+                          ? 'bg-orbit-warning/100'
                           : news.status === 'TAKEN' || news.status === 'APPROVED'
-                            ? 'bg-emerald-500'
-                            : 'bg-blue-500'
+                            ? 'bg-orbit-success/100'
+                            : 'bg-orbit-info/100'
                       )}
                     />
 
                     <div className="flex justify-between items-start mb-2 gap-4">
                       <div className="min-w-0">
-                        <h4 className="font-bold text-slate-900 group-hover:text-violet-600 transition-colors truncate">
+                        <h4 className="font-bold text-orbit-text group-hover:text-orbit-primary transition-colors truncate">
                           {news.person.name}
                         </h4>
                         <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
+                          <span className="text-[10px] font-bold text-orbit-muted uppercase tracking-widest font-mono">
                             {formatEventDate(news.created_at)}
                           </span>
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border bg-violet-50 text-violet-600 border-violet-100">
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border bg-orbit-primary/10 text-orbit-primary border-orbit-primary/25">
                             {news.event_type_name}
                           </span>
                           <span
@@ -384,7 +464,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
                           </span>
                         </div>
                         {news.person.school_name ? (
-                          <p className="text-[10px] text-slate-400 mt-0.5">
+                          <p className="text-[10px] text-orbit-muted mt-0.5">
                             {news.person.school_name}
                           </p>
                         ) : null}
@@ -406,11 +486,11 @@ export const NewsView: React.FC<NewsViewProps> = ({
                         ))}
                       </select>
                     </div>
-                    <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                    <p className="text-sm text-orbit-text-secondary leading-relaxed font-medium">
                       {news.observation ?? '—'}
                     </p>
                     {formatWorkforceEventSchedule(news) ? (
-                      <p className="text-xs text-slate-400 mt-1">
+                      <p className="text-xs text-orbit-muted mt-1">
                         {formatWorkforceEventSchedule(news)}
                       </p>
                     ) : null}
@@ -423,17 +503,17 @@ export const NewsView: React.FC<NewsViewProps> = ({
         </div>
 
         <div className="lg:col-span-4 space-y-6">
-          <div className="glass-panel p-6 bg-white border-white/50 shadow-xl overflow-hidden relative">
+          <div className="glass-panel p-6 bg-orbit-elevated border-orbit-border shadow-xl overflow-hidden relative">
             <div className="relative z-10">
-              <h3 className="font-bold mb-4 font-display text-lg text-slate-900">
+              <h3 className="font-bold mb-4 font-display text-lg text-orbit-text">
                 Registrar Novedad
               </h3>
-              <p className="text-xs text-slate-500 mb-6 font-medium">
+              <p className="text-xs text-orbit-muted mb-6 font-medium">
                 Busque la persona y complete el reporte.
               </p>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">
+                  <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
                     Persona
                   </label>
                   <PersonSearchCombobox
@@ -443,11 +523,11 @@ export const NewsView: React.FC<NewsViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">
+                  <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
                     Tipo
                   </label>
                   <select
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                    className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
                     value={formTypeId}
                     onChange={(e) => setFormTypeId(e.target.value)}
                   >
@@ -459,11 +539,11 @@ export const NewsView: React.FC<NewsViewProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">
+                  <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
                     Estado
                   </label>
                   <select
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                    className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
                     value={formStatus}
                     onChange={(e) =>
                       setFormStatus(e.target.value as WorkforceEventStatus)
@@ -477,64 +557,64 @@ export const NewsView: React.FC<NewsViewProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 ml-1">
+                  <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
                     Descripción
                   </label>
                   <textarea
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400 h-24 resize-none"
+                    className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-orbit-primary/50 h-24 resize-none"
                     placeholder="Detalles de la novedad…"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
                       Fecha inicio
                     </label>
                     <input
                       type="date"
                       value={formStartDate}
                       onChange={(e) => setFormStartDate(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                      className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
                       Fecha fin
                     </label>
                     <input
                       type="date"
                       value={formEndDate}
                       onChange={(e) => setFormEndDate(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                      className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
                       Hora inicio
                     </label>
                     <input
                       type="time"
                       value={formStartTime}
                       onChange={(e) => setFormStartTime(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                      className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
                       Hora fin
                     </label>
                     <input
                       type="time"
                       value={formEndTime}
                       onChange={(e) => setFormEndTime(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm"
+                      className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
                 {formMessage ? (
-                  <p className="text-xs text-violet-600 font-medium">{formMessage}</p>
+                  <p className="text-xs text-orbit-primary font-medium">{formMessage}</p>
                 ) : null}
                 <button
                   type="button"
@@ -549,22 +629,22 @@ export const NewsView: React.FC<NewsViewProps> = ({
           </div>
 
           <div className="glass-panel p-6">
-            <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2 font-display">
-              <InformationCircleIcon className="h-4.5 w-4.5 text-violet-500" />
+            <h3 className="font-bold text-orbit-text mb-4 flex items-center gap-2 font-display">
+              <InformationCircleIcon className="h-4.5 w-4.5 text-orbit-primary" />
               Resumen
             </h3>
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50/50 border border-amber-100/50">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-orbit-warning/10/50 border border-orbit-warning/30/50">
+                <span className="text-xs font-bold text-orbit-muted uppercase tracking-wider">
                   Pendientes / no tomados
                 </span>
-                <span className="text-lg font-bold text-amber-600">{criticalCount}</span>
+                <span className="text-lg font-bold text-orbit-warning">{criticalCount}</span>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50/50 border border-slate-100/50">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-orbit-bg-secondary/50 border border-orbit-border/50">
+                <span className="text-xs font-bold text-orbit-muted uppercase tracking-wider">
                   Total en lista
                 </span>
-                <span className="text-lg font-bold text-slate-900">{events.length}</span>
+                <span className="text-lg font-bold text-orbit-text">{events.length}</span>
               </div>
             </div>
           </div>

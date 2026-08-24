@@ -89,6 +89,9 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
     const withoutProgram = parseBoolFlag(req.query.without_program);
     const withoutRole = parseBoolFlag(req.query.without_role);
     const withoutEduEmail = parseBoolFlag(req.query.without_edu_email);
+    const withoutDocument = parseBoolFlag(
+      req.query.without_document ?? req.query.withoutDocument
+    );
 
     const pageNum = Math.max(
       1,
@@ -165,6 +168,9 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
       conditions.push(
         `(p.edu_email IS NULL OR TRIM(p.edu_email) = '')`
       );
+    }
+    if (withoutDocument) {
+      conditions.push(`(p.document IS NULL OR TRIM(p.document) = '')`);
     }
 
     if (search) {

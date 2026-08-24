@@ -150,12 +150,12 @@ export const GuidedTour: React.FC = () => {
               left: hole.left,
               width: hole.width,
               height: hole.height,
-              boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.55)",
-              outline: "2px solid rgba(139, 92, 246, 0.85)",
+              boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.72)",
+              outline: "2px solid rgba(168, 85, 247, 0.9)",
             }}
           />
         ) : (
-          <div className="absolute inset-0 bg-slate-900/50" />
+          <div className="absolute inset-0 bg-black/70" />
         )}
 
         {/* Block clicks on backdrop without advancing */}
@@ -168,7 +168,7 @@ export const GuidedTour: React.FC = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.2 }}
             className={cn(
-              "absolute glass-panel p-5 shadow-2xl border border-white/60",
+              "absolute rounded-[12px] border border-orbit-border bg-orbit-elevated p-5 shadow-2xl shadow-slate-200/80",
               "pointer-events-auto"
             )}
             style={{
@@ -178,13 +178,13 @@ export const GuidedTour: React.FC = () => {
               zIndex: 1,
             }}
           >
-            <p className="text-[10px] font-bold uppercase tracking-widest text-violet-500 mb-2">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-orbit-primary">
               Paso {stepIndex + 1} de {steps.length}
             </p>
-            <h3 className="text-lg font-bold text-slate-900 font-display tracking-tight mb-2">
+            <h3 className="mb-2 font-display text-lg font-bold tracking-tight text-orbit-text">
               {currentStep.title}
             </h3>
-            <p className="text-sm text-slate-600 leading-relaxed mb-5">
+            <p className="text-sm text-orbit-text-secondary leading-relaxed mb-5">
               {currentStep.body}
             </p>
 
@@ -207,7 +207,7 @@ export const GuidedTour: React.FC = () => {
               <button
                 type="button"
                 onClick={skip}
-                className="ml-auto text-xs font-semibold text-slate-500 hover:text-slate-800 px-2 py-2"
+                className="ml-auto text-xs font-semibold text-orbit-muted hover:text-orbit-text px-2 py-2"
               >
                 Saltar tutorial
               </button>

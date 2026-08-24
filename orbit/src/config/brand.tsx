@@ -39,7 +39,7 @@ export const BRAND_CONFIG: BrandConfig = {
     primary: 'violet',
     secondary: 'fuchsia',
     accent: 'cyan',
-    gradient: 'from-violet-600 to-fuchsia-600',
+    gradient: 'from-orbit-primary to-orbit-primary-hover',
   },
 };
 

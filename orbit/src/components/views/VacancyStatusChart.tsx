@@ -1,81 +1,117 @@
-import React, { useMemo } from 'react';
-import { ChartBarIcon } from '@heroicons/react/24/solid';
-import { cn } from '@/src/lib/utils';
-import type { Vacancy, VacancyOperationStatus } from '@/src/types';
-import { STATUS_LABEL } from '@/src/lib/vacancyFormHelpers';
+import React, { useMemo, useState } from "react";
+import { ChartBarIcon, ChevronDownIcon } from "@heroicons/react/24/solid";
+import { cn } from "@/src/lib/utils";
+import type { Vacancy, VacancyOperationStatus } from "@/src/types";
+import { STATUS_LABEL } from "@/src/lib/vacancyFormHelpers";
+
+const STORAGE_KEY = "orbit_vacancy_status_chart_expanded";
 
 const STATUS_ORDER: VacancyOperationStatus[] = [
-  'open',
-  'selected',
-  'requisition_sent',
-  'internal_movement',
-  'hired',
-  'closed',
-  'cancelled',
-  'cancelled_by_capital',
+  "open",
+  "selected",
+  "requisition_sent",
+  "internal_movement",
+  "hired",
+  "closed",
+  "cancelled",
+  "cancelled_by_capital",
 ];
 
+/** Colores sólidos y contrastados sobre fondo blanco. */
 const STATUS_BAR: Record<
   VacancyOperationStatus,
-  { bar: string; track: string; qty: string }
+  { bar: string; qty: string; track: string; dot: string }
 > = {
   open: {
-    bar: 'bg-blue-500',
-    track: 'bg-blue-50',
-    qty: 'bg-blue-300',
+    bar: "bg-sky-500",
+    qty: "bg-sky-200",
+    track: "bg-sky-100",
+    dot: "bg-sky-500",
   },
   selected: {
-    bar: 'bg-amber-500',
-    track: 'bg-amber-50',
-    qty: 'bg-amber-300',
+    bar: "bg-amber-500",
+    qty: "bg-amber-200",
+    track: "bg-amber-100",
+    dot: "bg-amber-500",
   },
   requisition_sent: {
-    bar: 'bg-violet-500',
-    track: 'bg-violet-50',
-    qty: 'bg-violet-300',
+    bar: "bg-violet-600",
+    qty: "bg-violet-300",
+    track: "bg-violet-100",
+    dot: "bg-violet-600",
   },
   internal_movement: {
-    bar: 'bg-cyan-500',
-    track: 'bg-cyan-50',
-    qty: 'bg-cyan-300',
+    bar: "bg-cyan-600",
+    qty: "bg-cyan-200",
+    track: "bg-cyan-100",
+    dot: "bg-cyan-600",
   },
   hired: {
-    bar: 'bg-emerald-500',
-    track: 'bg-emerald-50',
-    qty: 'bg-emerald-300',
+    bar: "bg-emerald-600",
+    qty: "bg-emerald-300",
+    track: "bg-emerald-100",
+    dot: "bg-emerald-600",
   },
   closed: {
-    bar: 'bg-slate-500',
-    track: 'bg-slate-100',
-    qty: 'bg-slate-300',
+    bar: "bg-slate-500",
+    qty: "bg-slate-300",
+    track: "bg-slate-100",
+    dot: "bg-slate-500",
   },
   cancelled: {
-    bar: 'bg-slate-400',
-    track: 'bg-slate-100',
-    qty: 'bg-slate-300',
+    bar: "bg-zinc-500",
+    qty: "bg-zinc-300",
+    track: "bg-zinc-100",
+    dot: "bg-zinc-500",
   },
   cancelled_by_capital: {
-    bar: 'bg-rose-500',
-    track: 'bg-rose-50',
-    qty: 'bg-rose-300',
+    bar: "bg-rose-500",
+    qty: "bg-rose-200",
+    track: "bg-rose-100",
+    dot: "bg-rose-500",
   },
 };
 
-const numberFormatter = new Intl.NumberFormat('es-CO');
+const numberFormatter = new Intl.NumberFormat("es-CO");
+
+function readExpandedPreference(): boolean {
+  try {
+    const v = localStorage.getItem(STORAGE_KEY);
+    if (v === "0") return false;
+    if (v === "1") return true;
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
 
 type VacancyStatusChartProps = {
   vacancies: Vacancy[];
   loading?: boolean;
-  activeStatus?: VacancyOperationStatus | '';
-  onSelectStatus?: (status: VacancyOperationStatus | '') => void;
+  activeStatus?: VacancyOperationStatus | "";
+  onSelectStatus?: (status: VacancyOperationStatus | "") => void;
 };
 
 export const VacancyStatusChart: React.FC<VacancyStatusChartProps> = ({
   vacancies,
   loading = false,
-  activeStatus = '',
+  activeStatus = "",
   onSelectStatus,
 }) => {
+  const [expanded, setExpanded] = useState(readExpandedPreference);
+
+  const toggleExpanded = () => {
+    setExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
   const series = useMemo(() => {
     const map = new Map<
       VacancyOperationStatus,
@@ -104,113 +140,203 @@ export const VacancyStatusChart: React.FC<VacancyStatusChartProps> = ({
   const totalQty = series.reduce((n, s) => n + s.quantity, 0);
 
   return (
-    <section className="glass-card p-6 relative z-10">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
-        <div className="flex items-start gap-3 min-w-0">
-          <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-violet-50/80 text-violet-600 border border-violet-100/80 shadow-inner shrink-0">
-            <ChartBarIcon className="h-6 w-6" />
+    <section className="glass-card relative z-10 p-5">
+      <div
+        className={cn(
+          "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+          expanded && "mb-4 sm:items-start"
+        )}
+      >
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-violet-200 bg-violet-50 text-violet-600">
+            <ChartBarIcon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-base font-bold text-slate-900 font-display">
-              Vacantes por estado
-            </h2>
-            <p className="text-[12px] text-slate-500 mt-0.5">
-              Barras horizontales para comparar volumen por categoría. Pulsa un
-              estado para filtrar la tabla.
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-display text-base font-bold text-orbit-text">
+                Vacantes por estado
+              </h2>
+              {!expanded && !loading && (
+                <span className="rounded-md bg-orbit-interactive px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-orbit-text-secondary">
+                  {numberFormatter.format(totalCount)} ·{" "}
+                  {numberFormatter.format(totalQty)} solic.
+                </span>
+              )}
+            </div>
+            {expanded && (
+              <p className="mt-0.5 text-[12px] text-orbit-muted">
+                Compara volumen por categoría. Pulsa un estado para filtrar la
+                tabla.
+              </p>
+            )}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-medium text-slate-500 shrink-0">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block w-3 h-2 rounded-sm bg-violet-500" />
-            Vacantes
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block w-3 h-2 rounded-sm bg-violet-300" />
-            Personas solicitadas
-          </span>
-          <span className="tabular-nums text-slate-400">
-            {loading
-              ? '—'
-              : `${numberFormatter.format(totalCount)} · ${numberFormatter.format(totalQty)} solic.`}
-          </span>
+
+        <div className="flex shrink-0 items-center gap-3 self-end sm:self-auto">
+          {expanded && (
+            <div className="hidden flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-medium text-orbit-text-secondary lg:flex">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-block h-3 w-5 rounded-sm bg-violet-600" />
+                Vacantes
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="inline-block h-3 w-5 rounded-sm border border-violet-400 bg-violet-200"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(109,40,217,0.35) 2px, rgba(109,40,217,0.35) 4px)",
+                  }}
+                />
+                Personas solicitadas
+              </span>
+              <span className="tabular-nums font-semibold text-orbit-text">
+                {loading
+                  ? "—"
+                  : `${numberFormatter.format(totalCount)} · ${numberFormatter.format(totalQty)} solic.`}
+              </span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={toggleExpanded}
+            className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-orbit-border bg-orbit-bg px-3 text-xs font-semibold text-orbit-text-secondary transition-colors hover:bg-orbit-interactive hover:text-orbit-text"
+            aria-expanded={expanded}
+            aria-controls="vacancy-status-chart-body"
+          >
+            {expanded ? "Ocultar" : "Mostrar"}
+            <ChevronDownIcon
+              className={cn(
+                "h-4 w-4 transition-transform duration-200",
+                expanded && "rotate-180"
+              )}
+            />
+          </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="h-48 flex items-center justify-center">
-          <div className="h-8 w-8 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
-        </div>
-      ) : totalCount === 0 ? (
-        <p className="py-10 text-center text-sm text-slate-500">
-          No hay vacantes para graficar con los filtros actuales.
-        </p>
-      ) : (
-        <ul className="space-y-3">
-          {series.map((row) => {
-            const countPct = Math.max(
-              row.count > 0 ? 4 : 0,
-              (row.count / maxValue) * 100
-            );
-            const qtyPct = Math.max(
-              row.quantity > 0 ? 4 : 0,
-              (row.quantity / maxValue) * 100
-            );
-            const colors = STATUS_BAR[row.status];
-            const isActive = activeStatus === row.status;
-            const disabled = row.count === 0 && !isActive;
+      {expanded && (
+        <div id="vacancy-status-chart-body">
+          {loading ? (
+            <div className="flex h-48 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+            </div>
+          ) : totalCount === 0 ? (
+            <p className="py-10 text-center text-sm text-orbit-muted">
+              No hay vacantes para graficar con los filtros actuales.
+            </p>
+          ) : (
+            <ul className="space-y-2.5">
+              {series.map((row) => {
+                const countPct =
+                  row.count > 0
+                    ? Math.max(6, (row.count / maxValue) * 100)
+                    : 0;
+                const qtyPct =
+                  row.quantity > 0
+                    ? Math.max(6, (row.quantity / maxValue) * 100)
+                    : 0;
+                const colors = STATUS_BAR[row.status];
+                const isActive = activeStatus === row.status;
+                const hasData = row.count > 0 || row.quantity > 0;
+                const disabled = !hasData && !isActive;
 
-            return (
-              <li key={row.status}>
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() =>
-                    onSelectStatus?.(isActive ? '' : row.status)
-                  }
-                  className={cn(
-                    'w-full text-left rounded-xl px-2 py-1.5 -mx-2 transition-colors',
-                    isActive && 'bg-violet-50/80 ring-1 ring-violet-200/80',
-                    !disabled && !isActive && 'hover:bg-slate-50/80',
-                    disabled && 'opacity-40 cursor-default'
-                  )}
-                  title={
-                    disabled
-                      ? undefined
-                      : isActive
-                        ? 'Quitar filtro de estado'
-                        : `Filtrar por ${row.label}`
-                  }
-                >
-                  <div className="flex items-center justify-between gap-3 mb-1">
-                    <span className="text-[12px] font-bold text-slate-700 truncate">
-                      {row.label}
-                    </span>
-                    <span className="text-[11px] tabular-nums text-slate-500 shrink-0">
-                      {numberFormatter.format(row.count)} vac.{' '}
-                      <span className="text-slate-400">·</span>{' '}
-                      {numberFormatter.format(row.quantity)} solic.
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    <div className={cn('h-2.5 rounded-full overflow-hidden', colors.track)}>
-                      <div
-                        className={cn('h-full rounded-full transition-all duration-500', colors.bar)}
-                        style={{ width: `${countPct}%` }}
-                      />
-                    </div>
-                    <div className={cn('h-2 rounded-full overflow-hidden', colors.track)}>
-                      <div
-                        className={cn('h-full rounded-full transition-all duration-500', colors.qty)}
-                        style={{ width: `${qtyPct}%` }}
-                      />
-                    </div>
-                  </div>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                return (
+                  <li key={row.status}>
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() =>
+                        onSelectStatus?.(isActive ? "" : row.status)
+                      }
+                      className={cn(
+                        "w-full rounded-[10px] px-3 py-2.5 text-left transition-colors",
+                        isActive && "bg-violet-50 ring-2 ring-violet-400/70",
+                        !disabled &&
+                          !isActive &&
+                          "hover:bg-orbit-bg-secondary",
+                        disabled && "cursor-default opacity-45"
+                      )}
+                      title={
+                        disabled
+                          ? undefined
+                          : isActive
+                            ? "Quitar filtro de estado"
+                            : `Filtrar por ${row.label}`
+                      }
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span
+                            className={cn(
+                              "h-2.5 w-2.5 shrink-0 rounded-full",
+                              colors.dot
+                            )}
+                          />
+                          <span className="truncate text-[13px] font-semibold text-orbit-text">
+                            {row.label}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-[12px] font-semibold tabular-nums text-orbit-text-secondary">
+                          <span className="text-orbit-text">
+                            {numberFormatter.format(row.count)}
+                          </span>{" "}
+                          vac.{" "}
+                          <span className="text-orbit-muted">·</span>{" "}
+                          <span className="text-orbit-text">
+                            {numberFormatter.format(row.quantity)}
+                          </span>{" "}
+                          solic.
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div
+                          className={cn(
+                            "h-3.5 overflow-hidden rounded-md",
+                            colors.track
+                          )}
+                          aria-hidden={!row.count}
+                        >
+                          {row.count > 0 && (
+                            <div
+                              className={cn(
+                                "h-full rounded-md transition-all duration-300",
+                                colors.bar
+                              )}
+                              style={{ width: `${countPct}%` }}
+                            />
+                          )}
+                        </div>
+                        <div
+                          className={cn(
+                            "h-3 overflow-hidden rounded-md border border-black/5",
+                            colors.track
+                          )}
+                          aria-hidden={!row.quantity}
+                        >
+                          {row.quantity > 0 && (
+                            <div
+                              className={cn(
+                                "h-full rounded-md transition-all duration-300",
+                                colors.qty
+                              )}
+                              style={{
+                                width: `${qtyPct}%`,
+                                backgroundImage:
+                                  "repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 5px)",
+                              }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       )}
     </section>
   );

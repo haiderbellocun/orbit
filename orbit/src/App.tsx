@@ -3,26 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Sidebar } from './components/layout/Sidebar';
-import { LoginView } from './components/views/LoginView';
-import { HomeView } from './components/views/HomeView';
-import { VacanciesView } from './components/views/VacanciesView';
-import { ReinstatementsView } from './components/views/ReinstatementsView';
-import { NewsView } from './components/views/NewsView';
-import { AcademicLoadView } from './components/views/AcademicLoadView';
-import { SubstantiveHoursView } from './components/views/SubstantiveHoursView';
-import { AuditView } from './components/views/AuditView';
-import { ProgramsView } from './components/views/ProgramsView';
-import { PlantaActivaView } from './components/views/PlantaActivaView';
-import { View, Vacancy, NAV_ITEMS } from './types';
-import { VacancyDetailView } from './components/views/VacancyDetailView';
-import { VacancyInformativePanelView } from './components/views/VacancyInformativePanelView';
-import { MOCK_VACANCIES } from './data/mockData';
-
-import { BRAND_CONFIG } from './config/brand';
-import { Logo } from './components/common/Logo';
+import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Sidebar } from "./components/layout/Sidebar";
+import { TopBar } from "./components/layout/TopBar";
+import { LoginView } from "./components/views/LoginView";
+import { HomeView } from "./components/views/HomeView";
+import { VacanciesView } from "./components/views/VacanciesView";
+import { ReinstatementsView } from "./components/views/ReinstatementsView";
+import { NewsView } from "./components/views/NewsView";
+import { AcademicLoadView } from "./components/views/AcademicLoadView";
+import { SubstantiveHoursView } from "./components/views/SubstantiveHoursView";
+import { AuditView } from "./components/views/AuditView";
+import { ProgramsView } from "./components/views/ProgramsView";
+import { PlantaActivaView } from "./components/views/PlantaActivaView";
+import { View, Vacancy, NAV_ITEMS } from "./types";
+import { VacancyDetailView } from "./components/views/VacancyDetailView";
+import { VacancyInformativePanelView } from "./components/views/VacancyInformativePanelView";
 import {
   clearOrbitSession,
   getStoredCapabilities,
@@ -37,19 +34,191 @@ import {
   canManageVacancies,
   filterNavItems,
   getDefaultView,
-  hasCapability,
-  ORBIT_CAPABILITY,
 } from "./lib/permissions";
-import { TutorialProvider } from "./components/tutorial/TutorialContext";
+import {
+  TutorialProvider,
+  useTutorialOptional,
+} from "./components/tutorial/TutorialContext";
 import { GuidedTour } from "./components/tutorial/GuidedTour";
 import { clearTutorialSession } from "./lib/tutorialStorage";
 
+function AppShell({
+  view,
+  setView,
+  capabilities,
+  orbitAccess,
+  selectedVacancy,
+  setSelectedVacancy,
+  handleLogout,
+  handleSelectVacancy,
+  handleVacancySaved,
+  handleOpenVacancyFromNotification,
+  isSidebarOpen,
+  setIsSidebarOpen,
+}: {
+  view: View;
+  setView: (v: View) => void;
+  capabilities: string[];
+  orbitAccess: OrbitAccess | null;
+  selectedVacancy: Vacancy | null;
+  setSelectedVacancy: React.Dispatch<React.SetStateAction<Vacancy | null>>;
+  handleLogout: () => void;
+  handleSelectVacancy: (vacancy: Vacancy) => void;
+  handleVacancySaved: (v: Vacancy) => void;
+  handleOpenVacancyFromNotification: (vacancyId: string) => Promise<void>;
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (open: boolean) => void;
+}) {
+  const tutorial = useTutorialOptional();
+  const sidebarNavItems = useMemo(
+    () => filterNavItems(NAV_ITEMS, capabilities),
+    [capabilities]
+  );
+  const canVacancies = canManageVacancies(capabilities);
+
+  const renderView = () => {
+    const notifProps = {
+      onOpenVacancyFromNotification: handleOpenVacancyFromNotification,
+    };
+
+    switch (view) {
+      case "home":
+        return (
+          <HomeView
+            setView={setView}
+            canManageVacancies={canVacancies}
+            isLiteUser={orbitAccess === "lite"}
+            {...notifProps}
+          />
+        );
+      case "vacancies":
+        return (
+          <VacanciesView
+            onSelectVacancy={handleSelectVacancy}
+            onVacancySaved={handleVacancySaved}
+            {...notifProps}
+          />
+        );
+      case "vacancy-informative-panel":
+        return <VacancyInformativePanelView />;
+      case "vacancy-detail":
+        return selectedVacancy ? (
+          <VacancyDetailView
+            summary={selectedVacancy}
+            setView={setView}
+            onVacancySaved={handleVacancySaved}
+            onVacancyDeleted={() => {
+              setSelectedVacancy(null);
+              setView("vacancies");
+            }}
+            {...notifProps}
+          />
+        ) : (
+          <VacanciesView
+            onSelectVacancy={handleSelectVacancy}
+            onVacancySaved={handleVacancySaved}
+            {...notifProps}
+          />
+        );
+      case "reinstatements":
+        return <ReinstatementsView />;
+      case "news":
+        return <NewsView />;
+      case "academic-load":
+        return <AcademicLoadView {...notifProps} />;
+      case "substantive-hours":
+        return <SubstantiveHoursView {...notifProps} />;
+      case "audit":
+        return <AuditView />;
+      case "programs":
+        return <ProgramsView setView={setView} {...notifProps} />;
+      case "planta-activa":
+        return <PlantaActivaView {...notifProps} />;
+      default:
+        return <HomeView setView={setView} {...notifProps} />;
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen overflow-x-hidden bg-orbit-bg">
+      <svg width="0" height="0" className="pointer-events-none absolute">
+        <defs>
+          <linearGradient id="icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#A855F7" />
+            <stop offset="100%" stopColor="#C084FC" />
+          </linearGradient>
+        </defs>
+      </svg>
+
+      <Sidebar
+        currentView={view}
+        setView={(v) => {
+          setView(v);
+          setIsSidebarOpen(false);
+        }}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        navItems={sidebarNavItems}
+      />
+
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => setIsSidebarOpen(false)}
+            className="fixed inset-0 z-[90] bg-black/60 md:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      <div
+        className="flex min-h-screen min-w-0 flex-1 flex-col transition-[margin] duration-200 ease-out md:ml-[var(--orbit-rail-current,76px)]"
+      >
+        <TopBar
+          navItems={sidebarNavItems}
+          capabilities={capabilities}
+          setView={setView}
+          onLogout={handleLogout}
+          onOpenVacancyFromNotification={handleOpenVacancyFromNotification}
+          onSelectVacancyFromSearch={(id) => {
+            void handleOpenVacancyFromNotification(id);
+          }}
+          onOpenMobileNav={() => setIsSidebarOpen(true)}
+          tutorialEnabled={tutorial?.enabled}
+          onToggleTutorial={() =>
+            tutorial?.setEnabled(!(tutorial?.enabled ?? true))
+          }
+        />
+
+        <main className="min-w-0 flex-1 px-3 py-4 sm:px-4 md:px-6 md:py-5 lg:px-8">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={view}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              className="mx-auto w-full max-w-none min-w-0"
+            >
+              {renderView()}
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      </div>
+
+      <GuidedTour />
+    </div>
+  );
+}
+
 export default function App() {
-  const [view, setView] = useState<View>('login');
+  const [view, setView] = useState<View>("login");
   const [orbitAccess, setOrbitAccess] = useState<OrbitAccess | null>(null);
   const [capabilities, setCapabilities] = useState<string[]>([]);
   const [selectedVacancy, setSelectedVacancy] = useState<Vacancy | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -74,11 +243,6 @@ export default function App() {
     }
   }, [view, capabilities]);
 
-  const sidebarNavItems = useMemo(
-    () => filterNavItems(NAV_ITEMS, capabilities),
-    [capabilities]
-  );
-
   const handleLogout = useCallback(() => {
     clearTutorialSession();
     clearOrbitSession();
@@ -92,12 +256,14 @@ export default function App() {
     const caps = getStoredCapabilities();
     setOrbitAccess(access);
     setCapabilities(caps.length > 0 ? caps : (auth.user.capabilities ?? []));
-    setView(getDefaultView(caps.length > 0 ? caps : (auth.user.capabilities ?? [])));
+    setView(
+      getDefaultView(caps.length > 0 ? caps : (auth.user.capabilities ?? []))
+    );
   };
 
   const handleSelectVacancy = (vacancy: Vacancy) => {
     setSelectedVacancy(vacancy);
-    setView('vacancy-detail');
+    setView("vacancy-detail");
   };
 
   const handleVacancySaved = useCallback((v: Vacancy) => {
@@ -119,95 +285,7 @@ export default function App() {
     []
   );
 
-  const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) return null;
-    const query = searchQuery.toLowerCase();
-    const canSearchVacancies = hasCapability(
-      capabilities,
-      ORBIT_CAPABILITY.VACANCIES
-    );
-    const vacancies = canSearchVacancies
-      ? MOCK_VACANCIES.filter(
-          (v) =>
-            v.positionName.toLowerCase().includes(query) ||
-            (v.programName ?? "").toLowerCase().includes(query) ||
-            (v.areaName ?? "").toLowerCase().includes(query) ||
-            v.id.toLowerCase().includes(query)
-        )
-      : [];
-
-    return { teachers: [], vacancies, coordinators: [] };
-  }, [searchQuery, capabilities]);
-
-  const canVacancies = canManageVacancies(capabilities);
-
-  const renderView = () => {
-    const commonProps = {
-      searchQuery,
-      setSearchQuery,
-      searchResults,
-      onOpenVacancyFromNotification: handleOpenVacancyFromNotification,
-    };
-
-    switch (view) {
-      case 'home':
-        return (
-          <HomeView
-            setView={setView}
-            canManageVacancies={canVacancies}
-            isLiteUser={orbitAccess === "lite"}
-            {...commonProps}
-          />
-        );
-      case 'vacancies':
-        return (
-          <VacanciesView
-            onSelectVacancy={handleSelectVacancy}
-            onVacancySaved={handleVacancySaved}
-            {...commonProps}
-          />
-        );
-      case 'vacancy-informative-panel':
-        return <VacancyInformativePanelView />;
-      case 'vacancy-detail':
-        return selectedVacancy ? (
-          <VacancyDetailView
-            summary={selectedVacancy}
-            setView={setView}
-            onVacancySaved={handleVacancySaved}
-            onVacancyDeleted={() => {
-              setSelectedVacancy(null);
-              setView('vacancies');
-            }}
-            {...commonProps}
-          />
-        ) : (
-          <VacanciesView
-            onSelectVacancy={handleSelectVacancy}
-            onVacancySaved={handleVacancySaved}
-            {...commonProps}
-          />
-        );
-      case 'reinstatements':
-        return <ReinstatementsView {...commonProps} />;
-      case 'news':
-        return <NewsView {...commonProps} />;
-      case 'academic-load':
-        return <AcademicLoadView {...commonProps} />;
-      case 'substantive-hours':
-        return <SubstantiveHoursView {...commonProps} />;
-      case 'audit':
-        return <AuditView {...commonProps} />;
-      case 'programs':
-        return <ProgramsView setView={setView} {...commonProps} />;
-      case 'planta-activa':
-        return <PlantaActivaView {...commonProps} />;
-      default:
-        return <HomeView setView={setView} {...commonProps} />;
-    }
-  };
-
-  if (view === 'login') {
+  if (view === "login") {
     return <LoginView onLogin={handleLogin} />;
   }
 
@@ -218,73 +296,20 @@ export default function App() {
       capabilities={capabilities}
       setSidebarOpen={setIsSidebarOpen}
     >
-      <div className="min-h-screen flex overflow-x-hidden">
-        <svg width="0" height="0" className="absolute pointer-events-none">
-          <defs>
-            <linearGradient id="icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#8B5CF6" />
-              <stop offset="50%" stopColor="#D946EF" />
-              <stop offset="100%" stopColor="#8B5CF6" />
-            </linearGradient>
-          </defs>
-        </svg>
-
-        <Sidebar
-          currentView={view}
-          setView={(v) => {
-            setView(v);
-            setIsSidebarOpen(false);
-          }}
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-          navItems={sidebarNavItems}
-          onLogout={handleLogout}
-        />
-
-        <AnimatePresence>
-          {isSidebarOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsSidebarOpen(false)}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[90] md:hidden"
-            />
-          )}
-        </AnimatePresence>
-
-        <main className="flex-1 min-w-0 min-h-screen relative p-3 md:p-5 xl:p-6 w-full md:w-[calc(100%-16rem)] md:ml-64">
-          <motion.div className="md:hidden sticky top-0 -mx-4 px-4 py-3 mb-6 bg-white/80 backdrop-blur-lg border-b border-slate-200/50 flex items-center justify-between z-40">
-            <div className="flex items-center gap-3">
-              <motion.div className={`w-10 h-10 bg-white rounded-xl flex items-center justify-center text-white shadow-lg`}>
-                <Logo className="h-6 w-6" />
-              </motion.div>
-              <span className="font-bold text-xl tracking-tight text-slate-900 font-display">{BRAND_CONFIG.name}</span>
-            </div>
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="p-2 glass-button-secondary"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg>
-            </button>
-          </motion.div>
-
-          <AnimatePresence mode="wait">
-          <motion.div
-            key={view}
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-            className="w-full max-w-none min-w-0 px-5"
-          >
-            {renderView()}
-          </motion.div>
-          </AnimatePresence>
-        </main>
-
-        <GuidedTour />
-      </div>
+      <AppShell
+        view={view}
+        setView={setView}
+        capabilities={capabilities}
+        orbitAccess={orbitAccess}
+        selectedVacancy={selectedVacancy}
+        setSelectedVacancy={setSelectedVacancy}
+        handleLogout={handleLogout}
+        handleSelectVacancy={handleSelectVacancy}
+        handleVacancySaved={handleVacancySaved}
+        handleOpenVacancyFromNotification={handleOpenVacancyFromNotification}
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen}
+      />
     </TutorialProvider>
   );
 }

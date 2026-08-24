@@ -178,7 +178,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const isVacancyAdmin = canVacancyAdmin(getStoredCapabilities());
 
   const selectClass =
-    'w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-400/40';
+    'w-full rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary px-3 py-2.5 text-sm text-orbit-text shadow-sm focus:outline-none focus:ring-2 focus:ring-orbit-primary/30';
 
   const refresh = useCallback(async (): Promise<Vacancy[]> => {
     setLoading(true);
@@ -349,63 +349,49 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   }
 
   return (
-    <div className="space-y-8 relative">
-      <div className="absolute -top-20 -right-20 w-64 h-64 bg-violet-200/20 rounded-full blur-3xl pointer-events-none" />
-
+    <div className="space-y-5 relative">
       <Header
         title="Gestión de Vacantes"
         subtitle="Creación y seguimiento operativo"
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
-        <div className="glass-card p-6 flex items-center gap-5">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-violet-50/80 text-violet-600 border border-violet-100/80 shadow-inner shrink-0">
-            <BriefcaseIcon className="h-7 w-7" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 relative z-10">
+        <div className="glass-card flex items-center gap-3 p-3.5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-orbit-primary/25 bg-orbit-primary/10 text-orbit-primary">
+            <BriefcaseIcon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Total solicitado
-            </p>
-            <p className="text-3xl font-bold text-slate-900 font-display tabular-nums">
+            <p className="orbit-label normal-case">Total solicitado</p>
+            <p className="orbit-metric-value text-xl">
               {loading ? '—' : numberFormatter.format(filteredQuantityTotal)}
             </p>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Personas solicitadas en las vacantes visibles.
-            </p>
           </div>
         </div>
-        <div className="glass-card p-6 flex items-center gap-5">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-emerald-50/80 text-emerald-600 border border-emerald-100/80 shadow-inner shrink-0">
-            <BriefcaseIcon className="h-7 w-7" />
+        <div className="glass-card flex items-center gap-3 p-3.5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-orbit-success/25 bg-orbit-success/10 text-orbit-success">
+            <BriefcaseIcon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Total contratado
-            </p>
-            <p className="text-3xl font-bold text-slate-900 font-display tabular-nums">
+            <p className="orbit-label normal-case">Total contratado</p>
+            <p className="orbit-metric-value text-xl">
               {loading ? '—' : numberFormatter.format(filteredHiredTotal)}
             </p>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Personas efectivamente contratadas.
-            </p>
           </div>
         </div>
-        <div className="glass-card p-6 flex items-center gap-5">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-cyan-50/80 text-cyan-600 border border-cyan-100/80 shadow-inner shrink-0">
-            <QueueListIcon className="h-7 w-7" />
+        <div className="glass-card flex items-center gap-3 p-3.5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-orbit-info/25 bg-orbit-info/10 text-orbit-info">
+            <QueueListIcon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Registros (filas)
-            </p>
-            <p className="text-3xl font-bold text-slate-900 font-display tabular-nums">
+            <p className="orbit-label normal-case">Registros</p>
+            <p className="orbit-metric-value text-xl">
               {loading ? '—' : numberFormatter.format(filtered.length)}
             </p>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+            <p className="text-[11px] text-orbit-muted mt-0.5">
               {hasActiveFilters
                 ? `De ${numberFormatter.format(rows.length)} en total`
-                : 'Filas de vacantes visibles'}
+                : 'Filas visibles'}
             </p>
           </div>
         </div>
@@ -422,7 +408,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         <div className="glass-panel p-4 space-y-3 w-full">
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
             <div className="relative flex-1">
-              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orbit-muted" />
               <input
                 type="search"
                 placeholder="Buscar por cargo, programa, área, REQ…"
@@ -444,15 +430,15 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 className={cn(
                   'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors',
                   filtersOpen || activeFilterCount > 0
-                    ? 'bg-violet-50 border-violet-200 text-violet-700'
-                    : 'bg-white/80 border-slate-200/80 text-slate-600 hover:bg-slate-50'
+                    ? 'bg-orbit-primary/10 border-orbit-primary/30 text-orbit-primary'
+                    : 'bg-orbit-bg-secondary border-orbit-border/80 text-orbit-text-secondary hover:bg-orbit-bg-secondary'
                 )}
                 aria-expanded={filtersOpen}
               >
                 <FunnelIcon className="h-4 w-4" />
                 Filtros
                 {activeFilterCount > 0 && (
-                  <span className="min-w-5 h-5 px-1.5 rounded-md bg-violet-600 text-white text-[10px] flex items-center justify-center">
+                  <span className="min-w-5 h-5 px-1.5 rounded-md bg-orbit-primary text-white text-[10px] flex items-center justify-center">
                     {activeFilterCount}
                   </span>
                 )}
@@ -474,7 +460,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50/60 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium text-orbit-muted hover:text-orbit-danger hover:bg-orbit-danger/10/60 transition-colors"
                   title="Limpiar filtros"
                 >
                   <XMarkIcon className="h-4 w-4" />
@@ -490,7 +476,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     ? 'Descarga las vacantes visibles (respeta filtros)'
                     : 'Descargar Excel de vacantes'
                 }
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold border border-slate-200/80 bg-white/80 text-slate-700 hover:bg-violet-50 hover:border-violet-200 hover:text-violet-800 transition-colors disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold border border-orbit-border/80 bg-orbit-bg-secondary text-orbit-text-secondary hover:bg-orbit-interactive hover:border-orbit-primary/40 hover:text-orbit-primary-hover transition-colors disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap"
               >
                 <ArrowDownTrayIcon className="h-4 w-4" />
                 {exporting ? 'Generando…' : 'Descargar Excel'}
@@ -519,10 +505,10 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden"
               >
-                <div className="pt-3 border-t border-slate-100 space-y-4">
+                <div className="pt-3 border-t border-orbit-border space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                     <label className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                         Estado
                       </span>
                       <select
@@ -545,7 +531,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     </label>
 
                     <label className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                         Área
                       </span>
                       <select
@@ -570,7 +556,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     </label>
 
                     <label className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                         Escuela
                       </span>
                       <select
@@ -596,7 +582,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                     </label>
 
                     <label className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                         Programa
                       </span>
                       <select
@@ -621,7 +607,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <label className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                         Fecha según
                       </span>
                       <select
@@ -639,7 +625,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                       </select>
                     </label>
                     <label className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                         Desde
                       </span>
                       <input
@@ -655,7 +641,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                       />
                     </label>
                     <label className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                         Hasta
                       </span>
                       <input
@@ -680,22 +666,22 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
         {saveBanner && (
           <div
             role="status"
-            className="glass-panel px-4 py-3 text-sm font-medium text-emerald-900 bg-emerald-50/95 border border-emerald-200/80 rounded-2xl shadow-sm"
+            className="glass-panel px-4 py-3 text-sm font-medium text-orbit-success bg-orbit-success/10 border border-orbit-success/30 rounded-2xl shadow-sm"
           >
             {saveBanner}
           </div>
         )}
 
         {loadError && (
-          <div className="glass-panel p-4 text-sm text-rose-700 bg-rose-50/80 border border-rose-100">
+          <div className="glass-panel p-4 text-sm text-orbit-danger bg-orbit-danger/10 border border-orbit-danger/30">
             {loadError}
           </div>
         )}
 
         {loading ? (
           <div className="glass-panel p-20 flex flex-col items-center justify-center text-center space-y-4 overflow-hidden rounded-2xl w-full">
-            <div className="h-10 w-10 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
-            <p className="text-sm font-medium text-slate-600">
+            <div className="h-10 w-10 rounded-full border-2 border-orbit-primary border-t-transparent animate-spin" />
+            <p className="text-sm font-medium text-orbit-text-secondary">
               Cargando vacantes...
             </p>
           </div>
@@ -715,7 +701,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 <col className="w-[13%]" />
               </colgroup>
               <thead>
-                <tr className="border-b border-slate-200/80 bg-slate-50/80 text-xs uppercase tracking-widest text-slate-500">
+                <tr className="border-b border-orbit-border/80 bg-orbit-bg-secondary/80 text-xs uppercase tracking-widest text-orbit-muted">
                   <th className="py-3 px-3 font-bold whitespace-nowrap text-left">
                     # Requisición
                   </th>
@@ -739,7 +725,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   <tr>
                     <td
                       colSpan={10}
-                      className="py-16 text-center text-slate-500 text-[15px]"
+                      className="py-16 text-center text-orbit-muted text-[15px]"
                     >
                       No hay vacantes para mostrar.
                     </td>
@@ -748,9 +734,9 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                   filtered.map((v) => (
                     <tr
                       key={v.id}
-                      className="border-b border-slate-100/80 hover:bg-violet-50/30 transition-colors"
+                      className="border-b border-orbit-border/80 hover:bg-orbit-interactive/30 transition-colors"
                     >
-                      <td className="py-3 px-3 text-slate-700 text-sm align-top">
+                      <td className="py-3 px-3 text-orbit-text-secondary text-sm align-top">
                         {v.reqNumber?.trim() ? (
                           <span
                             className="block font-medium leading-snug break-words"
@@ -761,14 +747,14 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                         ) : null}
                       </td>
                       <td
-                        className="py-3 px-3 text-slate-700 align-top"
+                        className="py-3 px-3 text-orbit-text-secondary align-top"
                         title={
                           v.sentToCapitalAt
                             ? vacancyActiveDaysTooltip(v.sentToCapitalAt)
                             : 'SIN FECHA DE ENVÍO'
                         }
                       >
-                        <span className="block font-semibold text-violet-700 text-[11px] leading-snug uppercase tracking-wide whitespace-normal break-words">
+                        <span className="block font-semibold text-orbit-primary text-[11px] leading-snug uppercase tracking-wide whitespace-normal break-words">
                           {v.sentToCapitalAt
                             ? formatVacancyActiveDaysLabel(
                                 computeVacancyActiveDaysFromSent(
@@ -778,12 +764,12 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                             : 'SIN FECHA DE ENVÍO'}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-slate-800 align-top">
+                      <td className="py-3 px-3 text-orbit-text align-top">
                         <span className="line-clamp-2" title={v.areaName ?? ''}>
                           {v.areaName ?? '—'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-slate-800 align-top">
+                      <td className="py-3 px-4 text-orbit-text align-top">
                         <span
                           className="line-clamp-2"
                           title={v.schoolName ?? ''}
@@ -791,7 +777,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                           {v.schoolName ?? '—'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-slate-700 align-top">
+                      <td className="py-3 px-4 text-orbit-text-secondary align-top">
                         <span
                           className="line-clamp-2"
                           title={v.programName ?? ''}
@@ -799,15 +785,15 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                           {v.programName ?? '—'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-medium text-slate-900 align-top">
+                      <td className="py-3 px-4 font-medium text-orbit-text align-top">
                         <span className="line-clamp-2" title={v.positionName}>
                           {v.positionName}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-center text-slate-800 tabular-nums align-top">
+                      <td className="py-3 px-4 text-center text-orbit-text tabular-nums align-top">
                         {v.quantity}
                       </td>
-                      <td className="py-3 px-4 text-center text-slate-800 tabular-nums align-top">
+                      <td className="py-3 px-4 text-center text-orbit-text tabular-nums align-top">
                         <span
                           title={
                             v.hiredQuantity < v.quantity
@@ -823,20 +809,20 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                           className={cn(
                             'inline-flex px-2 py-0.5 rounded-md text-xs font-bold border',
                             v.operationStatus === 'open' &&
-                              'bg-blue-50 text-blue-700 border-blue-100',
+                              'bg-orbit-info/10 text-blue-700 border-blue-100',
                             v.operationStatus === 'selected' &&
-                              'bg-amber-50 text-amber-800 border-amber-100',
+                              'bg-orbit-warning/10 text-amber-800 border-orbit-warning/30',
                             v.operationStatus === 'requisition_sent' &&
-                              'bg-violet-50 text-violet-800 border-violet-100',
+                              'bg-orbit-primary/10 text-orbit-primary-hover border-orbit-primary/25',
                             v.operationStatus === 'internal_movement' &&
-                              'bg-cyan-50 text-cyan-800 border-cyan-100',
+                              'bg-orbit-info/10 text-orbit-info border-orbit-info/25',
                             v.operationStatus === 'hired' &&
-                              'bg-emerald-50 text-emerald-800 border-emerald-100',
+                              'bg-orbit-success/10 text-orbit-success border-orbit-success/25',
                             (v.operationStatus === 'closed' ||
                               v.operationStatus === 'cancelled' ||
                               v.operationStatus ===
                                 'cancelled_by_capital') &&
-                              'bg-slate-100 text-slate-600 border-slate-200'
+                              'bg-orbit-interactive text-orbit-text-secondary border-orbit-border'
                           )}
                         >
                           {STATUS_LABEL[v.operationStatus]}
@@ -848,7 +834,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                             type="button"
                             title="Ver detalle"
                             onClick={() => onSelectVacancy(v)}
-                            className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200"
+                            className="p-1.5 rounded-lg bg-orbit-elevated border border-orbit-border text-orbit-text-secondary hover:text-orbit-primary hover:border-orbit-primary/40"
                           >
                             <EyeIcon className="h-4 w-4" />
                           </button>
@@ -871,7 +857,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                                 return;
                               openEdit(v);
                             }}
-                            className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-violet-600 hover:border-violet-200 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:text-slate-600 disabled:hover:border-slate-200"
+                            className="p-1.5 rounded-lg bg-orbit-elevated border border-orbit-border text-orbit-text-secondary hover:text-orbit-primary hover:border-orbit-primary/40 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:text-orbit-text-secondary disabled:hover:border-orbit-border"
                           >
                             <PencilSquareIcon className="h-4 w-4" />
                           </button>
@@ -880,7 +866,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                               type="button"
                               title="Eliminar vacante y requisición"
                               onClick={() => setDeleteTarget(v)}
-                              className="p-1.5 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50"
+                              className="p-1.5 rounded-lg bg-orbit-elevated border border-red-200 text-red-600 hover:bg-red-50"
                             >
                               <TrashIcon className="h-4 w-4" />
                             </button>

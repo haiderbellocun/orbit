@@ -119,7 +119,7 @@ export const PersonSearchCombobox: React.FC<PersonSearchComboboxProps> = ({
   return (
     <div ref={rootRef} className={cn('relative', className)}>
       <div className="relative">
-        <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+        <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orbit-muted pointer-events-none" />
         <input
           ref={inputRef}
           type="text"
@@ -130,7 +130,7 @@ export const PersonSearchCombobox: React.FC<PersonSearchComboboxProps> = ({
           disabled={disabled}
           placeholder={placeholder}
           className={cn(
-            'w-full rounded-xl border border-slate-200/80 bg-white/80 pl-10 pr-10 py-2.5 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-400/40 disabled:opacity-50'
+            'w-full rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary pl-10 pr-10 py-2.5 text-sm text-orbit-text shadow-sm focus:outline-none focus:ring-2 focus:ring-orbit-primary/30 disabled:opacity-50'
           )}
           value={displayValue}
           onChange={(e) => {
@@ -166,7 +166,7 @@ export const PersonSearchCombobox: React.FC<PersonSearchComboboxProps> = ({
           <button
             type="button"
             onClick={clear}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-orbit-muted hover:text-orbit-text-secondary hover:bg-orbit-interactive"
             aria-label="Limpiar"
           >
             <XMarkIcon className="h-4 w-4" />
@@ -178,16 +178,16 @@ export const PersonSearchCombobox: React.FC<PersonSearchComboboxProps> = ({
         <div
           id={listId}
           role="listbox"
-          className="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl"
+          className="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto rounded-xl border border-orbit-border bg-orbit-elevated shadow-xl"
         >
           {loading && (
-            <div className="px-3 py-3 text-sm text-slate-400">Buscando…</div>
+            <div className="px-3 py-3 text-sm text-orbit-muted">Buscando…</div>
           )}
           {!loading && loadError && (
-            <div className="px-3 py-3 text-sm text-rose-600">{loadError}</div>
+            <div className="px-3 py-3 text-sm text-orbit-danger">{loadError}</div>
           )}
           {!loading && !loadError && options.length === 0 && (
-            <div className="px-3 py-3 text-sm text-slate-400">
+            <div className="px-3 py-3 text-sm text-orbit-muted">
               Sin resultados
             </div>
           )}
@@ -199,14 +199,14 @@ export const PersonSearchCombobox: React.FC<PersonSearchComboboxProps> = ({
                 role="option"
                 aria-selected={i === highlight}
                 className={cn(
-                  'w-full text-left px-3 py-2.5 text-sm hover:bg-violet-50',
-                  i === highlight && 'bg-violet-50'
+                  'w-full text-left px-3 py-2.5 text-sm hover:bg-orbit-interactive',
+                  i === highlight && 'bg-orbit-primary/10'
                 )}
                 onMouseEnter={() => setHighlight(i)}
                 onClick={() => selectPerson(p)}
               >
-                <div className="font-semibold text-slate-800">{p.name}</div>
-                <div className="text-xs text-slate-400">
+                <div className="font-semibold text-orbit-text">{p.name}</div>
+                <div className="text-xs text-orbit-muted">
                   {[p.document, p.role_name].filter(Boolean).join(' · ') || '—'}
                 </div>
               </button>

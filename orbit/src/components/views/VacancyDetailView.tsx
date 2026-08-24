@@ -119,16 +119,16 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
       <button
         type="button"
         onClick={() => setView('vacancies')}
-        className="flex items-center gap-2 text-slate-500 hover:text-violet-600 transition-colors font-bold text-xs uppercase tracking-widest group"
+        className="flex items-center gap-2 text-orbit-muted hover:text-orbit-primary transition-colors font-bold text-xs uppercase tracking-widest group"
       >
         <ChevronLeftIcon className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
         <span>Volver a Vacantes</span>
       </button>
 
       {error && (
-        <div className="glass-panel p-4 text-sm text-rose-700 bg-rose-50/90 border border-rose-100">
+        <div className="glass-panel p-4 text-sm text-orbit-danger bg-orbit-danger/10/90 border border-orbit-danger/30">
           {error}
-          <span className="block text-xs text-slate-600 mt-1">
+          <span className="block text-xs text-orbit-text-secondary mt-1">
             Mostrando datos resumidos desde la tabla.
           </span>
         </div>
@@ -136,42 +136,42 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
 
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div className="flex items-center gap-4 sm:gap-6">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white shadow-xl shadow-violet-500/20 shrink-0">
+          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white shadow-xl  shrink-0">
             <BriefcaseIcon className="h-6 w-6 sm:h-8 sm:w-8" />
           </div>
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-1">
-              <h1 className="text-xl sm:text-3xl font-display font-bold text-slate-900 tracking-tight">
+              <h1 className="text-xl sm:text-3xl font-display font-bold text-orbit-text tracking-tight">
                 {v.positionName}
               </h1>
               <span
                 className={cn(
                   'w-fit px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border shadow-sm',
-                  v.operationStatus === 'open' && 'bg-blue-50 text-blue-600 border-blue-100',
-                  v.operationStatus === 'selected' && 'bg-amber-50 text-amber-600 border-amber-100',
+                  v.operationStatus === 'open' && 'bg-orbit-info/10 text-blue-600 border-blue-100',
+                  v.operationStatus === 'selected' && 'bg-orbit-warning/10 text-orbit-warning border-orbit-warning/30',
                   v.operationStatus === 'requisition_sent' &&
-                    'bg-violet-50 text-violet-700 border-violet-100',
+                    'bg-orbit-primary/10 text-orbit-primary border-orbit-primary/25',
                   v.operationStatus === 'internal_movement' &&
-                    'bg-cyan-50 text-cyan-700 border-cyan-100',
-                  v.operationStatus === 'hired' && 'bg-emerald-50 text-emerald-700 border-emerald-100',
+                    'bg-orbit-info/10 text-orbit-info border-orbit-info/25',
+                  v.operationStatus === 'hired' && 'bg-orbit-success/10 text-orbit-success border-orbit-success/25',
                   (v.operationStatus === 'closed' ||
                     v.operationStatus === 'cancelled' ||
                     v.operationStatus === 'cancelled_by_capital') &&
-                    'bg-slate-100 text-slate-600 border-slate-200'
+                    'bg-orbit-interactive text-orbit-text-secondary border-orbit-border'
                 )}
               >
                 {STATUS_LABEL[v.operationStatus]}
               </span>
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-slate-500 font-medium">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-orbit-muted font-medium">
               <div className="flex items-center gap-1.5">
-                <RectangleGroupIcon className="h-3.5 w-3.5 text-violet-500" />
+                <RectangleGroupIcon className="h-3.5 w-3.5 text-orbit-primary" />
                 <span>
                   {v.schoolName ?? 'Escuela'} — {v.programName ?? 'Sin programa'}
                 </span>
               </div>
-              <span className="hidden sm:block w-1 h-1 rounded-full bg-slate-300" />
-              <span className="text-slate-400 font-mono text-[11px]">#{v.id}</span>
+              <span className="hidden sm:block w-1 h-1 rounded-full bg-orbit-muted" />
+              <span className="text-orbit-muted font-mono text-[11px]">#{v.id}</span>
             </div>
           </div>
         </div>
@@ -195,7 +195,7 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
             </button>
           )}
           {loading && (
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+            <p className="text-xs font-bold text-orbit-muted uppercase tracking-widest">
               Cargando detalle…
             </p>
           )}
@@ -209,7 +209,7 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
             animate={{ opacity: 1, y: 0 }}
             className="glass-panel p-6 space-y-6"
           >
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-2">
+            <h3 className="text-xs font-bold text-orbit-text uppercase tracking-widest border-b border-orbit-border pb-2">
               Datos generales
             </h3>
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
@@ -257,12 +257,12 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
             transition={{ delay: 0.1 }}
             className="glass-panel p-6 space-y-3"
           >
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-2">
+            <h3 className="text-xs font-bold text-orbit-text uppercase tracking-widest border-b border-orbit-border pb-2">
               Observaciones
             </h3>
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-orbit-text-secondary">
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                <span className="text-[10px] font-bold uppercase text-orbit-muted block mb-1">
                   Operación
                 </span>
                 {(v.operationNotes ?? []).length === 0 ? (
@@ -270,12 +270,12 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                 ) : (
                   <ul className="space-y-2 mt-1">
                     {(v.operationNotes ?? []).map((n) => (
-                      <li key={n.id} className="border-l-2 border-violet-200 pl-2">
-                        <span className="text-[10px] text-slate-500">
+                      <li key={n.id} className="border-l-2 border-orbit-primary/30 pl-2">
+                        <span className="text-[10px] text-orbit-muted">
                           {formatTs(n.createdAt)}
                           {n.createdByName ? ` · ${n.createdByName}` : ''}
                         </span>
-                        <span className="block text-slate-700 whitespace-pre-wrap">{n.text}</span>
+                        <span className="block text-orbit-text-secondary whitespace-pre-wrap">{n.text}</span>
                       </li>
                     ))}
                   </ul>
@@ -292,12 +292,12 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
             transition={{ delay: 0.05 }}
             className="glass-panel p-6"
           >
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <DocumentTextIcon className="h-4 w-4 text-violet-500" />
+            <h3 className="text-xs font-bold text-orbit-text uppercase tracking-widest mb-4 flex items-center gap-2">
+              <DocumentTextIcon className="h-4 w-4 text-orbit-primary" />
               Requisición
             </h3>
             {v.requisition == null ? (
-              <p className="text-sm text-slate-500">Sin requisición asociada.</p>
+              <p className="text-sm text-orbit-muted">Sin requisición asociada.</p>
             ) : (
               <dl className="space-y-2 text-sm">
                 <Row
@@ -319,10 +319,10 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                   }
                 />
                 <div>
-                  <dt className="text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  <dt className="text-[10px] font-bold uppercase text-orbit-muted mb-1">
                     Notas capital humano
                   </dt>
-                  <dd className="text-slate-700 whitespace-pre-wrap">
+                  <dd className="text-orbit-text-secondary whitespace-pre-wrap">
                     {v.requisition.capitalNotes?.trim()
                       ? v.requisition.capitalNotes
                       : '—'}
@@ -348,7 +348,7 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
             transition={{ delay: 0.1 }}
             className="glass-panel p-6"
           >
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <h3 className="text-xs font-bold text-orbit-text uppercase tracking-widest mb-4 flex items-center gap-2">
               <ClockIcon className="h-4 w-4 text-cyan-500" />
               Historial de estado
             </h3>
@@ -357,19 +357,19 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
                 {v.statusHistory.map((h) => (
                   <li
                     key={h.id}
-                    className="border-l-2 border-violet-200 pl-4 py-0.5"
+                    className="border-l-2 border-orbit-primary/30 pl-4 py-0.5"
                   >
-                    <p className="font-bold text-slate-800 text-xs">
+                    <p className="font-bold text-orbit-text text-xs">
                       {statusLabelEs(h.previousOperationStatus)} → {statusLabelEs(h.newOperationStatus)}
                     </p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
+                    <p className="text-[10px] text-orbit-muted mt-0.5">
                       {formatTs(h.changedAt)}
                     </p>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-orbit-muted">
                 No hay cambios de estado registrados todavía.
               </p>
             )}
@@ -432,12 +432,12 @@ function Row({
 }) {
   return (
     <div>
-      <dt className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+      <dt className="text-[10px] font-bold text-orbit-muted uppercase tracking-widest">
         {label}
       </dt>
       <dd
         title={title}
-        className={cn('text-slate-900 font-medium', mono && 'font-mono text-xs')}
+        className={cn('text-orbit-text font-medium', mono && 'font-mono text-xs')}
       >
         {value}
       </dd>

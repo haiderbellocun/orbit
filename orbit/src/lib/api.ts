@@ -867,6 +867,7 @@ export type PlantaActivaFilters = {
   without_program?: boolean;
   without_role?: boolean;
   without_edu_email?: boolean;
+  without_document?: boolean;
   /** `active` (default) | `inactive` */
   status?: "active" | "inactive";
   page?: number;
@@ -922,6 +923,8 @@ export async function getPlantaActiva(
   if (params?.without_role) url.searchParams.set("without_role", "1");
   if (params?.without_edu_email)
     url.searchParams.set("without_edu_email", "1");
+  if (params?.without_document)
+    url.searchParams.set("without_document", "1");
   if (params?.status) url.searchParams.set("status", params.status);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
@@ -1046,6 +1049,7 @@ export type AcademicLoadFilterOptions = {
   blocks: string[];
   programs: string[];
   modalities: { value: string; label: string }[];
+  studyLevels: { value: string; label: string }[];
 };
 
 export async function getAcademicLoadFilterOptions(): Promise<AcademicLoadFilterOptions> {
@@ -1066,6 +1070,15 @@ export async function getAcademicLoadFilterOptions(): Promise<AcademicLoadFilter
           { value: "P", label: "Presencial" },
           { value: "V", label: "Virtual" },
         ],
+    studyLevels: Array.isArray(json.studyLevels)
+      ? json.studyLevels.map((m) => ({
+          value: String((m as { value: string }).value),
+          label: String((m as { label: string }).label),
+        }))
+      : [
+          { value: "pregrado", label: "Pregrado" },
+          { value: "especializacion", label: "Especialización" },
+        ],
   };
 }
 
@@ -1082,6 +1095,7 @@ export async function getAcademicLoad(params?: {
   subject?: string;
   group_code?: string;
   block?: string;
+  study_level?: "pregrado" | "especializacion" | "otro" | string;
   page?: number;
   limit?: number;
 }): Promise<PaginatedResponse> {
@@ -1102,6 +1116,7 @@ export async function getAcademicLoad(params?: {
   if (params?.subject) url.searchParams.set("subject", params.subject);
   if (params?.group_code) url.searchParams.set("group_code", params.group_code);
   if (params?.block) url.searchParams.set("block", params.block);
+  if (params?.study_level) url.searchParams.set("study_level", params.study_level);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });
