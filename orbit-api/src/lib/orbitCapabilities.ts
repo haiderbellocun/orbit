@@ -65,6 +65,7 @@ const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
   "camilo_quintero@cun.edu.co",
   "yesid_rocha@cun.edu.co",
   "sara_murillofo@cun.edu.co",
+  "cindy_russi@cun.edu.co",
 ] as const;
 
 export function getOrbitAccessAllowlist(): string[] {

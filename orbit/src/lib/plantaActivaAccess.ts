@@ -11,11 +11,14 @@ export type PlantaActivaAccess = {
   editAreaIds: number[] | null;
 };
 
+const SARA_LEVEL_ACCESS: PlantaActivaAccess = {
+  viewAreaIds: null,
+  editAreaIds: [2, 3, 4, 5, 6, 7, 8],
+};
+
 const GRANTS: Readonly<Record<string, PlantaActivaAccess>> = {
-  "sara_murillofo@cun.edu.co": {
-    viewAreaIds: null,
-    editAreaIds: [2, 3, 4, 5, 6, 7, 8],
-  },
+  "sara_murillofo@cun.edu.co": SARA_LEVEL_ACCESS,
+  "cindy_russi@cun.edu.co": SARA_LEVEL_ACCESS,
   "leidy_bernal@cun.edu.co": {
     viewAreaIds: [1],
     editAreaIds: [1],
