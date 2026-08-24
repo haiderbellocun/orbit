@@ -57,13 +57,15 @@ export async function findOrCreateContractType(
   ]);
 
   try {
-    // First, try to find existing by searching similar records
+    // Clave: name + fechas + work_schedule + modality
+    // (work_schedule distingue tiempo completo vs medio tiempo)
     const searchQuery = `
       SELECT id FROM contract_type
       WHERE LOWER(name) = LOWER($1)
         AND start_date IS NOT DISTINCT FROM $2::DATE
         AND end_date IS NOT DISTINCT FROM $3::DATE
-        AND LOWER(COALESCE(modality, '')) = LOWER($4)
+        AND LOWER(COALESCE(work_schedule, '')) = LOWER($4)
+        AND LOWER(COALESCE(modality, '')) = LOWER($5)
       LIMIT 1
     `;
 
@@ -71,6 +73,7 @@ export async function findOrCreateContractType(
       name,
       startDate,
       endDate,
+      workSchedule,
       modality,
     ]);
 
@@ -104,6 +107,7 @@ export async function findOrCreateContractType(
       name,
       startDate,
       endDate,
+      workSchedule,
       modality,
     ]);
 
