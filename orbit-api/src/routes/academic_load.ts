@@ -15,6 +15,17 @@ function qStr(raw: unknown): string {
   return typeof raw === "string" ? raw.trim() : "";
 }
 
+/** SQL expression: pregrado | especializacion | otro (from program name). */
+const SQL_STUDY_LEVEL = `
+  CASE
+    WHEN COALESCE(al.program_name, pr.name, '') ILIKE '%especializ%'
+      THEN 'especializacion'
+    WHEN NULLIF(TRIM(COALESCE(al.program_name, pr.name, '')), '') IS NOT NULL
+      THEN 'pregrado'
+    ELSE 'otro'
+  END
+`;
+
 function normalizeModalityQueryParam(value: string): {
   code: "P" | "V" | null;
   literal: string | null;
@@ -87,6 +98,10 @@ router.get("/academic-load/filter-options", async (req: Request, res: Response) 
         { value: "P", label: "Presencial" },
         { value: "V", label: "Virtual" },
       ],
+      studyLevels: [
+        { value: "pregrado", label: "Pregrado" },
+        { value: "especializacion", label: "Especialización" },
+      ],
     });
   } catch (err) {
     console.error("GET /academic-load/filter-options", err);
@@ -115,6 +130,9 @@ router.get("/academic-load", async (req: Request, res: Response) => {
     const block = qStr(req.query.block);
     const areaId = parsePositiveInt(req.query.area_id ?? req.query.areaId);
     const schoolId = parsePositiveInt(req.query.school_id ?? req.query.schoolId);
+    const studyLevel = qStr(
+      req.query.study_level ?? req.query.studyLevel ?? req.query.program_level
+    ).toLowerCase();
 
     const conditions: string[] = [];
     const values: unknown[] = [];
@@ -186,6 +204,14 @@ router.get("/academic-load", async (req: Request, res: Response) => {
       conditions.push(`cg.block ILIKE $${i++}`);
       values.push(`%${block}%`);
     }
+    if (
+      studyLevel === "pregrado" ||
+      studyLevel === "especializacion" ||
+      studyLevel === "otro"
+    ) {
+      conditions.push(`(${SQL_STUDY_LEVEL}) = $${i++}`);
+      values.push(studyLevel);
+    }
 
     const schoolScope = schoolScopeFromRequest(req);
     if (schoolScope != null) {
@@ -221,6 +247,7 @@ router.get("/academic-load", async (req: Request, res: Response) => {
         al.subject_code,
         al.group_code,
         al.aca_group_id,
+        (${SQL_STUDY_LEVEL}) AS study_level,
         COUNT(*) OVER() AS total_count
       FROM academic_workload.academic_load al
       INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}

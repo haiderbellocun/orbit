@@ -1,155 +1,208 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { motion } from 'motion/react';
+import React, { useEffect, useMemo, useState } from "react";
+import { motion } from "motion/react";
 import {
   UsersIcon,
   BriefcaseIcon,
   BellIcon,
   PlusIcon,
-  ChevronRightIcon,
+  ArrowRightIcon,
   CheckBadgeIcon,
   ClockIcon,
   ExclamationTriangleIcon,
-} from '@heroicons/react/24/solid';
-import { Header } from '@/src/components/layout/Header';
-import { cn } from '@/src/lib/utils';
-import { View } from '@/src/types';
+  ChevronRightIcon,
+  ArrowsRightLeftIcon,
+} from "@heroicons/react/24/solid";
+import { Header } from "@/src/components/layout/Header";
+import { cn } from "@/src/lib/utils";
+import { View } from "@/src/types";
 import {
   getDashboardSummary,
+  getPlantaActiva,
+  getStoredCapabilities,
   type DashboardSummaryMetric,
   type DashboardSummaryResponse,
-} from '@/src/lib/api';
-import { useTutorialOptional } from '@/src/components/tutorial/TutorialContext';
+} from "@/src/lib/api";
+import {
+  hasCapability,
+  ORBIT_CAPABILITY,
+} from "@/src/lib/permissions";
+import { setPlantaPendingFilters } from "@/src/lib/plantaPendingFilters";
+import { useTutorialOptional } from "@/src/components/tutorial/TutorialContext";
 
 interface HomeViewProps {
   setView: (v: View) => void;
-  /** Usuario LITE: mensaje acotado en acciones rápidas. */
   isLiteUser?: boolean;
   canManageVacancies?: boolean;
   onOpenVacancyFromNotification?: (vacancyId: string) => void;
 }
 
 type MetricKey =
-  | 'activeTeachers'
-  | 'openVacancies'
-  | 'monthlyHires'
-  | 'timeToHire'
-  | 'agingVacancies'
-  | 'todayNews';
+  | "activeTeachers"
+  | "openVacancies"
+  | "monthlyHires"
+  | "timeToHire"
+  | "agingVacancies"
+  | "todayNews";
 
 type CardConfig = {
   key: MetricKey;
   label: string;
   icon: typeof UsersIcon;
-  color: string;
-  bg: string;
+  tone: "info" | "primary" | "success" | "warning" | "danger" | "muted";
   valueSuffix?: string;
-  /** Solo visible para perfiles con acceso a vacantes. */
   requiresVacancies?: boolean;
   emptyDetail: string;
+  targetView: View;
 };
 
 const CARD_CONFIG: readonly CardConfig[] = [
   {
-    key: 'activeTeachers',
-    label: 'Personal Activo',
+    key: "activeTeachers",
+    label: "Personal activo",
     icon: UsersIcon,
-    color: 'text-blue-600',
-    bg: 'bg-blue-50/50',
-    emptyDetail: 'Sin datos disponibles',
+    tone: "info",
+    emptyDetail: "Sin datos disponibles",
+    targetView: "planta-activa",
   },
   {
-    key: 'openVacancies',
-    label: 'Vacantes Abiertas',
+    key: "openVacancies",
+    label: "Vacantes abiertas",
     icon: BriefcaseIcon,
-    color: 'text-violet-600',
-    bg: 'bg-violet-50/50',
+    tone: "primary",
     requiresVacancies: true,
-    emptyDetail: 'Sin vacantes en proceso',
+    emptyDetail: "Sin vacantes en proceso",
+    targetView: "vacancies",
   },
   {
-    key: 'monthlyHires',
-    label: 'Contrataciones del Mes',
+    key: "monthlyHires",
+    label: "Contrataciones del mes",
     icon: CheckBadgeIcon,
-    color: 'text-emerald-600',
-    bg: 'bg-emerald-50/50',
+    tone: "success",
     requiresVacancies: true,
-    emptyDetail: 'Sin contrataciones este mes',
+    emptyDetail: "Sin contrataciones este mes",
+    targetView: "vacancies",
   },
   {
-    key: 'timeToHire',
-    label: 'Tiempo de Cierre',
+    key: "timeToHire",
+    label: "Tiempo promedio de cierre",
     icon: ClockIcon,
-    color: 'text-cyan-600',
-    bg: 'bg-cyan-50/50',
-    valueSuffix: ' d',
+    tone: "muted",
+    valueSuffix: " d",
     requiresVacancies: true,
-    emptyDetail: 'Sin cierres recientes',
+    emptyDetail: "Sin cierres recientes",
+    targetView: "vacancies",
   },
   {
-    key: 'agingVacancies',
-    label: 'Vacantes en Riesgo',
+    key: "agingVacancies",
+    label: "Vacantes en riesgo",
     icon: ExclamationTriangleIcon,
-    color: 'text-rose-600',
-    bg: 'bg-rose-50/50',
+    tone: "danger",
     requiresVacancies: true,
-    emptyDetail: 'Ninguna supera los 30 días',
+    emptyDetail: "Ninguna supera los 30 días",
+    targetView: "vacancies",
   },
   {
-    key: 'todayNews',
-    label: 'Novedades Hoy',
+    key: "todayNews",
+    label: "Novedades del día",
     icon: BellIcon,
-    color: 'text-amber-600',
-    bg: 'bg-amber-50/50',
-    emptyDetail: 'Sin novedades hoy',
+    tone: "warning",
+    emptyDetail: "Sin novedades hoy",
+    targetView: "news",
   },
 ];
 
-const numberFormatter = new Intl.NumberFormat('es-CO');
-const oneDecimalFormatter = new Intl.NumberFormat('es-CO', {
+const TONE_ICON: Record<CardConfig["tone"], string> = {
+  info: "text-orbit-info bg-orbit-info/10",
+  primary: "text-orbit-primary bg-orbit-primary/10",
+  success: "text-orbit-success bg-orbit-success/10",
+  warning: "text-orbit-warning bg-orbit-warning/10",
+  danger: "text-orbit-danger bg-orbit-danger/10",
+  muted: "text-orbit-muted bg-orbit-interactive",
+};
+
+const numberFormatter = new Intl.NumberFormat("es-CO");
+const oneDecimalFormatter = new Intl.NumberFormat("es-CO", {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 });
 
 function formatTrend(metric: DashboardSummaryMetric): string | null {
-  if (!metric.trendUnit || metric.trendUnit === 'none' || metric.trendType === 'flat') {
+  if (!metric.trendUnit || metric.trendUnit === "none" || metric.trendType === "flat") {
     return null;
   }
   const abs = Math.abs(metric.trend);
-  const sign = metric.trendType === 'down' ? '-' : '+';
-  return metric.trendUnit === 'percent'
+  const sign = metric.trendType === "down" ? "−" : "+";
+  return metric.trendUnit === "percent"
     ? `${sign}${oneDecimalFormatter.format(abs)}%`
     : `${sign}${numberFormatter.format(abs)}`;
 }
+
+function formatPeriodLabel(iso?: string): string {
+  const d = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(d.getTime())) {
+    return new Date().toLocaleDateString("es-CO", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    });
+  }
+  return d.toLocaleDateString("es-CO", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+}
+
+type AttentionItem = {
+  id: string;
+  title: string;
+  detail: string;
+  severity: "danger" | "warning" | "info";
+  view: View;
+  count: number;
+};
 
 export const HomeView: React.FC<HomeViewProps> = ({
   setView,
   isLiteUser,
   canManageVacancies = true,
-  onOpenVacancyFromNotification,
+  onOpenVacancyFromNotification: _onOpenVacancyFromNotification,
 }) => {
   const tutorial = useTutorialOptional();
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
-  const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
+  const [loadState, setLoadState] = useState<"loading" | "ok" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [missingEduEmailCount, setMissingEduEmailCount] = useState<number | null>(
+    null
+  );
+  const [missingDocumentCount, setMissingDocumentCount] = useState<number | null>(
+    null
+  );
+
+  const canPlanta = useMemo(
+    () =>
+      hasCapability(getStoredCapabilities(), ORBIT_CAPABILITY.PLANTA_ACTIVA),
+    []
+  );
 
   useEffect(() => {
     let isMounted = true;
 
     const loadDashboardSummary = async () => {
-      setLoadState('loading');
+      setLoadState("loading");
       setLoadError(null);
       try {
         const data = await getDashboardSummary();
         if (!isMounted) return;
         setSummary(data);
-        setLoadState('ok');
+        setLoadState("ok");
       } catch (error) {
-        console.error('Error loading dashboard summary:', error);
+        console.error("Error loading dashboard summary:", error);
         if (!isMounted) return;
         setSummary(null);
-        setLoadState('error');
+        setLoadState("error");
         setLoadError(
-          error instanceof Error ? error.message : 'No se pudo cargar el resumen'
+          error instanceof Error ? error.message : "No se pudo cargar el resumen"
         );
       }
     };
@@ -161,6 +214,43 @@ export const HomeView: React.FC<HomeViewProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (!canPlanta) {
+      setMissingEduEmailCount(null);
+      setMissingDocumentCount(null);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all([
+      getPlantaActiva({
+        without_edu_email: true,
+        status: "active",
+        page: 1,
+        limit: 1,
+      }),
+      getPlantaActiva({
+        without_document: true,
+        status: "active",
+        page: 1,
+        limit: 1,
+      }),
+    ])
+      .then(([emailRes, docRes]) => {
+        if (cancelled) return;
+        setMissingEduEmailCount(Number(emailRes.pagination?.total ?? 0));
+        setMissingDocumentCount(Number(docRes.pagination?.total ?? 0));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMissingEduEmailCount(null);
+          setMissingDocumentCount(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canPlanta]);
+
   const cards = useMemo(
     () =>
       CARD_CONFIG.filter(
@@ -169,122 +259,310 @@ export const HomeView: React.FC<HomeViewProps> = ({
         const metric = summary?.[card.key] as DashboardSummaryMetric | undefined;
         return {
           ...card,
-          value: `${numberFormatter.format(metric?.value ?? 0)}${card.valueSuffix ?? ''}`,
+          value: `${numberFormatter.format(metric?.value ?? 0)}${card.valueSuffix ?? ""}`,
           detail: metric?.detail ?? card.emptyDetail,
           trend: metric ? formatTrend(metric) : null,
           trendGood: metric?.trendGood ?? true,
-          trendType: metric?.trendType ?? 'flat',
+          trendType: metric?.trendType ?? "flat",
+          rawValue: metric?.value ?? 0,
         };
       }),
     [summary, canManageVacancies]
   );
 
+  const attentionItems = useMemo((): AttentionItem[] => {
+    const items: AttentionItem[] = [];
+
+    if (canPlanta) {
+      const emailCount = missingEduEmailCount ?? 0;
+      items.push({
+        id: "missing-edu-email",
+        title: "Personal sin correo institucional",
+        detail:
+          missingEduEmailCount == null
+            ? "Revisar personas activas sin correo CUN"
+            : emailCount > 0
+              ? `${numberFormatter.format(emailCount)} personas activas sin correo CUN`
+              : "No hay personas activas sin correo CUN",
+        severity: "danger",
+        view: "planta-activa",
+        count: emailCount,
+      });
+
+      const docCount = missingDocumentCount ?? 0;
+      items.push({
+        id: "missing-document",
+        title: "Personal sin identificación",
+        detail:
+          missingDocumentCount == null
+            ? "Revisar personas activas sin documento"
+            : docCount > 0
+              ? `${numberFormatter.format(docCount)} personas activas sin identificación`
+              : "No hay personas activas sin identificación",
+        severity: "danger",
+        view: "planta-activa",
+        count: docCount,
+      });
+    }
+
+    if (!summary) return items;
+
+    if (canManageVacancies && summary.agingVacancies.value > 0) {
+      items.push({
+        id: "aging",
+        title: "Vacantes en riesgo",
+        detail:
+          summary.agingVacancies.detail ||
+          `${summary.agingVacancies.value} con más de 30 días abiertas`,
+        severity: "danger",
+        view: "vacancies",
+        count: summary.agingVacancies.value,
+      });
+    }
+
+    const criticalNews = summary.todayNews.criticalCount ?? 0;
+    if (summary.todayNews.value > 0 || criticalNews > 0) {
+      items.push({
+        id: "news",
+        title: criticalNews > 0 ? "Novedades críticas" : "Novedades del día",
+        detail:
+          criticalNews > 0
+            ? `${criticalNews} requieren seguimiento prioritario`
+            : summary.todayNews.detail || `${summary.todayNews.value} registradas hoy`,
+        severity: criticalNews > 0 ? "warning" : "info",
+        view: "news",
+        count: criticalNews > 0 ? criticalNews : summary.todayNews.value,
+      });
+    }
+
+    items.push({
+      id: "balance",
+      title: "Cargas desequilibradas",
+      detail: "Revisar horas sustantivas y preparación de clase",
+      severity: "info",
+      view: "substantive-hours",
+      count: 0,
+    });
+
+    return items;
+  }, [summary, canManageVacancies, canPlanta, missingEduEmailCount, missingDocumentCount]);
+
+  const openAttentionItem = (item: AttentionItem) => {
+    if (item.id === "missing-edu-email") {
+      setPlantaPendingFilters({ withoutEduEmail: true });
+    } else if (item.id === "missing-document") {
+      setPlantaPendingFilters({ withoutDocument: true });
+    }
+    setView(item.view);
+  };
+
+  const periodLabel = formatPeriodLabel(summary?.updatedAt);
+  const canQuickCreate = canManageVacancies && !isLiteUser;
+
   return (
-    <div className="space-y-10">
+    <div className="space-y-5">
       <Header
         title="Command Center"
-        subtitle="Resumen operativo de la jornada"
-        onOpenVacancyFromNotification={onOpenVacancyFromNotification}
+        subtitle={`${periodLabel.charAt(0).toUpperCase()}${periodLabel.slice(1)} · Resumen operativo`}
+        actions={
+          canQuickCreate ? (
+            <button
+              type="button"
+              onClick={() => setView("vacancies")}
+              className="glass-button-primary h-9 px-3 text-xs"
+            >
+              <PlusIcon className="h-4 w-4" />
+              Nueva vacante
+            </button>
+          ) : undefined
+        }
       />
 
-      {loadState === 'error' && loadError && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+      {loadState === "error" && loadError && (
+        <div className="rounded-[12px] border border-orbit-danger/40 bg-orbit-danger/10 px-4 py-3 text-sm text-orbit-danger">
           No se pudieron cargar las métricas: {loadError}. Cierra sesión y vuelve a entrar.
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-        <div
-          data-tutorial="home-metrics"
-          className={cn(
-          "md:col-span-8 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6",
-          loadState === 'loading' && "opacity-60"
-        )}>
-          {cards.map((card, i) => (
-            <motion.div
-              key={card.key}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.08 }}
-              className="glass-card p-6 group relative overflow-hidden"
-            >
-              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-slate-100/50 to-transparent rounded-full -translate-y-1/2 translate-x-1/2"></div>
-
-              <div className="flex justify-between items-start mb-5">
-                <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner border border-white/50", card.bg, card.color)}>
-                  <card.icon className="h-6 w-6" />
-                </div>
-                {card.trend && (
-                  <div className={cn(
-                    "flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border border-white/50 shadow-sm",
-                    card.trendGood ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
-                  )}>
-                    <ChevronRightIcon className={cn("h-3 w-3", card.trendType === 'down' ? "rotate-90" : "-rotate-90")} />
-                    {card.trend}
-                  </div>
+      {/* Indicator strip */}
+      <div
+        data-tutorial="home-metrics"
+        className={cn(
+          "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6",
+          loadState === "loading" && "opacity-60"
+        )}
+      >
+        {cards.map((card, i) => (
+          <motion.button
+            key={card.key}
+            type="button"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.04, duration: 0.18 }}
+            onClick={() => setView(card.targetView)}
+            className="group flex min-h-[118px] flex-col rounded-[12px] border border-orbit-border bg-orbit-elevated p-3.5 text-left transition-colors duration-150 hover:border-orbit-primary/40 hover:bg-orbit-interactive"
+          >
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <span
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-lg",
+                  TONE_ICON[card.tone]
                 )}
-              </div>
+              >
+                <card.icon className="h-4 w-4" />
+              </span>
+              {card.trend && (
+                <span
+                  className={cn(
+                    "rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                    card.trendGood
+                      ? "bg-orbit-success/15 text-orbit-success"
+                      : "bg-orbit-danger/15 text-orbit-danger"
+                  )}
+                >
+                  {card.trend}
+                </span>
+              )}
+            </div>
+            <p className="orbit-label mb-1 normal-case tracking-wide">{card.label}</p>
+            <p className="orbit-metric-value text-[1.5rem]">{card.value}</p>
+            <p className="mt-auto pt-2 text-[11px] leading-snug text-orbit-muted line-clamp-2">
+              {card.detail}
+            </p>
+            <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-orbit-primary opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+              Abrir
+              <ArrowRightIcon className="h-3 w-3" />
+            </span>
+          </motion.button>
+        ))}
+      </div>
 
-              <div className="space-y-1">
-                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">{card.label}</p>
-                <h3 className="text-3xl font-bold text-slate-900 font-display tracking-tight">{card.value}</h3>
-              </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        {/* Priority work queue */}
+        <section className="lg:col-span-8">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="orbit-section-title">Trabajo que requiere atención</h2>
+              <p className="text-xs text-orbit-muted">
+                Prioridades derivadas del estado operativo actual
+              </p>
+            </div>
+            <span className="orbit-label">{attentionItems.length} ítems</span>
+          </div>
 
-              <div className="mt-5 pt-4 border-t border-slate-100/50">
-                <span className="text-[10px] text-slate-500 font-medium">{card.detail}</span>
+          <div className="overflow-hidden rounded-[12px] border border-orbit-border bg-orbit-surface">
+            {attentionItems.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center">
+                <ArrowsRightLeftIcon className="h-8 w-8 text-orbit-muted" />
+                <p className="text-sm text-orbit-text-secondary">
+                  No hay alertas prioritarias en este momento
+                </p>
               </div>
-            </motion.div>
-          ))}
-        </div>
+            ) : (
+              <ul className="divide-y divide-orbit-border">
+                {attentionItems.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => openAttentionItem(item)}
+                      className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors duration-150 hover:bg-orbit-interactive"
+                    >
+                      <span
+                        className={cn(
+                          "h-2 w-2 shrink-0 rounded-full",
+                          item.severity === "danger" && "bg-orbit-danger",
+                          item.severity === "warning" && "bg-orbit-warning",
+                          item.severity === "info" && "bg-orbit-info"
+                        )}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-orbit-text">
+                            {item.title}
+                          </span>
+                          {item.count > 0 && (
+                            <span className="rounded-md bg-orbit-interactive px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-orbit-text-secondary">
+                              {item.count}
+                            </span>
+                          )}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-orbit-muted">
+                          {item.detail}
+                        </span>
+                      </span>
+                      <ChevronRightIcon className="h-4 w-4 shrink-0 text-orbit-muted" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
 
-        <div className="md:col-span-4 space-y-4">
+        {/* Quick actions + tutorial */}
+        <aside className="space-y-3 lg:col-span-4">
           <div
             data-tutorial="home-quick-actions"
-            className="glass-panel p-8 bg-gradient-to-br from-violet-600 to-fuchsia-700 text-white border-none relative overflow-hidden group shadow-xl shadow-violet-900/20"
+            className="rounded-[12px] border border-orbit-border bg-orbit-elevated p-4"
           >
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700"></div>
-            <h3 className="text-xl font-bold mb-6 relative z-10 font-display text-white drop-shadow-sm">Acciones Rápidas</h3>
-            <div className="space-y-4 relative z-10">
-              {isLiteUser ? (
-                <p className="text-sm font-medium text-white/90 leading-relaxed">
-                  Usa el menú lateral para acceder a las secciones disponibles para tu perfil.
-                </p>
-              ) : !canManageVacancies ? (
-                <p className="text-sm font-medium text-white/90 leading-relaxed">
-                  Usa el menú lateral para acceder a las secciones disponibles para tu perfil.
-                </p>
-              ) : (
-                <motion.button
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  whileHover={{ scale: 1.02, x: 5 }}
-                  whileTap={{ scale: 0.98 }}
-                  transition={{ delay: 0.3 }}
-                  onClick={() => setView('vacancies')}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/10 transition-all group backdrop-blur-md"
+            <h3 className="orbit-section-title mb-3 text-sm">Acciones rápidas</h3>
+            <div className="space-y-1.5">
+              {canQuickCreate ? (
+                <button
+                  type="button"
+                  onClick={() => setView("vacancies")}
+                  className="flex w-full items-center justify-between rounded-[10px] border border-orbit-border bg-orbit-interactive px-3 py-2.5 text-left transition-colors duration-150 hover:border-orbit-primary/40"
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="p-2 bg-white/20 rounded-xl shadow-inner">
-                      <PlusIcon className="h-5 w-5 text-white" />
-                    </div>
-                    <span className="text-sm font-bold tracking-wide text-white drop-shadow-sm">
-                      Nueva Vacante
+                  <span className="flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-orbit-primary/15 text-orbit-primary">
+                      <PlusIcon className="h-4 w-4" />
                     </span>
-                  </div>
-                  <ChevronRightIcon className="h-[18px] w-[18px] text-white/50 group-hover:text-white group-hover:translate-x-1 transition-all" />
-                </motion.button>
+                    <span className="text-sm font-medium text-orbit-text">
+                      Nueva vacante
+                    </span>
+                  </span>
+                  <ChevronRightIcon className="h-4 w-4 text-orbit-muted" />
+                </button>
+              ) : (
+                <p className="text-xs leading-relaxed text-orbit-muted">
+                  Usa el menú o la búsqueda para acceder a las secciones de tu perfil.
+                </p>
               )}
+
+              <button
+                type="button"
+                onClick={() => setView("planta-activa")}
+                className="flex w-full items-center justify-between rounded-[10px] px-3 py-2.5 text-left text-sm text-orbit-text-secondary transition-colors duration-150 hover:bg-orbit-interactive hover:text-orbit-text"
+              >
+                <span className="flex items-center gap-2.5">
+                  <UsersIcon className="h-4 w-4 text-orbit-muted" />
+                  Ir a Planta Activa
+                </span>
+                <ChevronRightIcon className="h-4 w-4 text-orbit-muted" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setView("news")}
+                className="flex w-full items-center justify-between rounded-[10px] px-3 py-2.5 text-left text-sm text-orbit-text-secondary transition-colors duration-150 hover:bg-orbit-interactive hover:text-orbit-text"
+              >
+                <span className="flex items-center gap-2.5">
+                  <BellIcon className="h-4 w-4 text-orbit-muted" />
+                  Ir a Novedades
+                </span>
+                <ChevronRightIcon className="h-4 w-4 text-orbit-muted" />
+              </button>
             </div>
           </div>
 
           <div
             data-tutorial="home-tutorial-toggle"
-            className="glass-panel p-5 flex items-center justify-between gap-4"
+            className="flex items-center justify-between gap-3 rounded-[12px] border border-orbit-border bg-orbit-surface px-4 py-3"
           >
             <div className="min-w-0">
-              <p className="text-sm font-bold text-slate-900">Tutorial de ayuda</p>
-              <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                Si está prendido, el recorrido guiado aparece al entrar a Orbit.
+              <p className="text-sm font-medium text-orbit-text">Tutorial de ayuda</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-orbit-muted">
+                Recorrido guiado al entrar a Orbit
               </p>
             </div>
             <button
@@ -294,21 +572,21 @@ export const HomeView: React.FC<HomeViewProps> = ({
               aria-label="Prender o apagar tutorial"
               onClick={() => tutorial?.setEnabled(!(tutorial?.enabled ?? true))}
               className={cn(
-                'relative shrink-0 w-12 h-7 rounded-full transition-colors border',
+                "relative h-7 w-11 shrink-0 rounded-full border transition-colors duration-150",
                 tutorial?.enabled
-                  ? 'bg-violet-600 border-violet-500'
-                  : 'bg-slate-200 border-slate-300'
+                  ? "border-orbit-primary bg-orbit-primary"
+                  : "border-orbit-border bg-orbit-interactive"
               )}
             >
               <span
                 className={cn(
-                  'absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-                  tutorial?.enabled && 'translate-x-5'
+                  "absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-orbit-elevated shadow transition-transform duration-150",
+                  tutorial?.enabled && "translate-x-4"
                 )}
               />
             </button>
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   );

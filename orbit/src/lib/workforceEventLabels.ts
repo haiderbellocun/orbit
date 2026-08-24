@@ -51,14 +51,14 @@ export function workforceStatusBadgeClass(status: WorkforceEventStatus): string 
   switch (status) {
     case "TAKEN":
     case "APPROVED":
-      return "bg-emerald-50 text-emerald-700 border-emerald-100";
+      return "bg-orbit-success/10 text-orbit-success border-orbit-success/25";
     case "NOT_TAKEN":
     case "PENDING":
-      return "bg-amber-50 text-amber-700 border-amber-100";
+      return "bg-orbit-warning/10 text-orbit-warning border-orbit-warning/30";
     case "REJECTED":
     case "CANCELLED":
       return "bg-red-50 text-red-600 border-red-100";
     default:
-      return "bg-slate-50 text-slate-600 border-slate-100";
+      return "bg-orbit-bg-secondary text-orbit-text-secondary border-orbit-border";
   }
 }

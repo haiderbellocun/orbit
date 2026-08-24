@@ -31,6 +31,10 @@ import {
   type CatalogProgram,
   type CatalogRole,
 } from '@/src/lib/api';
+import {
+  clearPlantaPendingFilters,
+  peekPlantaPendingFilters,
+} from '@/src/lib/plantaPendingFilters';
 import { canEditPlantaPersonArea } from '@/src/lib/plantaActivaAccess';
 
 const EMPTY_EDIT_FORM = {
@@ -112,6 +116,7 @@ type Filters = {
   withoutProgram: boolean;
   withoutRole: boolean;
   withoutEduEmail: boolean;
+  withoutDocument: boolean;
 };
 
 const EMPTY_FILTERS: Filters = {
@@ -124,6 +129,7 @@ const EMPTY_FILTERS: Filters = {
   withoutProgram: false,
   withoutRole: false,
   withoutEduEmail: false,
+  withoutDocument: false,
 };
 
 export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
@@ -144,16 +150,31 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       catalogAreaIds != null && catalogAreaIds.length === 1
         ? String(catalogAreaIds[0])
         : '';
-    return { ...EMPTY_FILTERS, areaId: locked };
+    const pending = peekPlantaPendingFilters();
+    return {
+      ...EMPTY_FILTERS,
+      areaId: locked,
+      withoutEduEmail: Boolean(pending?.withoutEduEmail),
+      withoutDocument: Boolean(pending?.withoutDocument),
+    };
   });
   const [applied, setApplied] = useState<Filters>(() => {
     const locked =
       catalogAreaIds != null && catalogAreaIds.length === 1
         ? String(catalogAreaIds[0])
         : '';
-    return { ...EMPTY_FILTERS, areaId: locked };
+    const pending = peekPlantaPendingFilters();
+    return {
+      ...EMPTY_FILTERS,
+      areaId: locked,
+      withoutEduEmail: Boolean(pending?.withoutEduEmail),
+      withoutDocument: Boolean(pending?.withoutDocument),
+    };
   });
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(() => {
+    const pending = peekPlantaPendingFilters();
+    return Boolean(pending?.withoutEduEmail || pending?.withoutDocument);
+  });
   const [listStatus, setListStatus] = useState<'active' | 'inactive'>('active');
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<PlantaPerson[]>([]);
@@ -175,6 +196,10 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    clearPlantaPendingFilters();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -313,6 +338,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         without_program: applied.withoutProgram || undefined,
         without_role: applied.withoutRole || undefined,
         without_edu_email: applied.withoutEduEmail || undefined,
+        without_document: applied.withoutDocument || undefined,
         status: listStatus,
         page,
         limit: 50,
@@ -373,6 +399,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     if (applied.withoutProgram) n++;
     if (applied.withoutRole) n++;
     if (applied.withoutEduEmail) n++;
+    if (applied.withoutDocument) n++;
     return n;
   }, [applied]);
 
@@ -605,7 +632,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   };
 
   const selectClass =
-    'w-full min-w-0 max-w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-400/40';
+    'w-full min-w-0 max-w-full rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary px-3 py-2.5 text-sm text-orbit-text shadow-sm focus:outline-none focus:ring-2 focus:ring-orbit-primary/30';
 
   const inactivatingActivePerson =
     formMode === 'edit' &&
@@ -631,7 +658,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div
           data-tutorial="planta-status"
-          className="flex gap-1 p-1 rounded-2xl bg-slate-100/80 w-fit"
+          className="flex gap-1 p-1 rounded-2xl bg-orbit-interactive/80 w-fit"
         >
           {(
             [
@@ -646,8 +673,8 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
               className={cn(
                 'px-4 py-2 rounded-xl text-sm font-bold transition-colors',
                 listStatus === key
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
+                  ? 'bg-orbit-elevated text-orbit-text shadow-sm'
+                  : 'text-orbit-muted hover:text-orbit-text-secondary'
               )}
             >
               {label}
@@ -669,12 +696,12 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       </div>
 
       {saveNotice && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-800 flex items-center justify-between gap-3">
+        <div className="rounded-2xl border border-orbit-success/30 bg-orbit-success/10 px-5 py-3 text-sm text-orbit-success flex items-center justify-between gap-3">
           <span>{saveNotice}</span>
           <button
             type="button"
             onClick={() => setSaveNotice(null)}
-            className="text-emerald-600 hover:text-emerald-900 shrink-0"
+            className="text-orbit-success hover:text-orbit-success shrink-0"
             aria-label="Cerrar aviso"
           >
             <XMarkIcon className="h-4 w-4" />
@@ -685,7 +712,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       <div data-tutorial="planta-filters" className="glass-panel p-4 space-y-3 min-w-0">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
           <div className="relative flex-1">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orbit-muted" />
             <input
               value={filters.search}
               onChange={(e) =>
@@ -706,15 +733,15 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
               className={cn(
                 'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors',
                 filtersOpen || activeFilterCount > 0
-                  ? 'bg-violet-50 border-violet-200 text-violet-700'
-                  : 'bg-white/80 border-slate-200/80 text-slate-600 hover:bg-slate-50'
+                  ? 'bg-orbit-primary/10 border-orbit-primary/30 text-orbit-primary'
+                  : 'bg-orbit-bg-secondary border-orbit-border/80 text-orbit-text-secondary hover:bg-orbit-bg-secondary'
               )}
               aria-expanded={filtersOpen}
             >
               <FunnelIcon className="h-4 w-4" />
               Filtros
               {activeFilterCount > 0 && (
-                <span className="min-w-5 h-5 px-1.5 rounded-md bg-violet-600 text-white text-[10px] flex items-center justify-center">
+                <span className="min-w-5 h-5 px-1.5 rounded-md bg-orbit-primary text-white text-[10px] flex items-center justify-center">
                   {activeFilterCount}
                 </span>
               )}
@@ -744,10 +771,10 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
               transition={{ duration: 0.2 }}
               className="overflow-hidden min-w-0"
             >
-              <div className="pt-3 border-t border-slate-100 space-y-4 min-w-0">
+              <div className="pt-3 border-t border-orbit-border space-y-4 min-w-0">
                 <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-3 min-w-0">
                   <label className="space-y-1.5 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Área
                     </span>
                     <select
@@ -778,7 +805,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                   </label>
 
                   <label className="space-y-1.5 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Escuela
                     </span>
                     <select
@@ -802,7 +829,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                   </label>
 
                   <label className="space-y-1.5 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Programa
                     </span>
                     <select
@@ -822,7 +849,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                   </label>
 
                   <label className="space-y-1.5 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Rol
                     </span>
                     <select
@@ -849,11 +876,12 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       ['withoutProgram', 'Sin programa'],
                       ['withoutRole', 'Sin rol'],
                       ['withoutEduEmail', 'Sin correo CUN'],
+                      ['withoutDocument', 'Sin identificación'],
                     ] as const
                   ).map(([key, label]) => (
                     <label
                       key={key}
-                      className="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer"
+                      className="inline-flex items-center gap-2 text-sm text-orbit-text-secondary cursor-pointer"
                     >
                       <input
                         type="checkbox"
@@ -861,7 +889,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                         onChange={(e) =>
                           setFilters((f) => ({ ...f, [key]: e.target.checked }))
                         }
-                        className="rounded border-slate-300 text-violet-600 focus:ring-violet-400"
+                        className="rounded border-orbit-border text-orbit-primary focus:ring-violet-400"
                       />
                       {label}
                     </label>
@@ -894,7 +922,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       </div>
 
       <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-orbit-muted">
           {loading
             ? 'Cargando…'
             : listStatus === 'active'
@@ -911,7 +939,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
             >
               Anterior
             </button>
-            <span className="text-xs font-bold text-slate-500">
+            <span className="text-xs font-bold text-orbit-muted">
               {page} / {totalPages}
             </span>
             <button
@@ -927,7 +955,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       </div>
 
       {loadError && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+        <div className="rounded-2xl border border-orbit-danger/40 bg-orbit-danger/10 px-5 py-4 text-sm text-orbit-danger">
           {loadError}
         </div>
       )}
@@ -936,7 +964,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              <tr className="border-b border-orbit-border bg-orbit-bg-secondary/50 text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                 <th className="px-5 py-4">Persona</th>
                 <th className="px-5 py-4">Identificación</th>
                 <th className="px-5 py-4">Área / Escuela</th>
@@ -950,7 +978,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                 <tr>
                   <td
                     colSpan={6}
-                    className="px-5 py-16 text-center text-slate-400"
+                    className="px-5 py-16 text-center text-orbit-muted"
                   >
                     No hay personas que coincidan con los filtros.
                   </td>
@@ -962,18 +990,18 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: Math.min(i * 0.02, 0.3) }}
-                  className="border-b border-slate-50 hover:bg-violet-50/30 transition-colors"
+                  className="border-b border-orbit-border hover:bg-orbit-interactive/30 transition-colors"
                 >
                   <td className="px-5 py-4">
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 w-9 h-9 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+                      <div className="mt-0.5 w-9 h-9 rounded-xl bg-orbit-primary/10 text-orbit-primary flex items-center justify-center shrink-0">
                         <UserCircleIcon className="h-5 w-5" />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-bold text-slate-900 truncate">
+                        <p className="font-bold text-orbit-text truncate">
                           {row.name || '—'}
                         </p>
-                        <p className="text-xs text-slate-500 flex items-center gap-1 truncate">
+                        <p className="text-xs text-orbit-muted flex items-center gap-1 truncate">
                           <EnvelopeIcon className="h-3 w-3 shrink-0" />
                           {row.edu_email?.trim() ? (
                             row.edu_email.trim()
@@ -987,25 +1015,25 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     </div>
                   </td>
                   <td className="px-5 py-4">
-                    <span className="inline-flex items-center gap-1.5 text-slate-700">
-                      <IdentificationIcon className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="inline-flex items-center gap-1.5 text-orbit-text-secondary">
+                      <IdentificationIcon className="h-3.5 w-3.5 text-orbit-muted" />
                       {row.document || '—'}
                     </span>
                   </td>
                   <td className="px-5 py-4">
                     <div className="space-y-0.5">
-                      <p className="text-slate-800">{row.area || '—'}</p>
-                      <p className="text-xs text-slate-500 flex items-center gap-1">
+                      <p className="text-orbit-text">{row.area || '—'}</p>
+                      <p className="text-xs text-orbit-muted flex items-center gap-1">
                         <BuildingOffice2Icon className="h-3 w-3" />
                         {row.school || 'Sin escuela'}
                       </p>
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-slate-700">
+                  <td className="px-5 py-4 text-orbit-text-secondary">
                     {row.program || '—'}
                   </td>
                   <td className="px-5 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold">
+                    <span className="inline-flex px-2.5 py-1 rounded-lg bg-orbit-interactive text-orbit-text-secondary text-xs font-semibold">
                       {row.role_name || 'Sin rol'}
                     </span>
                   </td>
@@ -1014,13 +1042,13 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       <button
                         type="button"
                         onClick={() => void openEdit(row)}
-                        className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-600 hover:text-violet-800"
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-orbit-primary hover:text-orbit-primary-hover"
                       >
                         <PencilSquareIcon className="h-4 w-4" />
                         Gestionar
                       </button>
                     ) : (
-                      <span className="text-xs text-slate-400">Solo lectura</span>
+                      <span className="text-xs text-orbit-muted">Solo lectura</span>
                     )}
                   </td>
                 </motion.tr>
@@ -1039,7 +1067,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+                className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
                 onClick={closeEdit}
               >
                 <motion.div
@@ -1051,12 +1079,12 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                 >
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-xl font-display font-bold text-slate-900">
+                  <h3 className="text-xl font-display font-bold text-orbit-text">
                     {formMode === 'create'
                       ? 'Nueva persona'
                       : 'Información general'}
                   </h3>
-                  <p className="text-sm text-slate-500 mt-1">
+                  <p className="text-sm text-orbit-muted mt-1">
                     {formMode === 'create'
                       ? 'Registra una persona en planta activa'
                       : 'Datos básicos de la persona en planta'}
@@ -1065,7 +1093,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                 <button
                   type="button"
                   onClick={closeEdit}
-                  className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"
+                  className="p-2 rounded-xl hover:bg-orbit-interactive text-orbit-muted"
                 >
                   <XMarkIcon className="h-5 w-5" />
                 </button>
@@ -1074,7 +1102,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
               <form onSubmit={handleSave} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <label className="space-y-1.5 sm:col-span-2">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Nombre completo
                     </span>
                     <input
@@ -1087,7 +1115,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     />
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Identificación
                     </span>
                     <input
@@ -1109,7 +1137,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     />
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Teléfono
                     </span>
                     <input
@@ -1121,7 +1149,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     />
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Correo personal
                     </span>
                     <input
@@ -1134,7 +1162,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     />
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Correo institucional
                     </span>
                     <input
@@ -1147,7 +1175,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     />
                   </label>
                   <label className="space-y-1.5 sm:col-span-2">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Dirección
                     </span>
                     <input
@@ -1159,7 +1187,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     />
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Área
                     </span>
                     <select
@@ -1186,7 +1214,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     </select>
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Escuela
                     </span>
                     <select
@@ -1209,7 +1237,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     </select>
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Programa
                     </span>
                     <select
@@ -1231,7 +1259,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     </select>
                   </label>
                   <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Rol
                     </span>
                     <select
@@ -1249,7 +1277,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       ))}
                     </select>
                   </label>
-                  <label className="inline-flex items-start gap-2 text-sm text-slate-700 pt-6 sm:col-span-2">
+                  <label className="inline-flex items-start gap-2 text-sm text-orbit-text-secondary pt-6 sm:col-span-2">
                     <input
                       type="checkbox"
                       checked={editForm.is_active}
@@ -1262,29 +1290,29 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                             : true,
                         }))
                       }
-                      className="mt-0.5 rounded border-slate-300 text-violet-600 focus:ring-violet-400"
+                      className="mt-0.5 rounded border-orbit-border text-orbit-primary focus:ring-violet-400"
                     />
                     <span>
                       <span className="font-semibold">Persona activa</span>
                       {formMode === 'edit' ? (
-                        <span className="block text-xs text-slate-500 mt-0.5">
+                        <span className="block text-xs text-orbit-muted mt-0.5">
                           Al desactivar se mueve a Inactivos.
                         </span>
                       ) : (
-                        <span className="block text-xs text-slate-500 mt-0.5">
+                        <span className="block text-xs text-orbit-muted mt-0.5">
                           Por defecto queda en la pestaña de Activos.
                         </span>
                       )}
                     </span>
                   </label>
                   {inactivatingActivePerson && skipsAutoVacancy && (
-                    <p className="text-xs text-slate-500 sm:col-span-2 -mt-2">
+                    <p className="text-xs text-orbit-muted sm:col-span-2 -mt-2">
                       Para roles DOCENTE, LIDER o LITE no se crea vacante
                       automática.
                     </p>
                   )}
                   {inactivatingActivePerson && !skipsAutoVacancy && (
-                    <label className="inline-flex items-start gap-2 text-sm text-slate-700 sm:col-span-2 -mt-2">
+                    <label className="inline-flex items-start gap-2 text-sm text-orbit-text-secondary sm:col-span-2 -mt-2">
                       <input
                         type="checkbox"
                         checked={editForm.create_vacancy}
@@ -1294,13 +1322,13 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                             create_vacancy: e.target.checked,
                           }))
                         }
-                        className="mt-0.5 rounded border-slate-300 text-violet-600 focus:ring-violet-400"
+                        className="mt-0.5 rounded border-orbit-border text-orbit-primary focus:ring-violet-400"
                       />
                       <span>
                         <span className="font-semibold">
                           Crear vacante automáticamente
                         </span>
-                        <span className="block text-xs text-slate-500 mt-0.5">
+                        <span className="block text-xs text-orbit-muted mt-0.5">
                           Activo por defecto. Desmárcalo si solo quieres
                           inactivar sin abrir vacante.
                         </span>
@@ -1310,7 +1338,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                 </div>
 
                 {formError && (
-                  <p className="text-sm text-rose-600 font-medium">{formError}</p>
+                  <p className="text-sm text-orbit-danger font-medium">{formError}</p>
                 )}
 
                 <div className="flex justify-end gap-3 pt-2">

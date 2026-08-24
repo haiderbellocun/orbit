@@ -1,17 +1,18 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BellIcon } from '@heroicons/react/24/solid';
-import type { OrbitNotification } from '@/src/types';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { BellIcon } from "@heroicons/react/24/solid";
+import type { OrbitNotification } from "@/src/types";
 import {
   getNotifications,
   getUnreadNotificationCount,
   markAllNotificationsRead,
   markNotificationRead,
-} from '@/src/lib/api';
+} from "@/src/lib/api";
+import { cn } from "@/src/lib/utils";
 
 function formatNotifTime(iso: string): string {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" });
 }
 
 interface NotificationBellProps {
@@ -67,8 +68,8 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         setOpen(false);
       }
     }
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
   }, [open]);
 
   async function handleMarkRead(n: OrbitNotification) {
@@ -115,28 +116,26 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="glass-button-secondary p-3 relative group"
+        className="relative flex h-9 w-9 items-center justify-center rounded-[10px] border border-orbit-border text-orbit-text-secondary transition-colors duration-150 hover:bg-orbit-interactive hover:text-orbit-text"
         aria-label="Notificaciones"
       >
-        <BellIcon className="h-5 w-5 group-hover:rotate-12 transition-transform" />
+        <BellIcon className="h-4 w-4" />
         {unread > 0 && (
-          <span className="absolute top-1.5 right-1.5 min-w-[1.1rem] h-[1.1rem] px-0.5 flex items-center justify-center text-[9px] font-bold text-white bg-gradient-to-tr from-rose-500 to-pink-500 rounded-full border-2 border-white shadow-sm">
-            {unread > 9 ? '9+' : unread}
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orbit-danger px-1 text-[9px] font-bold text-white">
+            {unread > 9 ? "9+" : unread}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 glass-panel shadow-2xl p-0 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-700">
-              Notificaciones
-            </p>
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-[12px] border border-orbit-border bg-orbit-elevated shadow-2xl shadow-slate-200/80 sm:w-96">
+          <div className="flex items-center justify-between border-b border-orbit-border px-4 py-3">
+            <p className="orbit-label">Notificaciones</p>
             {unread > 0 && (
               <button
                 type="button"
                 onClick={() => void handleMarkAll()}
-                className="text-[10px] font-bold uppercase tracking-widest text-violet-600 hover:text-violet-800"
+                className="text-[10px] font-semibold uppercase tracking-wide text-orbit-primary hover:text-orbit-primary-hover"
               >
                 Marcar leídas
               </button>
@@ -144,9 +143,9 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
           </div>
           <div className="max-h-80 overflow-y-auto">
             {loading ? (
-              <p className="py-8 text-center text-sm text-slate-500">Cargando…</p>
+              <p className="py-8 text-center text-sm text-orbit-muted">Cargando…</p>
             ) : items.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-500 italic">
+              <p className="py-8 text-center text-sm text-orbit-muted">
                 Sin notificaciones
               </p>
             ) : (
@@ -156,17 +155,18 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                     <button
                       type="button"
                       onClick={() => handleClickItem(n)}
-                      className={`w-full text-left px-4 py-3 border-b border-slate-50 hover:bg-violet-50/50 transition-colors ${
-                        n.readAt ? 'opacity-70' : 'bg-violet-50/30'
-                      }`}
+                      className={cn(
+                        "w-full border-b border-orbit-border px-4 py-3 text-left transition-colors duration-150 hover:bg-orbit-interactive",
+                        !n.readAt && "bg-orbit-primary/5"
+                      )}
                     >
-                      <p className="text-sm font-bold text-slate-900">{n.title}</p>
+                      <p className="text-sm font-semibold text-orbit-text">{n.title}</p>
                       {n.body && (
-                        <p className="text-xs text-slate-600 mt-1 whitespace-pre-line line-clamp-3">
+                        <p className="mt-1 line-clamp-3 whitespace-pre-line text-xs text-orbit-text-secondary">
                           {n.body}
                         </p>
                       )}
-                      <p className="text-[10px] text-slate-400 mt-1">
+                      <p className="mt-1 text-[10px] text-orbit-muted">
                         {formatNotifTime(n.createdAt)}
                       </p>
                     </button>

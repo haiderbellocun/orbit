@@ -33,7 +33,7 @@ export const ConfirmTextModal: React.FC<ConfirmTextModalProps> = ({
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <button
         type="button"
-        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         aria-label="Cerrar"
         onClick={() => {
           if (!loading) onClose();
@@ -50,7 +50,7 @@ export const ConfirmTextModal: React.FC<ConfirmTextModalProps> = ({
         <div className="flex items-start justify-between gap-3 mb-4">
           <h2
             id="confirm-text-title"
-            className="text-lg font-bold text-slate-900"
+            className="text-lg font-bold text-orbit-text"
           >
             {title}
           </h2>
@@ -58,14 +58,14 @@ export const ConfirmTextModal: React.FC<ConfirmTextModalProps> = ({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="p-1 rounded-lg text-slate-500 hover:text-slate-800 disabled:opacity-40"
+            className="p-1 rounded-lg text-orbit-muted hover:text-orbit-text disabled:opacity-40"
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
-        <p className="text-sm text-slate-600 mb-4">{description}</p>
-        <p className="text-xs text-slate-500 mb-2">
-          Escriba <strong className="text-slate-800">CONFIRMAR</strong> para
+        <p className="text-sm text-orbit-text-secondary mb-4">{description}</p>
+        <p className="text-xs text-orbit-muted mb-2">
+          Escriba <strong className="text-orbit-text">CONFIRMAR</strong> para
           continuar:
         </p>
         <input

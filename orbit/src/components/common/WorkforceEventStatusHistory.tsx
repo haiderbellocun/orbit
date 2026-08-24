@@ -65,7 +65,7 @@ export const WorkforceEventStatusHistory: React.FC<
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-violet-600 hover:text-violet-800"
+        className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-orbit-primary hover:text-orbit-primary-hover"
       >
         {open ? (
           <ChevronUpIcon className="h-3.5 w-3.5" />
@@ -76,21 +76,21 @@ export const WorkforceEventStatusHistory: React.FC<
       </button>
 
       {open ? (
-        <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">
+        <div className="mt-2 rounded-xl border border-orbit-border bg-orbit-bg-secondary/80 px-3 py-2">
           {loading ? (
-            <p className="text-xs text-slate-500">Cargando…</p>
+            <p className="text-xs text-orbit-muted">Cargando…</p>
           ) : error ? (
             <p className="text-xs text-red-600">{error}</p>
           ) : logs.length === 0 ? (
-            <p className="text-xs text-slate-500">Sin cambios registrados.</p>
+            <p className="text-xs text-orbit-muted">Sin cambios registrados.</p>
           ) : (
             <ul className="space-y-2">
               {logs.map((log) => (
-                <li key={log.id} className="text-xs text-slate-600">
-                  <span className="font-semibold text-slate-800">
+                <li key={log.id} className="text-xs text-orbit-text-secondary">
+                  <span className="font-semibold text-orbit-text">
                     {statusTransition(log)}
                   </span>
-                  <span className="text-slate-400">
+                  <span className="text-orbit-muted">
                     {' '}
                     · {log.changed_by_person.name} · {formatLogDate(log.changed_at)}
                   </span>

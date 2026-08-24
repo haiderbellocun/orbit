@@ -564,7 +564,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
       />
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -573,11 +573,11 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
         className="w-full max-w-4xl glass-panel p-6 sm:p-8 relative z-10 shadow-2xl max-h-[92vh] overflow-hidden flex flex-col min-w-0"
       >
         <div className="flex justify-between items-start mb-4 gap-4 shrink-0">
-          <h2 className="text-xl font-bold text-slate-900 font-display">{title}</h2>
+          <h2 className="text-xl font-bold text-orbit-text font-display">{title}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 shrink-0"
+            className="p-2 hover:bg-orbit-interactive rounded-xl text-orbit-muted shrink-0"
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
@@ -593,8 +593,8 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                 className={cn(
                   'rounded-xl border px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all',
                   activeTab === t.id
-                    ? 'border-violet-600 bg-violet-600 text-white shadow-sm'
-                    : 'border-white/30 bg-white/40 text-slate-600 hover:bg-white/60'
+                    ? 'border-orbit-primary bg-orbit-primary text-white shadow-sm'
+                    : 'border-orbit-border bg-orbit-interactive text-orbit-text-secondary hover:bg-orbit-interactive'
                 )}
               >
                 {t.label}
@@ -604,7 +604,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
         )}
 
         {formError && (
-          <p className="text-sm text-rose-600 mb-3 shrink-0">{formError}</p>
+          <p className="text-sm text-orbit-danger mb-3 shrink-0">{formError}</p>
         )}
 
         <div className="flex-1 overflow-y-auto overflow-x-visible pr-1 min-h-0 min-w-0">
@@ -667,7 +667,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
           ) : activeTab === 'vacancy' ? (
             <div className="space-y-4">
               {coreLocked && editVacancy && (
-                <p className="text-sm text-violet-900 bg-violet-50/95 border border-violet-200/80 rounded-xl px-4 py-3">
+                <p className="text-sm text-orbit-primary bg-orbit-primary/10 border border-orbit-primary/30 rounded-xl px-4 py-3">
                   Esta vacante ya tiene requisición (
                   <strong>{editVacancy.reqNumber ?? 'sin número'}</strong>). Los datos base
                   están bloqueados; puede cambiar estado, comentarios y la pestaña Requisición.
@@ -778,7 +778,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                     value={hiredQty}
                     onChange={(e) => setHiredQty(e.target.value)}
                   />
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-orbit-muted mt-1">
                     Máximo {qty} (solicitadas). Pendientes:{' '}
                     {Math.max(0, (Number(qty) || 0) - (Number(hiredQty) || 0))}.
                   </p>
@@ -795,7 +795,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                   placeholder="Nombre completo"
                 />
                 {ccLocked && (
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-orbit-muted mt-1">
                     El nombre del jefe inmediato no puede modificarse una vez registrado.
                   </p>
                 )}
@@ -811,20 +811,20 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
               )}
               {mode === 'edit' && editVacancy && !hiredRequisitionOnly && (
                 <>
-                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 space-y-2">
-                    <p className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">
+                  <div className="rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary/50 p-3 space-y-2">
+                    <p className="text-[10px] font-bold uppercase text-orbit-muted tracking-widest">
                       Comentarios de operación
                     </p>
-                    <ul className="space-y-2 max-h-44 overflow-y-auto text-sm text-slate-700">
+                    <ul className="space-y-2 max-h-44 overflow-y-auto text-sm text-orbit-text-secondary">
                       {operationNotes.length === 0 ? (
-                        <li className="text-slate-400 text-xs">Sin comentarios aún.</li>
+                        <li className="text-orbit-muted text-xs">Sin comentarios aún.</li>
                       ) : (
                         operationNotes.map((n) => (
                           <li
                             key={n.id}
-                            className="border-b border-slate-100 pb-2 last:border-0 last:pb-0"
+                            className="border-b border-orbit-border pb-2 last:border-0 last:pb-0"
                           >
-                            <div className="text-[10px] text-slate-500 font-medium">
+                            <div className="text-[10px] text-orbit-muted font-medium">
                               {formatVacancyDt(n.createdAt)}
                               {n.createdByName ? ` · ${n.createdByName}` : ''}
                             </div>
@@ -853,7 +853,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                 </>
               )}
               {mode === 'create' && (
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                <p className="text-[10px] text-orbit-muted uppercase tracking-widest">
                   Al crear, el estado queda <strong>Abierta</strong>. La requisición se puede
                   completar en la pestaña Requisición.
                 </p>
@@ -862,13 +862,13 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
           ) : activeTab === 'requisition' ? (
             <div className="space-y-4">
               {hiredRequisitionOnly && (
-                <p className="text-sm text-emerald-900 bg-emerald-50/95 border border-emerald-200/80 rounded-xl px-4 py-3">
+                <p className="text-sm text-orbit-success bg-orbit-success/10 border border-orbit-success/30 rounded-xl px-4 py-3">
                   Vacante <strong>contratada</strong>: solo puede editar los datos de la
                   requisición.
                 </p>
               )}
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-orbit-text-secondary">
                   {mode === 'create'
                     ? 'La requisición se registrará al confirmar, después de crear la vacante.'
                     : hasExistingReq
@@ -879,14 +879,14 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                   href={ZOHO_REQUISITION_FORM_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-violet-600 hover:text-violet-800"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-orbit-primary hover:text-orbit-primary-hover"
                 >
                   Formulario Zoho
                   <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
                 </a>
               </div>
               {mode === 'edit' && editVacancy && (
-                <p className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+                <p className="text-sm text-orbit-text-secondary bg-orbit-bg-secondary rounded-lg px-3 py-2 border border-orbit-border">
                   Vacante: <strong>{editVacancy.positionName}</strong> (
                   {editVacancy.schoolName ?? 'Sin escuela'})
                 </p>
@@ -915,7 +915,7 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                   placeholder="Observaciones para capital humano…"
                 />
               </Field>
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+              <p className="text-[10px] text-orbit-muted uppercase tracking-widest">
                 Cumplimientos
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
@@ -936,12 +936,12 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
           ) : activeTab === 'status' ? (
             <div className="space-y-4">
               {isVacancyAdmin && (
-                <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                <p className="text-sm text-orbit-warning bg-orbit-warning/10 border border-orbit-warning/30 rounded-xl px-4 py-3">
                   Como administrador puede cambiar el estado en cualquier momento. Al guardar
                   deberá escribir <strong>CONFIRMAR</strong>.
                 </p>
               )}
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-orbit-text-secondary">
                 Este estado es el que define el cierre/contratación/cancelación de la vacante.
               </p>
               <Field label="Estado operación (cierre aquí)">
@@ -970,20 +970,20 @@ export const VacancyManageModal: React.FC<VacancyManageModalProps> = ({
                     value={hiredQty}
                     onChange={(e) => setHiredQty(e.target.value)}
                   />
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-orbit-muted mt-1">
                     Indique cuántas personas se contrataron (máximo{' '}
                     {qty || editVacancy?.quantity || '—'} solicitadas).
                   </p>
                 </Field>
               )}
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-orbit-muted">
                 Para cerrar/contratar/cancelar, seleccione el estado final aquí y guarde cambios.
               </p>
             </div>
           ) : null}
         </div>
 
-        <div className="flex gap-3 pt-4 mt-2 shrink-0 border-t border-slate-100">
+        <div className="flex gap-3 pt-4 mt-2 shrink-0 border-t border-orbit-border">
           {step === 'form' ? (
             <>
               <button
@@ -1062,8 +1062,8 @@ function SummarySection({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-4 space-y-2">
-      <p className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">
+    <div className="rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary/60 p-4 space-y-2">
+      <p className="text-[10px] font-bold uppercase text-orbit-muted tracking-widest">
         {title}
       </p>
       <dl className="space-y-1.5 text-sm">{children}</dl>
@@ -1074,8 +1074,8 @@ function SummarySection({
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col sm:flex-row sm:gap-2">
-      <dt className="text-slate-500 font-medium sm:w-40 shrink-0">{label}</dt>
-      <dd className="text-slate-900 whitespace-pre-wrap">{value}</dd>
+      <dt className="text-orbit-muted font-medium sm:w-40 shrink-0">{label}</dt>
+      <dd className="text-orbit-text whitespace-pre-wrap">{value}</dd>
     </div>
   );
 }
@@ -1089,7 +1089,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+      <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest">
         {label}
       </label>
       {children}
