@@ -20,18 +20,28 @@ export type PlantaActivaGrant = {
   extraCapabilities?: readonly string[];
 };
 
+const SARA_LEVEL_EXTRAS = [
+  "view:home",
+  "view:vacancies",
+  "vacancies:informative_panel",
+  "vacancies:admin",
+  "view:news",
+] as const;
+
+const SARA_LEVEL_EDIT_AREA_IDS = [2, 3, 4, 5, 6, 7, 8];
+
 const GRANTS: readonly PlantaActivaGrant[] = [
   {
     email: "sara_murillofo@cun.edu.co",
     viewAreaIds: null,
-    editAreaIds: [2, 3, 4, 5, 6, 7, 8],
-    extraCapabilities: [
-      "view:home",
-      "view:vacancies",
-      "vacancies:informative_panel",
-      "vacancies:admin",
-      "view:news",
-    ],
+    editAreaIds: SARA_LEVEL_EDIT_AREA_IDS,
+    extraCapabilities: SARA_LEVEL_EXTRAS,
+  },
+  {
+    email: "cindy_russi@cun.edu.co",
+    viewAreaIds: null,
+    editAreaIds: SARA_LEVEL_EDIT_AREA_IDS,
+    extraCapabilities: SARA_LEVEL_EXTRAS,
   },
   {
     email: "leidy_bernal@cun.edu.co",

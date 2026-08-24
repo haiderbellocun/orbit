@@ -8,4 +8,4 @@
   SMTP_SERVICE: gmail
   SMTP_HOST: smtp.gmail.com
   SMTP_PORT: "587"
-  VACANCY_NOTIFY_EMAILS: "camilo_quintero@cun.edu.co,laura_garcias@cun.edu.co,angie_ruizm@cun.edu.co"
+  VACANCY_NOTIFY_EMAILS: "camilo_quintero@cun.edu.co,sara_murillofo@cun.edu.co,cindy_russi@cun.edu.co"
