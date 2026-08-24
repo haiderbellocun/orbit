@@ -44,10 +44,13 @@
     "google-auth-library": "^10.6.2",
     "jsonwebtoken": "^9.0.3",
     "multer": "^1.4.5-lts.1",
-    "nodemailer": "^6.10.0",
+    "nodemailer": "^9.0.5",
     "pg": "^8.13.1",
-    "uuid": "^9.0.1",
+    "uuid": "^11.1.1",
     "xlsx": "^0.18.5"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -55,7 +58,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^1.4.11",
     "@types/node": "^22.9.0",
-    "@types/nodemailer": "^6.4.17",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.11.10",
     "@types/uuid": "^10.0.0",
     "ts-node": "^10.9.2",
