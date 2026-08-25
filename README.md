@@ -1,712 +1,576 @@
+<div align="center">
+
+<img src="https://i.ibb.co/1SR92PZ/LOGO-ORBIT-512-Mesa-de-trabajo-1-02-02.png" alt="Orbit" width="140" />
+
 # Orbit — Documentación completa
 
-Plataforma interna de la **CUN** para operación académica y de planta: Command Center, Planta Activa, Carga Académica, Balance de carga (horas sustantivas), Vacantes, Panel informativo y Novedades (eventos de fuerza laboral).
+**Plataforma interna CUN** · operación académica y de planta
 
-Monorepo con **frontend React (Vite)** y **API Express + TypeScript + PostgreSQL**, desplegado en **Google Cloud Run**.
+[![Frontend](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Vite-8B5CF6?style=for-the-badge&logo=react&logoColor=white)](orbit/)
+[![Backend](https://img.shields.io/badge/Backend-Express%20%2B%20TS-D946EF?style=for-the-badge&logo=nodedotjs&logoColor=white)](orbit-api/)
+[![Database](https://img.shields.io/badge/DB-PostgreSQL-06B6D4?style=for-the-badge&logo=postgresql&logoColor=white)](#6--base-de-datos)
+[![Cloud](https://img.shields.io/badge/Deploy-Cloud%20Run-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](#11--despliegue)
 
-| Servicio | URL |
-|----------|-----|
-| Frontend | https://orbit-frontend-526995286786.us-central1.run.app |
-| Backend | https://orbit-backend-526995286786.us-central1.run.app |
-| Proyecto GCP | `it-fab-contenido-edu-6` · región `us-central1` |
+| | |
+|:--|:--|
+| 🖥️ **Frontend** | https://orbit-frontend-526995286786.us-central1.run.app |
+| ⚙️ **Backend** | https://orbit-backend-526995286786.us-central1.run.app |
+| ☁️ **GCP** | `it-fab-contenido-edu-6` · `us-central1` |
 
----
+**Paleta de marca:** `violet` · `fuchsia` · `cyan`
 
-## Tabla de contenidos
-
-1. [Visión general](#1-visión-general)
-2. [Estructura del monorepo](#2-estructura-del-monorepo)
-3. [Arquitectura](#3-arquitectura)
-4. [Frontend (`orbit/`)](#4-frontend-orbit)
-5. [Backend (`orbit-api/`)](#5-backend-orbit-api)
-6. [Base de datos](#6-base-de-datos)
-7. [Autenticación y autorización](#7-autenticación-y-autorización)
-8. [Variables de entorno](#8-variables-de-entorno)
-9. [Arranque local](#9-arranque-local)
-10. [Migraciones, seeds y scripts](#10-migraciones-seeds-y-scripts)
-11. [Despliegue](#11-despliegue)
-12. [Documentación relacionada](#12-documentación-relacionada)
-13. [Stack](#13-stack)
+</div>
 
 ---
 
-## 1. Visión general
+## 📑 Tabla de contenidos
+
+| | Sección |
+|:-:|:--------|
+| 🎯 | [1. Visión general](#1--visión-general) |
+| 📁 | [2. Estructura del monorepo](#2--estructura-del-monorepo) |
+| 🏗️ | [3. Arquitectura](#3--arquitectura) |
+| ⚛️ | [4. Frontend](#4--frontend-orbit) |
+| 🟢 | [5. Backend](#5--backend-orbit-api) |
+| 🗄️ | [6. Base de datos](#6--base-de-datos) |
+| 🔐 | [7. Autenticación y autorización](#7--autenticación-y-autorización) |
+| 🧩 | [8. Variables de entorno](#8--variables-de-entorno) |
+| 🚀 | [9. Arranque local](#9--arranque-local) |
+| 🧬 | [10. Migraciones, seeds y scripts](#10--migraciones-seeds-y-scripts) |
+| ☁️ | [11. Despliegue](#11--despliegue) |
+| 📚 | [12. Documentación relacionada](#12--documentación-relacionada) |
+| 🛠️ | [13. Stack](#13--stack) |
+
+---
+
+## 1. 🎯 Visión general
 
 Orbit concentra en un solo producto:
 
-| Módulo UI | Qué resuelve |
-|-----------|--------------|
-| **Command Center** | Métricas de home: docentes activos, vacantes, contrataciones, aging, novedades del día |
-| **Planta Activa** | Maestro de personas por área/escuela; alta/edición; al inactivar ciertos roles puede abrir vacante |
-| **Carga Académica** | Lectura de proyección ACA (docente × materia × grupo × periodo) |
-| **Balance carga** | Horas sustantivas y preparación de clase por persona |
-| **Vacantes** | Ciclo de vida operativo + requisición + notas + export Excel + notificaciones |
-| **Panel informativo** | Bitácora / audit de vacantes y requisiciones (capability + flag de feature) |
-| **Novedades** | Eventos de fuerza laboral (licencias, permisos, etc.) con bitácora de estados |
+| Icono | Módulo UI | Color | Qué resuelve |
+|:-----:|-----------|:-----:|--------------|
+| ⚡ | **Command Center** | ![violet](https://img.shields.io/badge/-violet-8B5CF6?style=flat-square) | Métricas: docentes, vacantes, contrataciones, aging, novedades del día |
+| 🏢 | **Planta Activa** | ![fuchsia](https://img.shields.io/badge/-fuchsia-D946EF?style=flat-square) | Maestro de personas; alta/edición; inactivar puede abrir vacante |
+| 🎓 | **Carga Académica** | ![indigo](https://img.shields.io/badge/-indigo-6366F1?style=flat-square) | Proyección ACA (docente × materia × grupo × periodo) |
+| ⏱️ | **Balance carga** | ![cyan](https://img.shields.io/badge/-cyan-06B6D4?style=flat-square) | Horas sustantivas y preparación de clase |
+| 💼 | **Vacantes** | ![amber](https://img.shields.io/badge/-amber-F59E0B?style=flat-square) | Ciclo operativo + REQ + notas + Excel + notificaciones |
+| 🛡️ | **Panel informativo** | ![slate](https://img.shields.io/badge/-slate-64748B?style=flat-square) | Bitácora / audit de vacantes (capability + feature flag) |
+| 💬 | **Novedades** | ![emerald](https://img.shields.io/badge/-emerald-10B981?style=flat-square) | Eventos de fuerza laboral + bitácora de estados |
 
-El backend es la fuente de verdad. El frontend no usa React Router: navega por estado React (`View`) y llama al API con JWT.
+> 💡 El **backend** es la fuente de verdad. El frontend **no usa React Router**: navega por estado React (`View`) y llama al API con JWT.
 
 ---
 
-## 2. Estructura del monorepo
+## 2. 📁 Estructura del monorepo
 
 ```text
 Orbit/
-├── README.md                      # Este documento
-├── LOGIN_APPS_INTEGRATION.md      # Log central de logins (Nova/Actas/Acervo/Orbit)
-├── docs/
-│   └── ANS-vacantes.md            # Acuerdo de nivel de servicio — Vacantes
-├── gcp/
-│   ├── deploy-orbit-all.ps1
-│   ├── deploy-orbit-backend.ps1
-│   ├── deploy-orbit-frontend.ps1
-│   ├── cloudbuild-orbit-*.yaml
-│   └── orbit-backend-deploy-flags.yaml
-├── orbit/                         # Frontend SPA
-│   ├── src/
-│   │   ├── App.tsx                # Shell, auth, switch de vistas
-│   │   ├── main.tsx
-│   │   ├── types.ts
-│   │   ├── components/
-│   │   │   ├── layout/            # Sidebar, TopBar, CommandPalette, NotificationBell
-│   │   │   ├── views/             # Pantallas de negocio
-│   │   │   ├── tutorial/          # Tour guiado
-│   │   │   └── common/
-│   │   ├── lib/                   # api.ts, permissions, helpers
-│   │   └── config/                # Brand e iconos
-│   ├── Dockerfile
-│   └── README.md
-└── orbit-api/                     # Backend API
-    ├── src/
-    │   ├── index.ts               # Express entry
-    │   ├── routes/                # Routers HTTP
-    │   ├── middleware/            # JWT + capabilities
-    │   ├── lib/                   # Capabilities, roles, scopes
-    │   ├── services/              # Notify, Excel export, bulk helpers
-    │   ├── db/                    # connection, migrate*, seed*, schema*
-    │   └── sql/
-    ├── docs/                      # auth-google, carga-académica
-    ├── scripts/                   # Imports offline, SMTP test, plantillas
-    ├── README_DEPLOY.md
-    └── Dockerfile
+├── 📘 README.md                      # Este documento
+├── 🔗 LOGIN_APPS_INTEGRATION.md      # Log central de logins
+├── 📂 docs/
+│   └── 📋 ANS-vacantes.md
+├── ☁️ gcp/                           # Deploy Cloud Run / Cloud Build
+├── ⚛️ orbit/                         # Frontend SPA (violet)
+│   ├── src/components/views/         # Pantallas
+│   ├── src/components/layout/        # Sidebar, TopBar, campana…
+│   ├── src/lib/                      # api, permissions, helpers
+│   └── src/config/brand.tsx          # Logos + colores + iconos
+└── 🟢 orbit-api/                     # Backend API (fuchsia)
+    ├── src/routes/                   # Routers HTTP
+    ├── src/middleware/               # JWT + capabilities
+    ├── src/db/                       # connection, migrate*, seed*
+    ├── src/services/                 # Notify, Excel, bulk
+    └── docs/                         # auth-google, carga-académica
 ```
 
 ---
 
-## 3. Arquitectura
+## 3. 🏗️ Arquitectura
 
-```text
-┌─────────────────────┐         HTTPS / JSON          ┌──────────────────────┐
-│  orbit (Vite SPA)   │  ───────────────────────────► │  orbit-api (Express)  │
-│  React 19 · puerto  │  Authorization: Bearer JWT    │  /api/* · /health     │
-│  3000 (local)       │  ◄─────────────────────────── │  puerto 4000 (local)  │
-└─────────────────────┘                               └──────────┬───────────┘
-         │                                                       │
-         │ Google Identity Services                              │ pg.Pool
-         ▼                                                       ▼
-┌─────────────────────┐                               ┌──────────────────────┐
-│  Google OAuth       │                               │  PostgreSQL           │
-│  (idToken → API)    │                               │  Cloud SQL / local    │
-└─────────────────────┘                               │  schemas: core, …     │
-                                                      └──────────────────────┘
+```mermaid
+flowchart LR
+  subgraph FE["🟣 Frontend · orbit"]
+    SPA["React SPA<br/>:3000"]
+  end
+  subgraph BE["🩷 Backend · orbit-api"]
+    API["Express /api<br/>:4000"]
+    HL["💚 /health"]
+  end
+  subgraph EXT["⚪ Externos"]
+    GO["🔐 Google OAuth"]
+    SMTP["✉️ SMTP"]
+  end
+  subgraph DB["🩵 PostgreSQL"]
+    PG[("Cloud SQL / local<br/>multi-schema")]
+  end
+
+  SPA -->|"HTTPS + Bearer JWT"| API
+  SPA --> GO
+  GO -->|"idToken"| API
+  API --> PG
+  API --> SMTP
+  HL --> PG
 ```
 
-**Flujo típico de sesión**
+### 🔄 Flujo de sesión
 
-1. Usuario inicia sesión con Google (`@cun.edu.co`) en el SPA.
-2. Frontend envía `idToken` a `POST /api/auth/google`.
-3. API verifica el token, busca `person`, aplica allowlist/grants, firma JWT y responde `{ token, user }`.
-4. SPA guarda `orbit_jwt` + `orbit_user` en `localStorage`.
-5. Cada request a `/api/*` (salvo auth) lleva el Bearer; el middleware revalida autorización y capabilities.
-6. La UI filtra navegación y pantallas según `capabilities`.
+| Paso | Icono | Qué ocurre |
+|:----:|:-----:|------------|
+| 1 | 👤 | Login Google `@cun.edu.co` en el SPA |
+| 2 | 🎫 | Frontend envía `idToken` → `POST /api/auth/google` |
+| 3 | ✅ | API verifica, busca `person`, allowlist/grants, firma JWT |
+| 4 | 💾 | SPA guarda `orbit_jwt` + `orbit_user` en `localStorage` |
+| 5 | 🔁 | Cada `/api/*` revalida auth + capabilities |
+| 6 | 🧭 | UI filtra menú y pantallas según capabilities |
 
-**Notificaciones:** al crear una vacante, el API inserta filas en `orbit.notification` y, si hay SMTP configurado, envía correo. El frontend hace polling del unread count (campana).
+🔔 **Notificaciones:** al crear vacante → `orbit.notification` + email SMTP (si hay credenciales). La campana hace polling del unread.
 
 ---
 
-## 4. Frontend (`orbit/`)
+## 4. ⚛️ Frontend (`orbit/`)
 
 ### 4.1 Stack y build
 
-| Capa | Tecnología |
-|------|------------|
-| UI | React 19 + TypeScript |
-| Build | Vite 6 (`@vitejs/plugin-react`) |
-| Estilos | Tailwind CSS 4 (`@tailwindcss/vite`) |
-| Auth UI | `@react-oauth/google` |
-| Iconos | `@heroicons/react` |
-| Motion | `motion` |
-| DnD | `@dnd-kit/*` |
-| Markdown | `react-markdown` |
-| Fechas | `date-fns` |
+| Icono | Capa | Tecnología |
+|:-----:|------|------------|
+| ⚛️ | UI | React 19 + TypeScript |
+| ⚡ | Build | Vite 6 |
+| 🎨 | Estilos | Tailwind CSS 4 |
+| 🔐 | Auth UI | `@react-oauth/google` |
+| 🦸 | Iconos | `@heroicons/react` |
+| ✨ | Motion | `motion` |
+| 🧲 | DnD | `@dnd-kit/*` |
 
-- Alias `@` → raíz del proyecto frontend.
-- **No hay `server.proxy`**: el navegador llama directo a `VITE_API_URL`.
-- Dev: `npm run dev` → puerto **3000**, host `0.0.0.0`.
-- Lint: `tsc --noEmit`.
+- Alias `@` → raíz del frontend
+- ❌ Sin `server.proxy` → llamadas directas a `VITE_API_URL`
+- 🚀 Dev: puerto **3000** · host `0.0.0.0`
 
 ### 4.2 Bootstrap y “routing”
 
-**No usa React Router.** La navegación es `useState<View>` en `App.tsx`.
+> ⚠️ **No usa React Router.** Navegación = `useState<View>` en `App.tsx`.
 
-1. `main.tsx` monta `GoogleOAuthProvider` → `App`.
-2. Vista inicial: `login`.
-3. Si hay JWT válido en `localStorage`, restaura sesión y capabilities.
-4. Tras login: `TutorialProvider` + shell (Sidebar + TopBar + contenido animado + GuidedTour).
-5. Si la vista actual no está permitida por capabilities → redirect a `getDefaultView(capabilities)`.
-6. Detalle de vacante: estado `selectedVacancy` + vista `vacancy-detail`.
+1. `main.tsx` → `GoogleOAuthProvider` → `App`
+2. Vista inicial: `login`
+3. JWT válido → restaura sesión
+4. Login OK → shell + tutorial
+5. Vista no permitida → `getDefaultView(capabilities)`
+6. Vacante detalle → `selectedVacancy` + `vacancy-detail`
 
 ### 4.3 Vistas de negocio
 
-#### En el menú lateral (`NAV_ITEMS`)
+#### Menú lateral (`NAV_ITEMS`)
 
-| `View` id | Componente | Descripción |
-|-----------|------------|-------------|
-| `home` | `HomeView` | Command Center: resumen vía `GET /dashboard/summary`, atajos |
-| `planta-activa` | `PlantaActivaView` | Listado/alta/edición de personas; filtros; grants por área |
-| `academic-load` | `AcademicLoadView` | Carga académica (lectura), filtros y resumen |
-| `substantive-hours` | `SubstantiveHoursView` | Balance de carga: categorías, asignaciones, prep. clase |
-| `vacancies` | `VacanciesView` | Listado, filtros, chart de estados, modal crear/editar, export Excel |
-| `vacancy-informative-panel` | `VacancyInformativePanelView` | Audit log (puede estar deshabilitado por flag de feature) |
-| `news` | `NewsView` | Novedades / workforce events |
+| | View id | Componente | Descripción |
+|:-:|---------|------------|-------------|
+| ⚡ | `home` | `HomeView` | Command Center + `GET /dashboard/summary` |
+| 🏢 | `planta-activa` | `PlantaActivaView` | Personas; filtros; grants por área |
+| 🎓 | `academic-load` | `AcademicLoadView` | Carga académica (lectura) |
+| ⏱️ | `substantive-hours` | `SubstantiveHoursView` | Balance de carga |
+| 💼 | `vacancies` | `VacanciesView` | Vacantes + chart + Excel |
+| 🛡️ | `vacancy-informative-panel` | `VacancyInformativePanelView` | Audit (feature flag) |
+| 💬 | `news` | `NewsView` | Novedades / workforce |
 
-#### Otras vistas (switch de `App`, no siempre en nav)
+#### Otras vistas
 
-| `View` id | Componente | Notas |
-|-----------|------------|-------|
-| `login` | `LoginView` | Google + email local (dev) |
-| `vacancy-detail` | `VacancyDetailView` | Detalle, historial, notas, admin |
-| `reinstatements` | `ReinstatementsView` | Reintegros (capability de vacantes) |
-| `audit` | `AuditView` | UI mock / legacy |
-| `programs` | `ProgramsView` | Demo de programas |
-
-Soportes: `VacancyManageModal`, `VacancyStatusChart`.
+| | View id | Notas |
+|:-:|---------|-------|
+| 🔑 | `login` | Google + email local (dev) |
+| 📄 | `vacancy-detail` | Detalle, historial, admin |
+| 🔓 | `reinstatements` | Reintegros |
+| 📜 | `audit` | Mock / legacy |
+| 📚 | `programs` | Demo |
 
 ### 4.4 Layout
 
-| Componente | Rol |
-|------------|-----|
-| `Sidebar` | Navegación filtrada por capabilities; expand/collapse; drawer móvil |
-| `TopBar` | Menú móvil, atajo búsqueda (⌘/Ctrl+K), tutorial, campana, logout |
-| `Header` | Título / subtítulo / acciones de página |
-| `CommandPalette` | Búsqueda de vistas + personas + vacantes (según caps) |
-| `NotificationBell` | Poll unread ~60s; marcar leídas; deep-link a vacante |
+| Icono | Componente | Rol |
+|:-----:|------------|-----|
+| 📌 | `Sidebar` | Nav filtrada; expand/collapse; drawer móvil |
+| 🔝 | `TopBar` | ⌘/Ctrl+K, tutorial, campana, logout |
+| 🏷️ | `Header` | Título / acciones de página |
+| 🔍 | `CommandPalette` | Búsqueda vistas + personas + vacantes |
+| 🔔 | `NotificationBell` | Poll ~60s; deep-link a vacante |
 
-### 4.5 Capas `lib/` y permisos UI
+### 4.5 `lib/` y permisos UI
 
 | Archivo | Rol |
 |---------|-----|
-| `lib/api.ts` | Cliente HTTP, base URL, sesión JWT, tipado de respuestas, todos los endpoints usados por la UI |
-| `lib/permissions.ts` | Constantes de capability, `canAccessView`, `filterNavItems`, `getDefaultView`, helpers admin vacantes |
-| `lib/plantaActivaAccess.ts` | Fallback de grants por correo (áreas view/edit) si el JWT no trae detalle |
-| `lib/vacancyFormHelpers.ts` | Labels de estado, reglas de bloqueo terminal, URL Zoho REQ |
-| `lib/vacancyActiveDays.ts` | Días activos (timezone America/Bogota) |
-| `lib/workforceEventLabels.ts` | Labels/badges de estados de novedades |
-| `lib/tutorialStorage.ts` | Persistencia del tour por email |
-| `lib/plantaPendingFilters.ts` | Handoff de filtros Home → Planta (sessionStorage) |
-| `config/brand.tsx` | Nombre, logos, colores, mapa de iconos |
+| 🌐 `api.ts` | Cliente HTTP + sesión JWT + endpoints |
+| 🛂 `permissions.ts` | Capabilities, gating de vistas, landing |
+| 🏢 `plantaActivaAccess.ts` | Grants por correo (áreas) |
+| 💼 `vacancyFormHelpers.ts` | Labels, bloqueos, Zoho REQ |
+| 📅 `vacancyActiveDays.ts` | Días activos (Bogotá) |
+| 💬 `workforceEventLabels.ts` | Labels/badges de novedades |
+| 🎨 `config/brand.tsx` | Logos, colores, mapa de iconos |
 
-**Sesión en `localStorage`:** `orbit_jwt`, `orbit_user`. Ante `401` del API se limpia la sesión.
+💾 Sesión: `orbit_jwt`, `orbit_user`. Ante **401** → limpia sesión.
 
 ### 4.6 Login en UI
 
-- **Google:** `GoogleLogin` → `POST /api/auth/google` con `{ idToken }` → guarda token/user.
-- **Email local:** visible si `import.meta.env.DEV` o `VITE_ALLOW_LOCAL_EMAIL_LOGIN=true` → `POST /api/auth/local-email` (el API debe permitirla).
+| Modo | Badge | Flujo |
+|------|:-----:|-------|
+| Google | ![prod](https://img.shields.io/badge/PROD-8B5CF6?style=flat-square) | `GoogleLogin` → `POST /auth/google` |
+| Email local | ![dev](https://img.shields.io/badge/DEV-06B6D4?style=flat-square) | Visible si `DEV` o `VITE_ALLOW_LOCAL_EMAIL_LOGIN` |
 
-### 4.7 Tipos principales (`types.ts`)
+### 4.7 Tipos principales
 
-- `View` — ids de pantallas.
-- `PlantaPerson` — fila de planta (documento, emails, área/escuela/programa/rol, `can_edit`).
-- `Vacancy` / `VacancyDetail` — vacante + requisición + historial + notas.
-- `VacancyOperationStatus` — `open` | `selected` | `requisition_sent` | `internal_movement` | `hired` | `closed` | `cancelled` | `cancelled_by_capital`.
-- `OrbitNotification` — campana in-app.
-- Tipos adicionales de API en `lib/api.ts` (dashboard, catalogs, substantive hours, workforce events).
+`View` · `PlantaPerson` · `Vacancy` / `VacancyDetail` · `VacancyOperationStatus` · `OrbitNotification` (+ tipos en `lib/api.ts`)
 
 ---
 
-## 5. Backend (`orbit-api/`)
+## 5. 🟢 Backend (`orbit-api/`)
 
-### 5.1 Entry point (`src/index.ts`)
+### 5.1 Entry point
 
 Orden de montaje:
 
-| # | Middleware / router | Notas |
-|---|---------------------|-------|
-| 1 | `cors()` | CORS por defecto del paquete (permisivo) |
-| 2 | `express.json()` | Body JSON |
-| 3 | `authRouter` → `/api` | Público (login) |
-| 4 | `orbitAuthMiddleware` | JWT obligatorio en el resto de `/api` |
-| 5 | `orbitCapabilityByPathMiddleware` | Capability por prefijo de path |
-| 6 | Routers de negocio → `/api` | Ver tabla abajo |
+| # | Capa | Notas |
+|:-:|------|-------|
+| 1️⃣ | `cors()` | Permisivo por defecto |
+| 2️⃣ | `express.json()` | Body JSON |
+| 3️⃣ | 🔓 `authRouter` | Público |
+| 4️⃣ | 🔐 `orbitAuthMiddleware` | JWT |
+| 5️⃣ | 🛂 `orbitCapabilityByPathMiddleware` | Capability por path |
+| 6️⃣ | 📦 Routers de negocio | Bajo §5.3 |
 
-- **`GET /health`** (fuera de `/api`, sin auth): comprueba pool DB → `200` o `503`.
-- Al arrancar ejecuta `runStartupSchemaPatches()` (idempotente; si falla, loguea y sigue escuchando).
-
-Puerto: `PORT` o **4000**.
+- 💚 **`GET /health`** — sin auth · DB OK `200` / fail `503`
+- 🩹 Boot: `runStartupSchemaPatches()` (idempotente)
+- 🔌 Puerto: `PORT` o **4000**
 
 ### 5.2 Middleware de auth
 
-**Extracción del token**
+**Token:** `Authorization: Bearer` · GET también `?access_token=`
 
-1. Header `Authorization: Bearer <jwt>`
-2. Solo en GET: query `?access_token=` (p. ej. EventSource)
+**Reborn:** capabilities se **recalculan por email** en cada request (allowlist / planta / vacancy-admin).
 
-**Verificación**
-
-- Firma con `JWT_SECRET`.
-- Payload con `orbitAccess` ∈ `lite` | `full` | `school`.
-- En el modelo **reborn** actual, las capabilities se **re-resuelven por email** en cada request (no se confía solo en claims del JWT):
-  - Allowlist Orbit → capabilities de super-admin
-  - Grant Planta Activa → `view:planta_activa` + extras + áreas view/edit
-  - Allowlist admin vacantes → capabilities de vacantes/admin
-
-**Capability por path**
-
-| Prefijo | Capability requerida |
-|---------|----------------------|
-| `/catalog` | Cualquier usuario autenticado |
-| `/personal` | `view:news` o `view:home` |
+| Prefijo | Capability |
+|---------|------------|
+| `/catalog` | ✅ autenticado |
 | `/dashboard` | `view:home` |
 | `/planta-activa` | `view:planta_activa` |
 | `/vacancies`, `/reinstatements` | `view:vacancies` |
 | `/academic-load` | `view:academic_load` |
 | `/substantive-hours` | `view:substantive_hours` |
 | `/workforce-events` | `view:news` |
-| `/notifications` | Solo autenticación (sin check de path) |
+| `/personal` | `view:news` u `view:home` |
+| `/notifications` | solo auth |
 
-Sin capability → `403`.
+Sin capability → ![403](https://img.shields.io/badge/403-Forbidden-EF4444?style=flat-square)
 
 ### 5.3 Endpoints por dominio
 
-Todos bajo **`/api`** salvo `/health`.
+Leyenda HTTP:
 
-#### Auth (`routes/auth.ts`) — sin JWT
+![GET](https://img.shields.io/badge/GET-06B6D4?style=flat-square)
+![POST](https://img.shields.io/badge/POST-10B981?style=flat-square)
+![PATCH](https://img.shields.io/badge/PATCH-F59E0B?style=flat-square)
+![PUT](https://img.shields.io/badge/PUT-8B5CF6?style=flat-square)
+![DELETE](https://img.shields.io/badge/DELETE-EF4444?style=flat-square)
 
-| Método | Path | Propósito |
-|--------|------|-----------|
-| POST | `/auth/google` | Login con `{ idToken }` → `{ token, user }` |
-| POST | `/auth/google/gis-callback` | Callback GIS / redirect al frontend |
-| POST | `/auth/local-email` | Login por email (solo si `NODE_ENV=development` o `ALLOW_LOCAL_EMAIL_AUTH`) |
+Prefijo **`/api`** (salvo `/health`).
 
-Reglas: dominio `@cun.edu.co` (Google); persona activa en catálogo; autorización Orbit (allowlist / planta / vacancy-admin). Registra login en `logs.login_apps`.
-
-#### Dashboard
+#### 🔑 Auth — sin JWT
 
 | Método | Path | Propósito |
 |--------|------|-----------|
-| GET | `/dashboard/summary` | Métricas del Command Center |
+| ![POST](https://img.shields.io/badge/POST-10B981?style=flat-square) | `/auth/google` | `{ idToken }` → `{ token, user }` |
+| ![POST](https://img.shields.io/badge/POST-10B981?style=flat-square) | `/auth/google/gis-callback` | Redirect GIS |
+| ![POST](https://img.shields.io/badge/POST-10B981?style=flat-square) | `/auth/local-email` | Solo DEV / flag |
 
-#### Catálogo
-
-| Método | Path | Propósito |
-|--------|------|-----------|
-| GET | `/catalog/areas` | Áreas activas |
-| GET | `/catalog/schools` | Escuelas (`area_id` opcional) |
-| GET | `/catalog/programs` | Programas |
-| GET | `/catalog/academic-lines` | Líneas académicas distintas |
-| GET | `/catalog/roles` | Roles activos |
-
-#### Personal / Planta Activa / Novedades
+#### ⚡ Dashboard · 📂 Catálogo
 
 | Método | Path | Propósito |
 |--------|------|-----------|
-| GET | `/personal` | Picker paginado de personas (Novedades) |
-| GET | `/planta-activa` | Listado filtrado/paginado |
-| GET | `/planta-activa/:id` | Detalle |
-| POST | `/planta-activa` | Alta (puede crear vacante + notify) |
-| PATCH | `/planta-activa/:id` | Edición; inactivar puede abrir vacante (omite docente/LITE/LIDER) |
-| GET/POST/PATCH | `/workforce-events/...` | Tipos, eventos, status-log |
+| ![GET](https://img.shields.io/badge/GET-06B6D4?style=flat-square) | `/dashboard/summary` | Métricas home |
+| ![GET](https://img.shields.io/badge/GET-06B6D4?style=flat-square) | `/catalog/areas` · `schools` · `programs` · `roles` · `academic-lines` | Catálogos CORE |
 
-Estados de evento: `PENDING` | `APPROVED` | `REJECTED` | `TAKEN` | `NOT_TAKEN` | `CANCELLED`.
-
-#### Notificaciones
+#### 🏢 Planta · 💬 Novedades · 🔔 Notificaciones
 
 | Método | Path | Propósito |
 |--------|------|-----------|
-| GET | `/notifications` | Lista (unreadOnly, limit) |
-| GET | `/notifications/unread-count` | Contador |
-| PATCH | `/notifications/:id/read` | Marcar una |
-| PATCH | `/notifications/read-all` | Marcar todas |
+| ![GET](https://img.shields.io/badge/GET-06B6D4?style=flat-square) ![POST](https://img.shields.io/badge/POST-10B981?style=flat-square) ![PATCH](https://img.shields.io/badge/PATCH-F59E0B?style=flat-square) | `/planta-activa` | CRUD personas (+ vacante al inactivar) |
+| ![GET](https://img.shields.io/badge/GET-06B6D4?style=flat-square) ![POST](https://img.shields.io/badge/POST-10B981?style=flat-square) ![PATCH](https://img.shields.io/badge/PATCH-F59E0B?style=flat-square) | `/workforce-events/...` | Eventos + status-log |
+| ![GET](https://img.shields.io/badge/GET-06B6D4?style=flat-square) ![PATCH](https://img.shields.io/badge/PATCH-F59E0B?style=flat-square) | `/notifications...` | Campana in-app |
 
-#### Vacantes
-
-| Método | Path | Propósito |
-|--------|------|-----------|
-| GET | `/vacancies` | Listado |
-| GET | `/vacancies/export.xlsx` | Export Excel |
-| POST | `/vacancies` | Crear + notify |
-| GET | `/vacancies/audit-log` | Panel informativo |
-| GET | `/vacancies/:id` | Detalle (UUID o `public_id`) |
-| PATCH | `/vacancies/:id` | Actualizar (bloqueado si estado terminal) |
-| PATCH | `/vacancies/:id/close` | Cierre (`hired` / `closed` / `cancelled` / `cancelled_by_capital`) |
-| POST | `/vacancies/:id/operation-notes` | Notas operativas |
-| POST/PATCH | `/vacancies/:id/requisition` | Requisición |
-| DELETE | `/vacancies/:id` | Eliminar (`vacancies:admin`) |
-| PATCH | `/vacancies/:id/admin-status` | Cambio forzado de estado (`vacancies:admin`) |
-
-#### Reintegros / Carga / Horas sustantivas
+#### 💼 Vacantes
 
 | Método | Path | Propósito |
 |--------|------|-----------|
-| GET/PUT | `/reinstatements`, `/reinstatements/:id` | Listado y actualización |
-| GET | `/academic-load`, `/summary`, `/filter-options`, `/teacher/:document` | Lectura de carga |
-| GET/POST/PUT | `/substantive-hours/...` | Categorías, docentes, asignaciones, class-preparation |
+| ![GET](https://img.shields.io/badge/GET-06B6D4?style=flat-square) | `/vacancies` · `/:id` · `/export.xlsx` · `/audit-log` | Listado / detalle / Excel / audit |
+| ![POST](https://img.shields.io/badge/POST-10B981?style=flat-square) | `/vacancies` · notes · requisition | Crear + notify |
+| ![PATCH](https://img.shields.io/badge/PATCH-F59E0B?style=flat-square) | `/:id` · `/close` · `/admin-status` | Update / cierre / admin |
+| ![DELETE](https://img.shields.io/badge/DELETE-EF4444?style=flat-square) | `/:id` | Eliminar (`vacancies:admin`) |
 
-### 5.4 Libs clave (`src/lib/`)
+También: 🔓 reintegros · 🎓 carga académica · ⏱️ horas sustantivas.
 
-| Módulo | Responsabilidad |
-|--------|-----------------|
-| `orbitCapabilities.ts` | Códigos de capability, allowlists (`ORBIT_ACCESS_ALLOWLIST`, `ORBIT_VACANCY_ADMIN_ALLOWLIST`), mapas de roles (modelo histórico), `SUPER_ADMIN_CAPABILITIES` |
-| `plantaActivaAccess.ts` | Grants hardcodeados email → áreas view/edit + capabilities extra |
-| `orbitRoles.ts` | Detección LITE/DOCENTE; skip de vacante al inactivar; helpers SQL |
-| `newsScope.ts` | Alcance de novedades: `full` / `school` / `area` / `areas` |
-| `schoolScope.ts` | Filtro por escuela cuando `orbitAccess === "school"` |
-| `coreSchema.ts` | Resuelve si el catálogo vive en `core.*` o `public.*` |
+### 5.4–5.5 Libs y services
 
-### 5.5 Services (`src/services/`)
-
-| Servicio | Uso |
-|----------|-----|
-| `vacancyNotifyService.ts` | In-app + email al crear vacante |
-| `vacancyEmailTemplate.ts` | Plantilla de correo |
-| `vacancyExcelExport.ts` | Workbook ExcelJS para export |
-| `catalogService.ts` | Find-or-create de catálogo (scripts/bulk; no router HTTP) |
-| `academicWorkloadBulkService.ts` | Upserts de carga (scripts offline) |
-| `substantiveCategoryBulkService.ts` | Upsert categorías |
+| Tipo | Módulos |
+|------|---------|
+| 🧠 Libs | `orbitCapabilities` · `plantaActivaAccess` · `orbitRoles` · `newsScope` · `schoolScope` · `coreSchema` |
+| 🛎️ Services | `vacancyNotify` · email template · Excel export · bulk catalog/workload (scripts) |
 
 ### 5.6 Import / Excel
 
-- **HTTP export:** `GET /api/vacancies/export.xlsx`.
-- **No hay endpoint HTTP de upload** de Excel en los routers actuales (aunque existan dependencias `multer`/`xlsx`).
-- Cargas masivas: scripts en `orbit-api/scripts/` y seeds que leen Excel local.
-- Auditoría histórica de imports docentes: tabla `logs.logs_orbit_docentes`.
+- ✅ Export HTTP: `/vacancies/export.xlsx`
+- ❌ Sin upload HTTP en routers actuales
+- 📜 Scripts offline en `scripts/` + seeds Excel
 
-### 5.7 Errores HTTP habituales
+### 5.7 Errores HTTP
 
-| Código | Uso típico |
-|--------|------------|
-| 400 | Validación / id inválido |
-| 401 | JWT ausente/inválido o email no autorizado |
-| 403 | Sin capability / dominio / alcance |
-| 404 | Recurso inexistente o local-email deshabilitado |
-| 409 | Conflicto (documento duplicado, vacante bloqueada) |
-| 500 | Error no controlado |
-| 503 | Health / catálogo CORE no disponible |
-
-No hay error middleware global: cada handler hace `try/catch`.
+| Código | Color | Uso |
+|:------:|:-----:|-----|
+| 400 | ![400](https://img.shields.io/badge/400-F59E0B?style=flat-square) | Validación |
+| 401 | ![401](https://img.shields.io/badge/401-EF4444?style=flat-square) | JWT / no autorizado |
+| 403 | ![403](https://img.shields.io/badge/403-DC2626?style=flat-square) | Sin capability |
+| 404 | ![404](https://img.shields.io/badge/404-64748B?style=flat-square) | No encontrado |
+| 409 | ![409](https://img.shields.io/badge/409-D946EF?style=flat-square) | Conflicto |
+| 500 | ![500](https://img.shields.io/badge/500-991B1B?style=flat-square) | Error interno |
+| 503 | ![503](https://img.shields.io/badge/503-0EA5E9?style=flat-square) | Health / CORE down |
 
 ---
 
-## 6. Base de datos
+## 6. 🗄️ Base de datos
 
-PostgreSQL. En Cloud Run suele usarse **Cloud SQL** con socket Unix (`DB_HOST=/cloudsql/PROJECT:REGION:INSTANCE`) o host TCP + SSL.
+PostgreSQL · Cloud SQL (socket `/cloudsql/...` o TCP + SSL).
 
-### 6.1 Conexión (`src/db/connection.ts`)
+### 6.1 Conexión
 
 | Variable | Rol |
 |----------|-----|
-| `DB_HOST` | Host o socket Cloud SQL |
-| `DB_PORT` | Default `5432` |
-| `DB_USER` / `DB_USERNAME` | Usuario |
-| `DB_PASSWORD` | Password (Secret Manager en prod) |
-| `DB_NAME` | Nombre de la base (ej. `core`) |
-| `DB_SCHEMA` | Primer schema del `search_path` (ej. `core` o `public`) |
-| `DB_SSL` | Forzar TLS |
-| `DB_CONNECTION_TIMEOUT_MS` | Default 15000 |
-| `DB_POOL_MAX` | Default 10 |
+| `DB_HOST` / `DB_PORT` | Host o socket · default `5432` |
+| `DB_USER` · `DB_PASSWORD` · `DB_NAME` | Credenciales |
+| `DB_SCHEMA` | Primer schema del `search_path` |
+| `DB_SSL` · timeouts · `DB_POOL_MAX` | TLS y pool (`pg.Pool`) |
 
-- Pool `pg.Pool`.
-- `search_path=${DB_SCHEMA},public`.
-- SSL: heurística para remoto/Cloud SQL; socket Unix solo si `DB_SSL=true`.
-- El código detecta si el catálogo está en schema `core` o `public` (`coreSchema.ts`).
+### 6.2 Esquemas (leyenda de color)
 
-### 6.2 Esquemas lógicos
+| Color | Schema | Dominio |
+|:-----:|--------|---------|
+| ![core](https://img.shields.io/badge/core-8B5CF6?style=for-the-badge) | `core` | Catálogo + personas |
+| ![aca](https://img.shields.io/badge/academic__workload-6366F1?style=for-the-badge) | `academic_workload` | Materias, grupos, carga |
+| ![sub](https://img.shields.io/badge/substantive__hours-06B6D4?style=for-the-badge) | `substantive_hours` | Horas / categorías |
+| ![vac](https://img.shields.io/badge/vacancies-F59E0B?style=for-the-badge) | `vacancies` | Vacantes + REQ + audit |
+| ![wf](https://img.shields.io/badge/workforce__events-10B981?style=for-the-badge) | `workforce_events` | Novedades |
+| ![orb](https://img.shields.io/badge/orbit-D946EF?style=for-the-badge) | `orbit` | Notificaciones |
+| ![log](https://img.shields.io/badge/logs-64748B?style=for-the-badge) | `logs` | Imports + login apps |
+| ![pub](https://img.shields.io/badge/public%20legacy-94A3B8?style=for-the-badge) | `public` | Tablas antiguas |
 
-| Schema | Origen | Dominio |
-|--------|--------|---------|
-| `core` | Dump + `migrate:core` | Catálogo institucional y personas |
-| `academic_workload` | Dump + migraciones puntuales | Materias, grupos, carga académica |
-| `substantive_hours` | Dump + migraciones rename/person | Categorías y asignaciones de horas |
-| `vacancies` | Migraciones `migrate:vacancies*` | Vacantes, REQ, notas, audit |
-| `workforce_events` | `migrate:workforce-events` | Novedades |
-| `orbit` | `migrate:notifications` | Notificaciones in-app |
-| `logs` | `migrate:audit`, `migrate:login-apps` | Auditoría imports + login apps |
-| `public` | Legacy `schema.sql` / v2 / v3 | Tablas antiguas (teachers, etc.) |
+> 📌 Dump SQL ≈ `core` + `academic_workload` + `logs` + `substantive_hours`.  
+> `vacancies` · `workforce_events` · `orbit` llegan por migraciones.
 
-> El dump `generated_schema_dump.sql` / `gcp_schema_migration.sql` cubre sobre todo `academic_workload`, `core`, `logs`, `substantive_hours`. Los schemas `vacancies`, `workforce_events` y `orbit` se aplican con migraciones posteriores.
+### 6.3–6.8 Tablas por dominio
 
-### 6.3 Catálogo CORE (resumen)
+**🟣 CORE** — `area` · `school` · `program` · `role` · `person` ⭐ · `user` · `city` · `contract_type` · `hierarchy` · `person_program_assignments`
 
-| Tabla | Rol |
-|-------|-----|
-| `area` | Áreas organizacionales |
-| `school` | Escuelas (FK área) |
-| `program` | Programas (FK escuela) |
-| `role` / `role_permission` | Roles y permisos de catálogo |
-| `person` | Maestro de personas (documento/email únicos; FKs org; `is_active`) |
-| `user` | Cuenta vinculada a `person` (auth provider) |
-| `city`, `contract_type`, `hierarchy` | Catálogos auxiliares |
-| `campus`, `region` | Presentes en dump (no siempre creados por `migrate_core`) |
-| `person_program_assignments` | Programas[] + línea académica por persona (`migrate_core`) |
+**🔵 Carga** — `subject` · `class_group` · `class_preparation` · `academic_load`
 
-`person` es el hub: login, planta, vacantes (`created_by`), carga, horas sustantivas, novedades y notificaciones apuntan a ella.
+**🩵 Horas** — `category` · `assignment` · `assignment_task`
 
-### 6.4 Carga académica (`academic_workload`)
+**🟠 Vacantes** — `vacancy` · `requisition` · `vacancy_operation_note` · `vacancy_status_history` · `vacancy_change_log`
 
-| Tabla | Rol |
-|-------|-----|
-| `subject` | Materias (`subject_code` PK) |
-| `class_group` | Grupo por materia (`subject_code` + `group_code`) |
-| `class_preparation` | Horas de preparación por persona |
-| `academic_load` | Hecho: persona × periodo × materia × grupo (+ geo, programa, horas sustantivas, `aca_group_id`) |
+**🟢 Novedades** — `event_type` · `event` · `event_status_log`
 
-API de lectura únicamente. Detalle BI: [`orbit-api/docs/carga-academica.md`](orbit-api/docs/carga-academica.md).
+**🩷 / ⬜** — `orbit.notification` · `logs.logs_orbit_docentes` · `logs.login_apps`
 
-### 6.5 Horas sustantivas (`substantive_hours`)
+### 🟠 Pipeline de estados — Vacantes
 
-| Tabla | Rol |
-|-------|-----|
-| `category` | Catálogo de categorías |
-| `assignment` | Persona × categoría × horas |
-| `assignment_task` | Tareas de una asignación |
-
-Histórico de renombres: `project` → `category`, etc. (`migrate:substantive-hours-rename`).
-
-### 6.6 Vacantes (`vacancies`)
-
-| Tabla | Rol |
-|-------|-----|
-| `vacancy` | Vacante (UUID + `public_id`, org FKs, cargo, cantidades, `operation_status`, manager) |
-| `requisition` | 1:1 con vacante; cumplimiento (terna, PDA, …); `capital_notes` |
-| `vacancy_operation_note` | Notas operativas append-only |
-| `vacancy_status_history` | Historial de cambios de estado (trigger) |
-| `vacancy_change_log` | Audit INSERT/UPDATE/DELETE (retención aunque se borre la vacante) |
-
-**Estados `operation_status`:**  
-`open` → `selected` → `requisition_sent` → `internal_movement` → `hired` | `closed` | `cancelled` | `cancelled_by_capital`
-
-Constraints: `quantity > 0`, `0 ≤ hired_quantity ≤ quantity`.
-
-### 6.7 Novedades (`workforce_events`)
-
-| Tabla | Rol |
-|-------|-----|
-| `event_type` | Catálogo (seed: LICENCIA, PERMISO, SANCION, INCAPACIDAD, OTRO) |
-| `event` | Evento ligado a persona + tipo + fechas + status |
-| `event_status_log` | Bitácora de estados |
-
-### 6.8 Notificaciones y logs
-
-| Tabla | Rol |
-|-------|-----|
-| `orbit.notification` | Campana in-app (`type`, `payload` JSONB, `read_at`) |
-| `logs.logs_orbit_docentes` | Resumen de imports docentes (JSONB) |
-| `logs.login_apps` | Logins centrales: `correo`, `fecha`, `hora`, `app_login` ∈ actas\|orbit\|nova\|acervo |
-
-### 6.9 Legacy `public`
-
-Tablas antiguas (`coordinators`, `teachers`, `vacancies`, `reinstatements`, `news`, `lites`, `academic_load` plana) vía `schema.sql` / `schema_v2.sql`. Los seeds Excel apuntan a este modelo legacy; el producto actual usa los schemas de sección 6.3–6.8.
-
-### 6.10 Diagrama conceptual (simplificado)
+| Estado | Badge |
+|--------|-------|
+| `open` | ![open](https://img.shields.io/badge/open-22C55E?style=flat-square) |
+| `selected` | ![selected](https://img.shields.io/badge/selected-06B6D4?style=flat-square) |
+| `requisition_sent` | ![req](https://img.shields.io/badge/requisition__sent-8B5CF6?style=flat-square) |
+| `internal_movement` | ![mov](https://img.shields.io/badge/internal__movement-F59E0B?style=flat-square) |
+| `hired` | ![hired](https://img.shields.io/badge/hired-10B981?style=flat-square) |
+| `closed` | ![closed](https://img.shields.io/badge/closed-64748B?style=flat-square) |
+| `cancelled` | ![can](https://img.shields.io/badge/cancelled-EF4444?style=flat-square) |
+| `cancelled_by_capital` | ![cbc](https://img.shields.io/badge/cancelled__by__capital-DC2626?style=flat-square) |
 
 ```text
-core.area ──< core.school ──< core.program
-                │
-                └──── core.person ──< core.user
-                         │
-     ┌───────────────────┼───────────────────────────────┐
-     │                   │                               │
-     ▼                   ▼                               ▼
-academic_workload   vacancies.vacancy            workforce_events.event
-.academic_load           │                               │
-     │                   ├── requisition                 └── event_status_log
-     │                   ├── operation_note
-     ▼                   └── status_history / change_log
-substantive_hours.assignment
-orbit.notification (recipient_person_id → person)
-logs.login_apps / logs_orbit_docentes
+open → selected → requisition_sent → internal_movement
+                                          ↓
+                         hired | closed | cancelled | cancelled_by_capital
+```
+
+### 🟢 Estados — Novedades (workforce)
+
+| Badge | Estado |
+|:-----:|--------|
+| ![PENDING](https://img.shields.io/badge/PENDING-F59E0B?style=flat-square) | Pendiente |
+| ![APPROVED](https://img.shields.io/badge/APPROVED-10B981?style=flat-square) | Aprobado |
+| ![REJECTED](https://img.shields.io/badge/REJECTED-EF4444?style=flat-square) | Rechazado |
+| ![TAKEN](https://img.shields.io/badge/TAKEN-06B6D4?style=flat-square) | Tomado |
+| ![NOT_TAKEN](https://img.shields.io/badge/NOT__TAKEN-64748B?style=flat-square) | No tomado (default) |
+| ![CANCELLED](https://img.shields.io/badge/CANCELLED-DC2626?style=flat-square) | Cancelado |
+
+Tipos seed: `LICENCIA` · `PERMISO` · `SANCION` · `INCAPACIDAD` · `OTRO`
+
+### 6.10 Diagrama conceptual
+
+```mermaid
+erDiagram
+  AREA ||--o{ SCHOOL : tiene
+  SCHOOL ||--o{ PROGRAM : tiene
+  SCHOOL ||--o{ PERSON : asigna
+  PERSON ||--o| USER : login
+  PERSON ||--o{ ACADEMIC_LOAD : carga
+  PERSON ||--o{ VACANCY : crea
+  PERSON ||--o{ EVENT : novedad
+  PERSON ||--o{ NOTIFICATION : recibe
+  VACANCY ||--o| REQUISITION : req
+  VACANCY ||--o{ STATUS_HISTORY : historial
+  EVENT ||--o{ STATUS_LOG : bitacora
 ```
 
 ---
 
-## 7. Autenticación y autorización
+## 7. 🔐 Autenticación y autorización
 
 ### 7.1 Capabilities
 
-| Código | Uso |
-|--------|-----|
-| `view:home` | Command Center |
-| `view:planta_activa` | Planta Activa |
-| `view:academic_load` | Carga académica |
-| `view:substantive_hours` | Balance carga |
-| `view:vacancies` | Vacantes / reintegros |
-| `vacancies:informative_panel` | Panel informativo |
-| `vacancies:admin` | Eliminar / forzar estado |
-| `view:news` | Novedades + personal picker |
+| Capability | Icono | Módulo |
+|------------|:-----:|--------|
+| `view:home` | ⚡ | Command Center |
+| `view:planta_activa` | 🏢 | Planta Activa |
+| `view:academic_load` | 🎓 | Carga académica |
+| `view:substantive_hours` | ⏱️ | Balance carga |
+| `view:vacancies` | 💼 | Vacantes / reintegros |
+| `vacancies:informative_panel` | 🛡️ | Panel informativo |
+| `vacancies:admin` | 👑 | Eliminar / forzar estado |
+| `view:news` | 💬 | Novedades |
 
-### 7.2 Modelo actual (reborn)
+### 7.2 Modelo reborn
 
-El acceso **no** se decide solo por `role_id`. Puede entrar quien esté en:
+Puede entrar quien esté en:
 
-1. `ORBIT_ACCESS_ALLOWLIST` (admin total), o
-2. Grant de Planta Activa (`plantaActivaAccess.ts`), o
-3. `ORBIT_VACANCY_ADMIN_ALLOWLIST`.
+1. 👑 `ORBIT_ACCESS_ALLOWLIST` — admin total  
+2. 🏢 Grant Planta Activa (`plantaActivaAccess.ts`)  
+3. 💼 `ORBIT_VACANCY_ADMIN_ALLOWLIST`
 
-Detalle y modelo histórico por roles: [`orbit-api/docs/auth-google.md`](orbit-api/docs/auth-google.md).
+📘 Detalle: [`orbit-api/docs/auth-google.md`](orbit-api/docs/auth-google.md)
 
 ### 7.3 JWT
 
-- Firmado con `JWT_SECRET`, expiración `JWT_EXPIRES_IN` (default `7d`).
-- Contiene usuario, rol, capabilities y (según caso) datos de planta/áreas.
-- En runtime el middleware **vuelve a calcular** capabilities por email.
+🎫 Firmado con `JWT_SECRET` · expira `JWT_EXPIRES_IN` (default `7d`) · middleware **recalcula** capabilities por email.
 
 ---
 
-## 8. Variables de entorno
+## 8. 🧩 Variables de entorno
 
-### Frontend (`orbit/.env.local`)
+### ⚛️ Frontend (`.env.local`)
 
-| Variable | Descripción |
-|----------|-------------|
-| `VITE_API_URL` | Base del API (ej. `http://localhost:4000/api`) |
-| `VITE_GOOGLE_CLIENT_ID` | OAuth web Client ID |
-| `VITE_ALLOW_LOCAL_EMAIL_LOGIN` | Mostrar login email fuera de `npm run dev` |
-| `VITE_ORBIT_ACCESS_ALLOWLIST` | Opcional: unión de caps admin en cliente |
-| `VITE_ORBIT_VACANCY_ADMIN_ALLOWLIST` | Opcional: caps admin vacantes en cliente |
-| `GEMINI_API_KEY` | Solo si se usan features Gemini (Vite define) |
+| Variable | Uso |
+|----------|-----|
+| `VITE_API_URL` | Base API |
+| `VITE_GOOGLE_CLIENT_ID` | OAuth |
+| `VITE_ALLOW_LOCAL_EMAIL_LOGIN` | Login email fuera de DEV |
+| `VITE_ORBIT_*_ALLOWLIST` | Caps extra en cliente (opcional) |
 
-Plantilla: [`orbit/.env.example`](orbit/.env.example).
+### 🟢 Backend (`.env`)
 
-### Backend (`orbit-api/.env`)
+| Grupo | Variables |
+|-------|-----------|
+| 🗄️ DB | `DB_HOST` · `DB_PORT` · `DB_USER` · `DB_PASSWORD` · `DB_NAME` · `DB_SCHEMA` · `DB_SSL` |
+| 🔐 Auth | `GOOGLE_CLIENT_ID` · `JWT_SECRET` · `ORBIT_*` · `ALLOW_LOCAL_EMAIL_AUTH` |
+| 🌐 App | `PORT` · `ORBIT_FRONTEND_URL` · `CORS_ORIGIN` |
+| ✉️ Mail | `SMTP_*` · `VACANCY_NOTIFY_EMAILS` |
 
-| Variable | Descripción |
-|----------|-------------|
-| `DB_*` | Conexión PostgreSQL (ver §6.1) |
-| `PORT` | HTTP local (4000) |
-| `GOOGLE_CLIENT_ID` | Mismo Client ID que el frontend |
-| `JWT_SECRET` / `JWT_EXPIRES_IN` | Sesión |
-| `ORBIT_FRONTEND_URL` | Redirect post-login / deep links |
-| `ORBIT_ACCESS_ALLOWLIST` | Correos admin total |
-| `ORBIT_VACANCY_ADMIN_ALLOWLIST` | Correos admin vacantes |
-| `ORBIT_LITE_ROLE_ID` | Id rol LITE en catálogo |
-| `ORBIT_FULL_ACCESS_ROLE_IDS` | Modelo histórico por roles |
-| `ALLOW_LOCAL_EMAIL_AUTH` | Habilita login email fuera de development |
-| `CORS_ORIGIN` | Origen SPA (relevante en deploys con CORS estricto) |
-| `SMTP_*` / `VACANCY_NOTIFY_EMAILS` | Correo de vacantes nuevas |
-
-Plantillas: [`orbit-api/.env.example`](orbit-api/.env.example), [`orbit-api/env.production.example`](orbit-api/env.production.example).
-
-**Nunca** commits de `.env` reales ni passwords.
+⚠️ **Nunca** commits de `.env` reales ni passwords.
 
 ---
 
-## 9. Arranque local
+## 9. 🚀 Arranque local
 
-### Backend
+### 🟢 Backend
 
 ```powershell
 cd orbit-api
 copy .env.example .env
-# Completar DB_*, GOOGLE_CLIENT_ID, JWT_SECRET, ORBIT_FRONTEND_URL=http://localhost:3000
+# Completar DB_*, GOOGLE_CLIENT_ID, JWT_SECRET, ORBIT_FRONTEND_URL
 npm install
-# Aplicar migraciones necesarias según el estado de tu DB (ver §10)
-npm run dev
+npm run dev   # → :4000
 ```
 
-Salud: `curl http://127.0.0.1:4000/health`
+💚 Salud: `curl http://127.0.0.1:4000/health`
 
-### Frontend
+### ⚛️ Frontend
 
 ```powershell
 cd orbit
 copy .env.example .env.local
 # VITE_API_URL=http://localhost:4000/api
-# VITE_GOOGLE_CLIENT_ID=<mismo Client ID>
 npm install
-npm run dev
+npm run dev   # → :3000
 ```
 
-Abrir http://localhost:3000
+🌐 Abrir http://localhost:3000
 
 ---
 
-## 10. Migraciones, seeds y scripts
+## 10. 🧬 Migraciones, seeds y scripts
 
-### Migraciones (`orbit-api`)
+| Script | Efecto |
+|--------|--------|
+| `migrate` / `v2` / `v3` | Legacy `public` |
+| `migrate:core` | 🟣 Catálogo CORE |
+| `migrate:vacancies*` | 🟠 Schema vacantes |
+| `migrate:workforce-events` | 🟢 Novedades |
+| `migrate:notifications` | 🩷 Campana |
+| `migrate:audit` / `login-apps` | ⬜ Logs |
+| `migrate:substantive-hours-*` | 🩵 Horas |
+| `migrate:academic-load-aca-group-id` | 🔵 `aca_group_id` |
 
-| npm script | Efecto |
-|------------|--------|
-| `migrate` | Legacy `schema.sql` |
-| `migrate:v2` / `migrate:v3` | Legacy lites + columnas teachers |
-| `migrate:core` | Catálogo CORE + `person_program_assignments` + `is_active` |
-| `migrate:audit` | `logs.logs_orbit_docentes` |
-| `migrate:login-apps` | `logs.login_apps` |
-| `migrate:vacancies` (+ updates / public-ids / audit-retention / manager-length) | Schema vacantes completo |
-| `migrate:workforce-events` | Novedades |
-| `migrate:notifications` | `orbit.notification` |
-| `migrate:person-is-active` | `person.is_active` |
-| `migrate:substantive-hours-person` / `rename` | Modelo horas sustantivas |
-| `migrate:academic-load-aca-group-id` | Columna `aca_group_id` |
-
-Al boot: `startupSchemaPatches.ts` (manager length, `hired_quantity`, `internal_movement`, secuencia `user.id`).
-
-### Seeds
-
-`seed` … `seed:v4` cargan Excel legacy hacia tablas `public` antiguas (ruta hardcodeada en scripts). No son el camino principal del schema actual de vacantes/carga.
-
-### Otros
-
-| Comando | Uso |
-|---------|-----|
-| `npm test` | Capabilities + validación carga académica |
-| `npm run test:smtp` | Prueba SMTP |
-| `npm run template:person` | Plantilla Excel personas |
-| Scripts en `scripts/` | Imports JSON/Excel offline |
+🩹 Boot: `startupSchemaPatches.ts`  
+🌱 Seeds `seed`…`seed:v4` → tablas **legacy**  
+🧪 `npm test` · `test:smtp` · `template:person`
 
 ---
 
-## 11. Despliegue
-
-Desde la **raíz del monorepo**:
+## 11. ☁️ Despliegue
 
 ```powershell
 .\gcp\deploy-orbit-backend.ps1
 .\gcp\deploy-orbit-frontend.ps1
-# o:
+# o ambos:
 .\gcp\deploy-orbit-all.ps1
 ```
 
-- Frontend y backend son servicios Cloud Run separados.
-- Secrets (`DB_PASSWORD`, SMTP, etc.) en Secret Manager / config del servicio.
-- Checklist de errores (PORT, CORS, Cloud SQL, 413 en Excel grandes): [`orbit-api/README_DEPLOY.md`](orbit-api/README_DEPLOY.md).
-
-Cloud Build: `gcp/cloudbuild-orbit-backend.yaml`, `gcp/cloudbuild-orbit-frontend.yaml`.
-
----
-
-## 12. Documentación relacionada
-
-| Documento | Contenido |
-|-----------|-----------|
-| [orbit-api/docs/auth-google.md](orbit-api/docs/auth-google.md) | Login Google, JWT, capabilities, allowlist, roles históricos |
-| [orbit-api/docs/carga-academica.md](orbit-api/docs/carga-academica.md) | Modelo y métricas de carga académica (BI) |
-| [docs/ANS-vacantes.md](docs/ANS-vacantes.md) | ANS del ciclo de vacantes |
-| [orbit-api/README_DEPLOY.md](orbit-api/README_DEPLOY.md) | Deploy Cloud Run en detalle |
-| [LOGIN_APPS_INTEGRATION.md](LOGIN_APPS_INTEGRATION.md) | Integración `logs.login_apps` en otras apps |
-| [orbit/README.md](orbit/README.md) | Resumen corto del frontend |
-| `orbit-api/src/lib/plantaActivaAccess.ts` | Grants Planta Activa por correo |
+| | |
+|:-:|:--|
+| ⚛️ | Frontend Cloud Run |
+| 🟢 | Backend Cloud Run |
+| 🔐 | Secrets en Secret Manager |
+| 📘 | Checklist: [`orbit-api/README_DEPLOY.md`](orbit-api/README_DEPLOY.md) |
 
 ---
 
-## 13. Stack
+## 12. 📚 Documentación relacionada
 
-| Capa | Tecnologías |
-|------|-------------|
-| Frontend | React 19, Vite 6, TypeScript, Tailwind 4, Motion, Google OAuth, dnd-kit |
-| Backend | Express, TypeScript, `pg`, JWT, Google Auth Library, ExcelJS, Nodemailer |
-| Base de datos | PostgreSQL (Cloud SQL en prod), schemas multi-dominio |
-| Infra | Cloud Run, Artifact Registry / deploy `--source`, Secret Manager, Cloud Build |
+| Icono | Documento | Tema |
+|:-----:|-----------|------|
+| 🔐 | [auth-google.md](orbit-api/docs/auth-google.md) | Login, JWT, capabilities |
+| 🎓 | [carga-academica.md](orbit-api/docs/carga-academica.md) | Modelo BI carga |
+| 📋 | [ANS-vacantes.md](docs/ANS-vacantes.md) | ANS vacantes |
+| ☁️ | [README_DEPLOY.md](orbit-api/README_DEPLOY.md) | Deploy Cloud Run |
+| 🔗 | [LOGIN_APPS_INTEGRATION.md](LOGIN_APPS_INTEGRATION.md) | Logins centrales |
+| ⚛️ | [orbit/README.md](orbit/README.md) | Frontend corto |
 
 ---
 
-*Documento vivo del monorepo Orbit. Si cambias contratos de API, schemas o el modelo de acceso, actualiza esta guía y los docs enlazados en la misma PR.*
+## 13. 🛠️ Stack
+
+| Capa | Badge | Tecnologías |
+|------|:-----:|-------------|
+| Frontend | ![fe](https://img.shields.io/badge/FE-8B5CF6?style=flat-square) | React 19 · Vite 6 · TS · Tailwind 4 · Motion · Google OAuth |
+| Backend | ![be](https://img.shields.io/badge/BE-D946EF?style=flat-square) | Express · TS · pg · JWT · ExcelJS · Nodemailer |
+| Database | ![db](https://img.shields.io/badge/DB-06B6D4?style=flat-square) | PostgreSQL · Cloud SQL · multi-schema |
+| Infra | ![cloud](https://img.shields.io/badge/Cloud-4285F4?style=flat-square) | Cloud Run · Cloud Build · Secret Manager |
+
+---
+
+<div align="center">
+
+**Orbit** · violet · fuchsia · cyan
+
+*Documento vivo del monorepo. Actualiza esta guía junto con cambios de API, schema o acceso.*
+
+</div>
