@@ -1,20 +1,49 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Orbit — Frontend
 
-# Run and deploy your AI Studio app
+SPA de Orbit (React + Vite). Forma parte del monorepo; la documentación completa está en el [README raíz](../README.md).
 
-This contains everything you need to run your app locally.
+## Desarrollo
 
-View your app in AI Studio: https://ai.studio/apps/7b93b786-bf97-4497-a390-a15804f21552
+```powershell
+cd orbit
+copy .env.example .env.local
+npm install
+npm run dev
+```
 
-## Run Locally
+App en http://localhost:3000 (puerto fijo del script Vite).
 
-**Prerequisites:**  Node.js
+### Variables mínimas
 
+| Variable | Ejemplo |
+|----------|---------|
+| `VITE_API_URL` | `http://localhost:4000/api` |
+| `VITE_GOOGLE_CLIENT_ID` | Client ID OAuth web (mismo que `GOOGLE_CLIENT_ID` del API) |
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Ver `.env.example` para opciones de import Excel y login local.
+
+El API debe estar corriendo en paralelo (`orbit-api`, puerto 4000 por defecto).
+
+## Scripts
+
+| Comando | Uso |
+|---------|-----|
+| `npm run dev` | Servidor de desarrollo |
+| `npm run build` | Build de producción |
+| `npm run preview` | Preview del build |
+| `npm run lint` | `tsc --noEmit` |
+
+## Vistas
+
+Definidas en `src/types.ts` (`NAV_ITEMS`): Command Center, Planta Activa, Carga Académica, Balance carga, Vacantes, Panel informativo, Novedades.
+
+Código de pantallas: `src/components/views/`.
+
+## Despliegue
+
+```powershell
+# Desde la raíz del monorepo
+.\gcp\deploy-orbit-frontend.ps1
+```
+
+Producción: https://orbit-frontend-526995286786.us-central1.run.app
