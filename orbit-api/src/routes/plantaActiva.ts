@@ -5,10 +5,17 @@ import {
 } from "../lib/coreSchema";
 import {
   canEditPlantaArea,
+  canEditPlantaPerson,
   canViewPlantaArea,
+  getPlantaActivaGrant,
+  shouldExcludeLiteAndDocenteFromPlantaView,
   type PlantaActivaGrant,
 } from "../lib/plantaActivaAccess";
-import { shouldSkipVacancyOnInactivation } from "../lib/orbitRoles";
+import {
+  isLiteOrDocenteRole,
+  shouldSkipVacancyOnInactivation,
+  sqlExcludeLiteAndDocenteRoles,
+} from "../lib/orbitRoles";
 import { toUpperAscii } from "../lib/textNormalize";
 import { validateDocument } from "../lib/dataValidators";
 import {
@@ -52,15 +59,48 @@ function plantaGrantFromRequest(req: Request): PlantaActivaGrant | null {
   if (!u) return null;
   // Admin allowlist: plantaEditAreaIds === null → sin grant / sin recorte.
   if (u.plantaEditAreaIds == null) return null;
-  return {
-    email: u.email,
-    viewAreaIds: u.plantaViewAreaIds,
-    editAreaIds: u.plantaEditAreaIds,
-  };
+  return (
+    getPlantaActivaGrant(u.email) ?? {
+      email: u.email,
+      viewAreaIds: u.plantaViewAreaIds,
+      editAreaIds: u.plantaEditAreaIds,
+    }
+  );
 }
 
 function effectiveAreaSql(aliasP = "p", aliasS = "s"): string {
   return `COALESCE(${aliasP}.area_id, ${aliasS}.area_id)`;
+}
+
+/** Bloquea asignación de rol LITE/DOCENTE para grants acotados (Sara/Cindy). */
+async function rejectLiteOrDocenteRoleAssignment(
+  plantaGrant: PlantaActivaGrant | null,
+  prefix: string,
+  roleId: number | null,
+  res: Response
+): Promise<boolean> {
+  if (!shouldExcludeLiteAndDocenteFromPlantaView(plantaGrant) || roleId == null) {
+    return true;
+  }
+  const roleRow = await pool.query<{ name: string; code: string }>(
+    `SELECT name, code FROM ${prefix}role WHERE id = $1`,
+    [roleId]
+  );
+  if (roleRow.rows.length === 0) return true;
+  const role = roleRow.rows[0];
+  if (
+    isLiteOrDocenteRole({
+      roleId,
+      roleName: role.name,
+      roleCode: role.code,
+    })
+  ) {
+    res.status(403).json({
+      error: "No puedes asignar roles LITE/LIDER o DOCENTE/DOCENTES",
+    });
+    return false;
+  }
+  return true;
 }
 
 /** GET /planta-activa — personas activas o inactivas según `status`. */
@@ -184,6 +224,10 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
       i++;
     }
 
+    if (shouldExcludeLiteAndDocenteFromPlantaView(plantaGrant)) {
+      conditions.push(sqlExcludeLiteAndDocenteRoles("r"));
+    }
+
     const where = `WHERE ${conditions.join(" AND ")}`;
 
     const result = await pool.query(
@@ -226,9 +270,15 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
         ...rest
       } = row;
       const effectiveArea = ea != null ? Number(ea) : null;
+      const roleId = rest.role_id != null ? Number(rest.role_id) : null;
+      const roleName =
+        typeof rest.role_name === "string" ? rest.role_name : null;
       return {
         ...rest,
-        can_edit: canEditPlantaArea(plantaGrant, effectiveArea),
+        can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
+          roleId,
+          roleName,
+        }),
       };
     });
 
@@ -315,10 +365,23 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
       return;
     }
 
+    const roleId = row.role_id != null ? Number(row.role_id) : null;
+    const roleName = String(row.role_name ?? "");
+    if (
+      shouldExcludeLiteAndDocenteFromPlantaView(plantaGrant) &&
+      isLiteOrDocenteRole({ roleId, roleName })
+    ) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
     const { effective_area_id: _ea, ...rest } = row;
     res.json({
       ...rest,
-      can_edit: canEditPlantaArea(plantaGrant, effectiveArea),
+      can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
+        roleId,
+        roleName,
+      }),
     });
   } catch (e) {
     console.error("GET /planta-activa/:id failed:", e);
@@ -498,6 +561,16 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
         res.status(400).json({ error: "role_id no encontrado" });
         return;
       }
+      if (
+        !(await rejectLiteOrDocenteRoleAssignment(
+          plantaGrant,
+          prefix,
+          roleId,
+          res
+        ))
+      ) {
+        return;
+      }
     }
 
     if (schoolId != null) {
@@ -592,10 +665,14 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
       personRow.effective_area_id != null
         ? Number(personRow.effective_area_id)
         : null;
-    const { effective_area_id: _ea, role_code: _rc, ...rest } = personRow;
+    const { effective_area_id: _ea, role_code: roleCode, ...rest } = personRow;
     res.status(201).json({
       ...rest,
-      can_edit: canEditPlantaArea(plantaGrant, effectiveArea),
+      can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
+        roleId: rest.role_id != null ? Number(rest.role_id) : null,
+        roleName: String(rest.role_name ?? ""),
+        roleCode: String(roleCode ?? ""),
+      }),
     });
   } catch (e: unknown) {
     const err = e as { code?: string };
@@ -675,7 +752,13 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
       current.effective_area_id != null
         ? Number(current.effective_area_id)
         : null;
-    if (!canEditPlantaArea(plantaGrant, currentArea)) {
+    if (
+      !canEditPlantaPerson(plantaGrant, currentArea, {
+        roleId: current.role_id,
+        roleName: current.role_name,
+        roleCode: current.role_code,
+      })
+    ) {
       res.status(403).json({
         error: "No tienes permiso para editar personal de esta área",
       });
@@ -775,6 +858,18 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
           res.status(403).json({
             error: "No puedes asignar personal a un área fuera de tu alcance",
           });
+          return;
+        }
+      }
+      if (col === "role_id" && n != null) {
+        if (
+          !(await rejectLiteOrDocenteRoleAssignment(
+            plantaGrant,
+            prefix,
+            n,
+            res
+          ))
+        ) {
           return;
         }
       }

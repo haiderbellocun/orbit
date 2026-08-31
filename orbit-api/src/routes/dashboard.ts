@@ -11,6 +11,8 @@ import {
   type NewsScope,
 } from "../lib/newsScope";
 import { sqlPersonIsActive } from "../sql/personActive";
+import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
+import { sqlExcludeLiteAndDocenteRoles } from "../lib/orbitRoles";
 import {
   liteTeacherScopeFromRequest,
   schoolScopeFromRequest,
@@ -154,6 +156,12 @@ async function getActiveTeachersCount(req: Request): Promise<number> {
     i++;
   }
 
+  const plantaGrant =
+    u?.plantaEditAreaIds != null ? getPlantaActivaGrant(u.email) : null;
+  if (plantaGrant?.excludeLiteAndDocenteRoles) {
+    conditions.push(sqlExcludeLiteAndDocenteRoles("r"));
+  }
+
   // Command Center: toda la planta activa excepto Área investigativa (Harvey).
   conditions.push(`(
     a.id IS NULL
@@ -168,6 +176,7 @@ async function getActiveTeachersCount(req: Request): Promise<number> {
      FROM ${personT} p
      LEFT JOIN ${schoolT} s ON s.id = p.school_id
      LEFT JOIN ${areaT} a ON a.id = COALESCE(p.area_id, s.area_id)
+     LEFT JOIN ${qualifiedCoreTable(mode, "role")} r ON r.id = p.role_id
      WHERE ${conditions.join(" AND ")}`,
     values
   );

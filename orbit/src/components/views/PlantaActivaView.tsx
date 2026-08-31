@@ -35,7 +35,7 @@ import {
   clearPlantaPendingFilters,
   peekPlantaPendingFilters,
 } from '@/src/lib/plantaPendingFilters';
-import { canEditPlantaPersonArea } from '@/src/lib/plantaActivaAccess';
+import { canEditPlantaPersonArea, shouldExcludeLiteAndDocenteFromPlantaView, isLiteOrDocenteRoleName } from '@/src/lib/plantaActivaAccess';
 
 const EMPTY_EDIT_FORM = {
   full_name: '',
@@ -413,12 +413,17 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return areas.filter((a) => catalogAreaIds.includes(a.id));
   }, [areas, catalogAreaIds]);
 
+  const rolesForPlanta = useMemo(() => {
+    if (!shouldExcludeLiteAndDocenteFromPlantaView(plantaAccess)) return roles;
+    return roles.filter((r) => !isLiteOrDocenteRoleName(r.name));
+  }, [roles, plantaAccess]);
+
   const canCreate = editableAreaIds == null || editableAreaIds.length > 0;
 
   const rowCanEdit = useCallback(
     (row: PlantaPerson) => {
       if (typeof row.can_edit === 'boolean') return row.can_edit;
-      return canEditPlantaPersonArea(plantaAccess, row.area_id);
+      return canEditPlantaPersonArea(plantaAccess, row.area_id, row.role_name);
     },
     [plantaAccess]
   );
@@ -860,7 +865,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       className={selectClass}
                     >
                       <option value="">Todos</option>
-                      {roles.map((r) => (
+                      {rolesForPlanta.map((r) => (
                         <option key={r.id} value={r.id}>
                           {r.name}
                         </option>
@@ -1270,7 +1275,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       className={selectClass}
                     >
                       <option value="">Sin rol</option>
-                      {roles.map((r) => (
+                      {rolesForPlanta.map((r) => (
                         <option key={r.id} value={r.id}>
                           {r.name}
                         </option>

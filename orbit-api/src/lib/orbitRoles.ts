@@ -36,6 +36,21 @@ export function isLiteOrLiderRole(input: {
   );
 }
 
+/** Roles LITE/LIDER o DOCENTE/DOCENTES (gestionados fuera del alcance Sara/Cindy). */
+export function isLiteOrDocenteRole(input: {
+  roleId?: number | null;
+  roleCode?: string | null;
+  roleName?: string | null;
+}): boolean {
+  return (
+    isLiteOrLiderRole({
+      roleId: input.roleId ?? null,
+      roleCode: input.roleCode,
+      roleName: input.roleName,
+    }) || isDocenteRole(input)
+  );
+}
+
 /** Roles docentes: DOCENTE, DOCENTES, DOCENTES PENSIONADOS, etc. */
 export function isDocenteRole(input: {
   roleCode?: string | null;
@@ -73,6 +88,21 @@ export function sqlPersonIsOrbitLite(
     ${personAlias}.role_id = ${liteRoleId}
     OR trim(upper(COALESCE(${roleAlias}.name, ''))) IN ('LITE', 'LIDER')
     OR trim(upper(COALESCE(${roleAlias}.code, ''))) IN ('LITE', 'LIDER')
+  )`;
+}
+
+/** Excluye LITE/LIDER y DOCENTE/DOCENTES. Requiere JOIN a `role` como `${roleAlias}`. */
+export function sqlExcludeLiteAndDocenteRoles(roleAlias = "r"): string {
+  const liteRoleId = getLiteRoleId();
+  return `(
+    ${roleAlias}.id IS NULL
+    OR NOT (
+      ${sqlPersonIsOrbitLite("p", roleAlias, liteRoleId)}
+      OR trim(upper(COALESCE(${roleAlias}.name, ''))) IN ('DOCENTE', 'DOCENTES')
+      OR trim(upper(COALESCE(${roleAlias}.code, ''))) IN ('DOCENTE', 'DOCENTES')
+      OR trim(upper(COALESCE(${roleAlias}.name, ''))) LIKE 'DOCENTES %'
+      OR trim(upper(COALESCE(${roleAlias}.code, ''))) LIKE 'DOCENTES %'
+    )
   )`;
 }
 

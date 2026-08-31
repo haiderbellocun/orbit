@@ -40,7 +40,7 @@ export function areaIdFromRequest(req: Request): number | null {
  * - school → escuela del coordinador
  * - areas → grant Planta con `plantaViewAreaIds` acotados (Leidy/Tania)
  * - area → área del coordinador (roles en ORBIT_NEWS_AREA_ROLE_IDS)
- * - full → admin allowlist o grant con vista de todas las áreas (Sara)
+ * - full → admin allowlist (grants acotados usan kind areas)
  */
 export function newsScopeFromRequest(req: Request): NewsScope | null {
   const u = req.orbitUser;

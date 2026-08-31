@@ -5,7 +5,10 @@
  *
  * - viewAreaIds `null` → puede ver toda la planta.
  * - editAreaIds → áreas cuyo personal puede gestionar (PATCH).
+ * - excludeLiteAndDocenteRoles → oculta LITE/LIDER y DOCENTE/DOCENTES (Sara/Cindy).
  */
+
+import { isLiteOrDocenteRole } from "./orbitRoles";
 
 export type PlantaActivaGrant = {
   email: string;
@@ -13,6 +16,11 @@ export type PlantaActivaGrant = {
   viewAreaIds: number[] | null;
   /** Áreas que puede editar. */
   editAreaIds: number[];
+  /**
+   * Si true, no listan ni gestionan personas con rol LITE/LIDER o DOCENTE/DOCENTES.
+   * Coordinadores y demás roles sí aparecen.
+   */
+  excludeLiteAndDocenteRoles?: boolean;
   /**
    * Capabilities adicionales a `view:planta_activa`
    * (p. ej. `view:vacancies`, `vacancies:informative_panel`).
@@ -28,19 +36,23 @@ const SARA_LEVEL_EXTRAS = [
   "view:news",
 ] as const;
 
-const SARA_LEVEL_EDIT_AREA_IDS = [2, 3, 4, 5, 6, 7, 8];
+/** Áreas operativas (excluye LITES=1 y DOCENTES=9, gestionadas por Leidy/Tania). */
+const SARA_LEVEL_VIEW_AREA_IDS = [2, 3, 4, 5, 6, 7, 8];
+const SARA_LEVEL_EDIT_AREA_IDS = SARA_LEVEL_VIEW_AREA_IDS;
 
 const GRANTS: readonly PlantaActivaGrant[] = [
   {
     email: "sara_murillofo@cun.edu.co",
-    viewAreaIds: null,
+    viewAreaIds: SARA_LEVEL_VIEW_AREA_IDS,
     editAreaIds: SARA_LEVEL_EDIT_AREA_IDS,
+    excludeLiteAndDocenteRoles: true,
     extraCapabilities: SARA_LEVEL_EXTRAS,
   },
   {
     email: "cindy_russi@cun.edu.co",
-    viewAreaIds: null,
+    viewAreaIds: SARA_LEVEL_VIEW_AREA_IDS,
     editAreaIds: SARA_LEVEL_EDIT_AREA_IDS,
+    excludeLiteAndDocenteRoles: true,
     extraCapabilities: SARA_LEVEL_EXTRAS,
   },
   {
@@ -92,6 +104,32 @@ export function canEditPlantaArea(
   if (grant == null) return true;
   if (areaId == null || !Number.isFinite(areaId)) return false;
   return grant.editAreaIds.includes(areaId);
+}
+
+export function shouldExcludeLiteAndDocenteFromPlantaView(
+  grant: PlantaActivaGrant | null | undefined
+): boolean {
+  return grant?.excludeLiteAndDocenteRoles === true;
+}
+
+export function canEditPlantaPerson(
+  grant: PlantaActivaGrant | null | undefined,
+  areaId: number | null,
+  role?: {
+    roleId?: number | null;
+    roleCode?: string | null;
+    roleName?: string | null;
+  }
+): boolean {
+  if (!canEditPlantaArea(grant, areaId)) return false;
+  if (
+    shouldExcludeLiteAndDocenteFromPlantaView(grant) &&
+    role != null &&
+    isLiteOrDocenteRole(role)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /** Capabilities efectivas del grant (planta + extras). */
