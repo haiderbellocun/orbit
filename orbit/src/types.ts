@@ -30,10 +30,71 @@ export interface PlantaPerson {
   program: string;
   role_id: number | null;
   role_name: string;
+  role_code?: string;
   status: 'active' | 'inactive';
+  /** Responsable visual (arista de Organigrama). No dibuja el árbol. */
+  manager_id: number | null;
+  manager_name?: string | null;
+  manager_role_name?: string | null;
+  manager_document?: string | null;
   /** Si el usuario actual puede editar esta persona (API). */
   can_edit?: boolean;
 }
+
+export type OrgChartGraphPayload = {
+  version: {
+    id: number;
+    code: string;
+    name: string;
+    period_label: string | null;
+    is_locked: boolean;
+  };
+  root_person_id: number;
+  can_mutate: boolean;
+  relations: Array<{
+    id: number;
+    parent_person_id: number;
+    child_person_id: number;
+    visual_level: number | null;
+  }>;
+  position_children: Array<{
+    parent_relation_id: number;
+    child_person_id: number;
+    visual_level: number | null;
+  }>;
+  person_overrides: Array<{
+    person_id: number;
+    role_id_override: number | null;
+    display_name_override: string | null;
+  }>;
+  relation_overrides: Array<{
+    relation_id: number;
+    role_id_override: number | null;
+    assignment_status: string | null;
+    assignment_label: string | null;
+  }>;
+  planta_overrides: Array<{
+    person_id: number;
+    parent_person_id: number | null;
+  }>;
+};
+
+export type PlantaDirectReport = {
+  id: string;
+  document: string;
+  name: string;
+  edu_email?: string;
+  role_name: string;
+  role_code?: string;
+  program?: string;
+  status: 'active' | 'inactive';
+  can_edit?: boolean;
+};
+
+export type PlantaAssignedProgram = {
+  id: number;
+  name: string;
+};
 
 export interface Teacher {
   id: string;

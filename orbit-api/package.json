@@ -17,6 +17,7 @@
     "migrate:vacancies": "ts-node src/db/migrate_vacancies.ts",
     "migrate:workforce-events": "ts-node src/db/migrate_workforce_events.ts",
     "migrate:person-is-active": "ts-node src/db/migrate_person_is_active.ts",
+    "migrate:person-manager": "ts-node src/db/migrate_person_manager.ts",
     "migrate:vacancies-updates": "ts-node src/db/migrate_vacancies_updates.ts",
     "migrate:vacancies-public-ids": "ts-node src/db/migrate_vacancies_public_ids.ts",
     "migrate:vacancies-audit-retention": "ts-node src/db/migrate_vacancies_audit_retention.ts",
@@ -30,7 +31,7 @@
     "seed:v3": "ts-node src/db/seed_v3.ts",
     "seed:v4": "ts-node src/db/seed_v4.ts",
     "schema:apply:gcp": "node scripts/apply-gcp-schema.mjs",
-    "test": "ts-node --transpile-only src/lib/orbitCapabilities.test.ts && ts-node --transpile-only src/lib/academicLoadValidation.test.ts",
+    "test": "ts-node --transpile-only src/lib/orbitCapabilities.test.ts && ts-node --transpile-only src/lib/academicLoadValidation.test.ts && ts-node --transpile-only src/lib/roleHierarchy.test.ts && ts-node --transpile-only src/lib/orgChartTreeEngine.test.ts",
     "test:smtp": "node scripts/test-smtp.mjs",
     "template:person": "node scripts/generate-person-load-template.mjs"
   },

@@ -5,22 +5,18 @@ import {
   MagnifyingGlassIcon,
   FunnelIcon,
   XMarkIcon,
-  PencilSquareIcon,
-  UserCircleIcon,
-  EnvelopeIcon,
-  IdentificationIcon,
-  BuildingOffice2Icon,
   ChevronDownIcon,
   PlusIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
-import type { PlantaPerson, Vacancy, Teacher, Coordinator } from '@/src/types';
+import type { OrgChartGraphPayload, PlantaPerson, Vacancy, Teacher, Coordinator } from '@/src/types';
 import {
   getPlantaActiva,
   getPlantaPerson,
   createPlantaPerson,
   updatePlantaPerson,
+  updatePlantaOrgParent,
   getCatalogAreas,
   getCatalogSchools,
   getCatalogPrograms,
@@ -35,9 +31,29 @@ import {
   clearPlantaPendingFilters,
   peekPlantaPendingFilters,
 } from '@/src/lib/plantaPendingFilters';
-import { canEditPlantaPersonArea, shouldExcludeLiteAndDocenteFromPlantaView, isLiteOrDocenteRoleName } from '@/src/lib/plantaActivaAccess';
+import {
+  canEditPlantaPersonArea,
+  shouldExcludeLiteAndDocenteFromPlantaView,
+  isLiteOrDocenteRoleName,
+} from '@/src/lib/plantaActivaAccess';
+import { mapPlantaFromApi, PLANTA_SELECT_CLASS } from '@/src/lib/plantaMappers';
+import {
+  buildOrganizationHierarchy,
+  collectExpandableIds,
+  filterOrganizationForest,
+  overlayOrgParents,
+  parseOrgChartGraph,
+  personMatchesQuery,
+} from '@/src/lib/organizationTree';
+import { OrganizationHierarchy } from '@/src/components/planta/OrganizationHierarchy';
+import {
+  PersonManagementDrawer,
+  type PlantaEditForm,
+} from '@/src/components/planta/PersonManagementDrawer';
+import { AssignCollaboratorModal } from '@/src/components/planta/AssignCollaboratorModal';
+import { ChangeManagerModal } from '@/src/components/planta/ChangeManagerModal';
 
-const EMPTY_EDIT_FORM = {
+const EMPTY_EDIT_FORM: PlantaEditForm = {
   full_name: '',
   document: '',
   email: '',
@@ -52,48 +68,7 @@ const EMPTY_EDIT_FORM = {
   create_vacancy: true,
 };
 
-/** Roles para los que el backend no auto-crea vacante al inactivar. */
-function roleSkipsAutoVacancy(roleName: string | undefined): boolean {
-  const n = (roleName ?? '')
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/\s+/g, ' ');
-  if (!n) return false;
-  if (n === 'LITE' || n === 'LIDER') return true;
-  return n === 'DOCENTE' || n === 'DOCENTES' || n.startsWith('DOCENTES ');
-}
-
-function mapPlantaFromApi(row: Record<string, unknown>): PlantaPerson {
-  const st = String(row.status ?? 'active');
-  const numOrNull = (v: unknown): number | null => {
-    if (v == null || v === '') return null;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
-  return {
-    id: String(row.id ?? ''),
-    document: String(row.document ?? ''),
-    type_document: row.type_document ? String(row.type_document) : undefined,
-    name: String(row.name ?? ''),
-    email: String(row.email ?? ''),
-    edu_email: String(row.edu_email ?? ''),
-    phone: String(row.phone ?? ''),
-    address: row.address ? String(row.address) : undefined,
-    area_id: numOrNull(row.area_id),
-    area: String(row.area ?? ''),
-    school_id: numOrNull(row.school_id),
-    school: String(row.school ?? ''),
-    program_id: numOrNull(row.program_id),
-    program: String(row.program ?? ''),
-    role_id: numOrNull(row.role_id),
-    role_name: String(row.role_name ?? ''),
-    status: st === 'inactive' ? 'inactive' : 'active',
-    can_edit:
-      typeof row.can_edit === 'boolean' ? row.can_edit : undefined,
-  };
-}
+const HIERARCHY_PAGE_SIZE = 5000;
 
 interface PlantaActivaViewProps {
   searchQuery?: string;
@@ -138,7 +113,6 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const plantaAccess = useMemo(() => getStoredPlantaActivaAccess(), []);
   const editableAreaIds = plantaAccess?.editAreaIds ?? null;
   const viewableAreaIds = plantaAccess?.viewAreaIds ?? null;
-  /** Filtros de catálogo alineados al alcance de vista. */
   const catalogAreaIds = viewableAreaIds;
   const lockedAreaId =
     catalogAreaIds != null && catalogAreaIds.length === 1
@@ -146,27 +120,19 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       : '';
 
   const [filters, setFilters] = useState<Filters>(() => {
-    const locked =
-      catalogAreaIds != null && catalogAreaIds.length === 1
-        ? String(catalogAreaIds[0])
-        : '';
     const pending = peekPlantaPendingFilters();
     return {
       ...EMPTY_FILTERS,
-      areaId: locked,
+      areaId: lockedAreaId,
       withoutEduEmail: Boolean(pending?.withoutEduEmail),
       withoutDocument: Boolean(pending?.withoutDocument),
     };
   });
   const [applied, setApplied] = useState<Filters>(() => {
-    const locked =
-      catalogAreaIds != null && catalogAreaIds.length === 1
-        ? String(catalogAreaIds[0])
-        : '';
     const pending = peekPlantaPendingFilters();
     return {
       ...EMPTY_FILTERS,
-      areaId: locked,
+      areaId: lockedAreaId,
       withoutEduEmail: Boolean(pending?.withoutEduEmail),
       withoutDocument: Boolean(pending?.withoutDocument),
     };
@@ -176,12 +142,12 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return Boolean(pending?.withoutEduEmail || pending?.withoutDocument);
   });
   const [listStatus, setListStatus] = useState<'active' | 'inactive'>('active');
-  const [page, setPage] = useState(1);
   const [rows, setRows] = useState<PlantaPerson[]>([]);
+  const [orgGraph, setOrgGraph] = useState<OrgChartGraphPayload | null>(null);
   const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [userExpanded, setUserExpanded] = useState<Set<string>>(new Set());
 
   const [areas, setAreas] = useState<CatalogArea[]>([]);
   const [schools, setSchools] = useState<CatalogSchool[]>([]);
@@ -190,12 +156,27 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
 
   const [editing, setEditing] = useState<PlantaPerson | null>(null);
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null);
-  const [editForm, setEditForm] = useState({ ...EMPTY_EDIT_FORM });
+  const [editForm, setEditForm] = useState<PlantaEditForm>({ ...EMPTY_EDIT_FORM });
   const [editSchools, setEditSchools] = useState<CatalogSchool[]>([]);
   const [editPrograms, setEditPrograms] = useState<CatalogProgram[]>([]);
   const [saving, setSaving] = useState(false);
+  const [mutating, setMutating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+
+  const [assignFor, setAssignFor] = useState<PlantaPerson | null>(null);
+  const [changeManagerFor, setChangeManagerFor] = useState<PlantaPerson | null>(
+    null
+  );
+  const [removeTarget, setRemoveTarget] = useState<PlantaPerson | null>(null);
+
+  const resolveCanEdit = useCallback(
+    (row: PlantaPerson) => {
+      if (typeof row.can_edit === 'boolean') return row.can_edit;
+      return canEditPlantaPersonArea(plantaAccess, row.area_id, row.role_name);
+    },
+    [plantaAccess]
+  );
 
   useEffect(() => {
     clearPlantaPendingFilters();
@@ -228,12 +209,8 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     (async () => {
       try {
         let list: CatalogSchool[] = [];
-
         if (areaId != null && Number.isFinite(areaId)) {
-          if (
-            catalogAreaIds != null &&
-            !catalogAreaIds.includes(areaId)
-          ) {
+          if (catalogAreaIds != null && !catalogAreaIds.includes(areaId)) {
             list = [];
           } else {
             const s = await getCatalogSchools({ area_id: areaId });
@@ -256,7 +233,6 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
           const s = await getCatalogSchools();
           list = Array.isArray(s) ? s : [];
         }
-
         if (!cancelled) {
           setSchools(list);
           setFilters((f) => {
@@ -281,7 +257,6 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     (async () => {
       try {
         let list: CatalogProgram[] = [];
-
         if (schoolId != null && Number.isFinite(schoolId)) {
           const p = await getCatalogPrograms({ school_id: schoolId });
           list = Array.isArray(p) ? p : [];
@@ -305,7 +280,6 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
           const p = await getCatalogPrograms();
           list = Array.isArray(p) ? p : [];
         }
-
         if (!cancelled) {
           setPrograms(list);
           setFilters((f) => {
@@ -324,69 +298,92 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     };
   }, [filters.schoolId, catalogAreaIds]);
 
-  const loadList = useCallback(async () => {
-    setLoading(true);
+  const loadList = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setLoadError(null);
     try {
-      const res = await getPlantaActiva({
-        search: applied.search.trim() || undefined,
-        area_id: applied.areaId ? Number(applied.areaId) : undefined,
-        school_id: applied.schoolId ? Number(applied.schoolId) : undefined,
-        program_id: applied.programId ? Number(applied.programId) : undefined,
-        role_id: applied.roleId ? Number(applied.roleId) : undefined,
-        without_school: applied.withoutSchool || undefined,
-        without_program: applied.withoutProgram || undefined,
-        without_role: applied.withoutRole || undefined,
-        without_edu_email: applied.withoutEduEmail || undefined,
-        without_document: applied.withoutDocument || undefined,
-        status: listStatus,
-        page,
-        limit: 50,
-      });
-      const list = Array.isArray(res.data)
-        ? res.data.map((r) => mapPlantaFromApi(r as Record<string, unknown>))
-        : [];
-      setRows(list);
-      setTotal(res.pagination?.total ?? list.length);
-      setTotalPages(res.pagination?.totalPages ?? 1);
+      const collected: PlantaPerson[] = [];
+      let page = 1;
+      let totalCount = 0;
+      let graph: OrgChartGraphPayload | null = null;
+      for (;;) {
+        const includeOrg = listStatus === 'active' && page === 1;
+        const res = await getPlantaActiva({
+          status: listStatus,
+          page,
+          limit: HIERARCHY_PAGE_SIZE,
+          include_org: includeOrg,
+        });
+        if (includeOrg) {
+          graph = parseOrgChartGraph(res.org);
+        }
+        const list = Array.isArray(res.data)
+          ? res.data.map((r) => {
+              const mapped = mapPlantaFromApi(r as Record<string, unknown>);
+              return { ...mapped, can_edit: resolveCanEdit(mapped) };
+            })
+          : [];
+        collected.push(...list);
+        totalCount = res.pagination?.total ?? collected.length;
+        if (collected.length >= totalCount || list.length === 0) break;
+        page += 1;
+        if (page > 20) break;
+      }
+      setOrgGraph(graph);
+      setRows(overlayOrgParents(collected, graph));
+      setTotal(totalCount);
     } catch (e) {
       setLoadError(
         e instanceof Error ? e.message : 'No se pudo cargar la planta activa'
       );
       setRows([]);
+      setOrgGraph(null);
       setTotal(0);
-      setTotalPages(0);
     } finally {
       setLoading(false);
     }
-  }, [applied, page, listStatus]);
+  }, [listStatus, resolveCanEdit]);
 
   useEffect(() => {
     void loadList();
   }, [loadList]);
 
   useEffect(() => {
+    setEditing((prev) => {
+      if (!prev) return prev;
+      const next = rows.find((p) => p.id === prev.id);
+      if (!next) return prev;
+      if (
+        next.manager_id === prev.manager_id &&
+        next.manager_name === prev.manager_name
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        manager_id: next.manager_id,
+        manager_name: next.manager_name,
+        manager_role_name: next.manager_role_name,
+      };
+    });
+  }, [rows]);
+
+  useEffect(() => {
     if (filters.search === applied.search) return;
     const t = setTimeout(() => {
-      setPage(1);
       setApplied((prev) => ({ ...prev, search: filters.search }));
     }, 300);
     return () => clearTimeout(t);
   }, [filters.search, applied.search]);
 
   const applyFilters = () => {
-    setPage(1);
     setApplied({ ...filters });
   };
 
   const clearFilters = () => {
-    const next: Filters = {
-      ...EMPTY_FILTERS,
-      areaId: lockedAreaId,
-    };
+    const next: Filters = { ...EMPTY_FILTERS, areaId: lockedAreaId };
     setFilters(next);
     setApplied(next);
-    setPage(1);
   };
 
   const activeFilterCount = useMemo(() => {
@@ -402,6 +399,74 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     if (applied.withoutDocument) n++;
     return n;
   }, [applied]);
+
+  const hasActiveQuery = Boolean(applied.search.trim()) || activeFilterCount > 0;
+
+  const forest = useMemo(
+    () => buildOrganizationHierarchy(rows, orgGraph),
+    [rows, orgGraph]
+  );
+
+  const canMutateOrg = orgGraph?.can_mutate === true;
+
+  const visibleForest = useMemo(() => {
+    if (!hasActiveQuery) return forest;
+    return filterOrganizationForest(forest, (person) => {
+      if (!personMatchesQuery(person, applied.search)) return false;
+      if (applied.areaId && String(person.area_id ?? '') !== applied.areaId) {
+        return false;
+      }
+      if (
+        applied.schoolId &&
+        String(person.school_id ?? '') !== applied.schoolId
+      ) {
+        return false;
+      }
+      if (
+        applied.programId &&
+        String(person.program_id ?? '') !== applied.programId
+      ) {
+        return false;
+      }
+      if (applied.roleId && String(person.role_id ?? '') !== applied.roleId) {
+        return false;
+      }
+      if (applied.withoutSchool && person.school_id != null) return false;
+      if (applied.withoutProgram && person.program_id != null) return false;
+      if (applied.withoutRole && person.role_id != null) return false;
+      if (applied.withoutEduEmail && person.edu_email?.trim()) return false;
+      if (applied.withoutDocument && person.document?.trim()) return false;
+      return true;
+    });
+  }, [forest, applied, hasActiveQuery]);
+
+  const autoExpanded = useMemo(
+    () => (hasActiveQuery ? collectExpandableIds(visibleForest) : new Set<string>()),
+    [hasActiveQuery, visibleForest]
+  );
+
+  const expandedIds = useMemo(() => {
+    const next = new Set(userExpanded);
+    for (const id of autoExpanded) next.add(id);
+    return next;
+  }, [userExpanded, autoExpanded]);
+
+  const toggleExpanded = useCallback((id: string) => {
+    setUserExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const expandAll = () => {
+    setUserExpanded(collectExpandableIds(visibleForest));
+  };
+
+  const collapseAll = () => {
+    setUserExpanded(new Set());
+  };
 
   const areasForEdit = useMemo(() => {
     if (editableAreaIds == null) return areas;
@@ -419,14 +484,6 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   }, [roles, plantaAccess]);
 
   const canCreate = editableAreaIds == null || editableAreaIds.length > 0;
-
-  const rowCanEdit = useCallback(
-    (row: PlantaPerson) => {
-      if (typeof row.can_edit === 'boolean') return row.can_edit;
-      return canEditPlantaPersonArea(plantaAccess, row.area_id, row.role_name);
-    },
-    [plantaAccess]
-  );
 
   const openCreate = () => {
     setFormError(null);
@@ -446,29 +503,42 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     });
   };
 
-  const openEdit = async (row: PlantaPerson) => {
-    if (!rowCanEdit(row)) return;
+  const openEdit = async (row: PlantaPerson | string) => {
+    const person =
+      typeof row === 'string' ? rows.find((p) => p.id === row) ?? null : row;
+    if (!person) return;
+    if (!resolveCanEdit(person) && formMode !== 'edit') {
+      /* still allow opening for read-only hierarchy */
+    }
     setFormError(null);
     setSaveNotice(null);
-    setEditing(row);
+    setEditing(person);
     setFormMode('edit');
     setEditForm({
-      full_name: row.name,
-      document: row.document,
-      email: row.email,
-      edu_email: row.edu_email,
-      phone: row.phone,
-      address: row.address ?? '',
-      area_id: row.area_id != null ? String(row.area_id) : '',
-      school_id: row.school_id != null ? String(row.school_id) : '',
-      program_id: row.program_id != null ? String(row.program_id) : '',
-      role_id: row.role_id != null ? String(row.role_id) : '',
-      is_active: row.status === 'active',
+      full_name: person.name,
+      document: person.document,
+      email: person.email,
+      edu_email: person.edu_email,
+      phone: person.phone,
+      address: person.address ?? '',
+      area_id: person.area_id != null ? String(person.area_id) : '',
+      school_id: person.school_id != null ? String(person.school_id) : '',
+      program_id: person.program_id != null ? String(person.program_id) : '',
+      role_id: person.role_id != null ? String(person.role_id) : '',
+      is_active: person.status === 'active',
       create_vacancy: true,
     });
     try {
-      const detail = await getPlantaPerson(Number(row.id));
+      const detail = await getPlantaPerson(Number(person.id));
       const mapped = mapPlantaFromApi(detail as Record<string, unknown>);
+      mapped.can_edit = resolveCanEdit(mapped);
+      setEditing({
+        ...person,
+        ...mapped,
+        manager_id: person.manager_id,
+        manager_name: person.manager_name,
+        manager_role_name: person.manager_role_name,
+      });
       setEditForm({
         full_name: mapped.name,
         document: mapped.document,
@@ -537,8 +607,8 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const switchListStatus = (next: 'active' | 'inactive') => {
     if (next === listStatus) return;
     setListStatus(next);
-    setPage(1);
     setSaveNotice(null);
+    setUserExpanded(new Set());
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -554,11 +624,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       setFormError('La identificación es obligatoria');
       return;
     }
-    if (
-      formMode === 'create' &&
-      editableAreaIds != null &&
-      !editForm.area_id
-    ) {
+    if (formMode === 'create' && editableAreaIds != null && !editForm.area_id) {
       setFormError('El área es obligatoria');
       return;
     }
@@ -582,9 +648,8 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         setSaveNotice('Persona creada correctamente.');
         if (listStatus !== 'active' && editForm.is_active) {
           setListStatus('active');
-          setPage(1);
         } else {
-          await loadList();
+          await loadList({ silent: true });
         }
         return;
       }
@@ -604,9 +669,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         program_id: editForm.program_id ? Number(editForm.program_id) : null,
         role_id: editForm.role_id ? Number(editForm.role_id) : null,
         is_active: editForm.is_active,
-        ...(becameInactive
-          ? { create_vacancy: editForm.create_vacancy }
-          : {}),
+        ...(becameInactive ? { create_vacancy: editForm.create_vacancy } : {}),
       })) as Record<string, unknown>;
 
       const createdVacancyId =
@@ -617,16 +680,14 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       closeEdit();
 
       if (becameInactive && createdVacancyId) {
-        setSaveNotice(
-          'Persona inactivada y vacante creada automáticamente.'
-        );
+        setSaveNotice('Persona inactivada y vacante creada automáticamente.');
       } else if (becameInactive) {
         setSaveNotice('Persona inactivada.');
       } else if (!wasActive && editForm.is_active) {
         setSaveNotice('Persona reactivada.');
       }
 
-      await loadList();
+      await loadList({ silent: true });
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : 'No se pudo guardar los cambios'
@@ -636,17 +697,66 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     }
   };
 
-  const selectClass =
-    'w-full min-w-0 max-w-full rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary px-3 py-2.5 text-sm text-orbit-text shadow-sm focus:outline-none focus:ring-2 focus:ring-orbit-primary/30';
+  const patchManager = async (
+    personId: string,
+    managerId: number | null,
+    followOrganigrama = false
+  ) => {
+    setMutating(true);
+    setFormError(null);
+    try {
+      await updatePlantaOrgParent(Number(personId), managerId, {
+        followOrganigrama,
+      });
+      await loadList({ silent: true });
+      setSaveNotice(
+        followOrganigrama
+          ? 'Se restauró la posición del organigrama (solo en Planta Activa).'
+          : 'Jerarquía actualizada en Planta Activa. El Organigrama no se modificó.'
+      );
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : 'No se pudo actualizar el responsable'
+      );
+      throw err;
+    } finally {
+      setMutating(false);
+    }
+  };
 
-  const inactivatingActivePerson =
-    formMode === 'edit' &&
-    editing?.status === 'active' &&
-    !editForm.is_active;
-  const selectedEditRoleName = roles.find(
-    (r) => String(r.id) === editForm.role_id
-  )?.name;
-  const skipsAutoVacancy = roleSkipsAutoVacancy(selectedEditRoleName);
+  const handleAssign = async (personIds: string[]) => {
+    if (!assignFor) return;
+    const managerId = Number(assignFor.id);
+    setMutating(true);
+    try {
+      for (const id of personIds) {
+        await updatePlantaOrgParent(Number(id), managerId);
+      }
+      await loadList({ silent: true });
+      setAssignFor(null);
+      setSaveNotice(
+        personIds.length === 1
+          ? 'Colaborador asignado en Planta Activa. El Organigrama no se modificó.'
+          : `${personIds.length} colaboradores asignados en Planta Activa. El Organigrama no se modificó.`
+      );
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : 'No se pudo asignar el colaborador'
+      );
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const openAssign = (personId: string) => {
+    if (!canMutateOrg) return;
+    const person = rows.find((p) => p.id === personId);
+    if (!person || !resolveCanEdit(person)) return;
+    setAssignFor(person);
+  };
+
+  const personCanEditDrawer =
+    formMode === 'create' || (editing != null && resolveCanEdit(editing));
 
   return (
     <div className="space-y-8 min-w-0">
@@ -659,6 +769,29 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         }
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
+
+      {listStatus === 'active' && orgGraph && (
+        <div className="rounded-2xl border border-orbit-border bg-orbit-surface px-4 py-3 text-sm text-orbit-text-secondary">
+          <p>
+            Árbol base:{' '}
+            <strong className="text-orbit-text">{orgGraph.version.name}</strong>
+            {orgGraph.version.period_label
+              ? ` · ${orgGraph.version.period_label}`
+              : ''}
+          </p>
+          <p className="mt-1 text-xs">
+            Puedes asignar y mover personas aquí. Esos cambios se guardan en
+            Planta Activa y no modifican el Organigrama.
+          </p>
+        </div>
+      )}
+
+      {listStatus === 'active' && !loading && orgGraph == null && (
+        <div className="rounded-2xl border border-orbit-warning/40 bg-orbit-warning/10 px-4 py-3 text-sm text-orbit-text">
+          No se pudo cargar el organigrama. Las personas aparecen sin
+          responsable visual.
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div
@@ -727,7 +860,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                 if (e.key === 'Enter') applyFilters();
               }}
               placeholder="Buscar por nombre, correo o cédula…"
-              className={cn(selectClass, 'pl-10')}
+              className={cn(PLANTA_SELECT_CLASS, 'pl-10')}
             />
           </div>
 
@@ -794,13 +927,11 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       }
                       disabled={Boolean(lockedAreaId)}
                       className={cn(
-                        selectClass,
+                        PLANTA_SELECT_CLASS,
                         lockedAreaId && 'opacity-70 cursor-not-allowed'
                       )}
                     >
-                      {!lockedAreaId && (
-                        <option value="">Todas</option>
-                      )}
+                      {!lockedAreaId && <option value="">Todas</option>}
                       {areasForFilter.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.name}
@@ -822,7 +953,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                           programId: '',
                         }))
                       }
-                      className={selectClass}
+                      className={PLANTA_SELECT_CLASS}
                     >
                       <option value="">Todas</option>
                       {schools.map((s) => (
@@ -842,7 +973,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       onChange={(e) =>
                         setFilters((f) => ({ ...f, programId: e.target.value }))
                       }
-                      className={selectClass}
+                      className={PLANTA_SELECT_CLASS}
                     >
                       <option value="">Todos</option>
                       {programs.map((p) => (
@@ -862,7 +993,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       onChange={(e) =>
                         setFilters((f) => ({ ...f, roleId: e.target.value }))
                       }
-                      className={selectClass}
+                      className={PLANTA_SELECT_CLASS}
                     >
                       <option value="">Todos</option>
                       {rolesForPlanta.map((r) => (
@@ -926,37 +1057,40 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         </AnimatePresence>
       </div>
 
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-orbit-muted">
-          {loading
-            ? 'Cargando…'
-            : listStatus === 'active'
-              ? `${total.toLocaleString('es-CO')} persona${total === 1 ? '' : 's'} activa${total === 1 ? '' : 's'}`
-              : `${total.toLocaleString('es-CO')} persona${total === 1 ? '' : 's'} inactiva${total === 1 ? '' : 's'}`}
-        </p>
-        {totalPages > 1 && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={page <= 1 || loading}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="glass-button-secondary px-3 py-1.5 text-xs font-bold disabled:opacity-40"
-            >
-              Anterior
-            </button>
-            <span className="text-xs font-bold text-orbit-muted">
-              {page} / {totalPages}
-            </span>
-            <button
-              type="button"
-              disabled={page >= totalPages || loading}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="glass-button-secondary px-3 py-1.5 text-xs font-bold disabled:opacity-40"
-            >
-              Siguiente
-            </button>
-          </div>
-        )}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <p className="text-sm text-orbit-muted">
+            {loading
+              ? 'Cargando…'
+              : listStatus === 'active'
+                ? `${total.toLocaleString('es-CO')} persona${total === 1 ? '' : 's'} activa${total === 1 ? '' : 's'}`
+                : `${total.toLocaleString('es-CO')} persona${total === 1 ? '' : 's'} inactiva${total === 1 ? '' : 's'}`}
+          </p>
+          {!loading && (
+            <p className="text-xs text-orbit-muted">
+              {forest.counts.coordinators} coordinadores · {forest.counts.leaders}{' '}
+              líderes · {forest.counts.collaborators} colaboradores
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={expandAll}
+            disabled={loading}
+            className="glass-button-secondary px-3 py-1.5 text-xs font-bold disabled:opacity-40"
+          >
+            Expandir todos
+          </button>
+          <button
+            type="button"
+            onClick={collapseAll}
+            disabled={loading}
+            className="glass-button-secondary px-3 py-1.5 text-xs font-bold disabled:opacity-40"
+          >
+            Contraer todos
+          </button>
+        </div>
       </div>
 
       {loadError && (
@@ -965,412 +1099,151 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         </div>
       )}
 
-      <div className="glass-panel overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-orbit-border bg-orbit-bg-secondary/50 text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                <th className="px-5 py-4">Persona</th>
-                <th className="px-5 py-4">Identificación</th>
-                <th className="px-5 py-4">Área / Escuela</th>
-                <th className="px-5 py-4">Programa</th>
-                <th className="px-5 py-4">Rol</th>
-                <th className="px-5 py-4 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!loading && rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-5 py-16 text-center text-orbit-muted"
-                  >
-                    No hay personas que coincidan con los filtros.
-                  </td>
-                </tr>
-              )}
-              {rows.map((row, i) => (
-                <motion.tr
-                  key={row.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: Math.min(i * 0.02, 0.3) }}
-                  className="border-b border-orbit-border hover:bg-orbit-interactive/30 transition-colors"
-                >
-                  <td className="px-5 py-4">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 w-9 h-9 rounded-xl bg-orbit-primary/10 text-orbit-primary flex items-center justify-center shrink-0">
-                        <UserCircleIcon className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-bold text-orbit-text truncate">
-                          {row.name || '—'}
-                        </p>
-                        <p className="text-xs text-orbit-muted flex items-center gap-1 truncate">
-                          <EnvelopeIcon className="h-3 w-3 shrink-0" />
-                          {row.edu_email?.trim() ? (
-                            row.edu_email.trim()
-                          ) : (
-                            <span className="text-red-600 font-semibold">
-                              sin correo CUN
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className="inline-flex items-center gap-1.5 text-orbit-text-secondary">
-                      <IdentificationIcon className="h-3.5 w-3.5 text-orbit-muted" />
-                      {row.document || '—'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4">
-                    <div className="space-y-0.5">
-                      <p className="text-orbit-text">{row.area || '—'}</p>
-                      <p className="text-xs text-orbit-muted flex items-center gap-1">
-                        <BuildingOffice2Icon className="h-3 w-3" />
-                        {row.school || 'Sin escuela'}
-                      </p>
-                    </div>
-                  </td>
-                  <td className="px-5 py-4 text-orbit-text-secondary">
-                    {row.program || '—'}
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-lg bg-orbit-interactive text-orbit-text-secondary text-xs font-semibold">
-                      {row.role_name || 'Sin rol'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-right">
-                    {rowCanEdit(row) ? (
-                      <button
-                        type="button"
-                        onClick={() => void openEdit(row)}
-                        className="inline-flex items-center gap-1.5 text-xs font-bold text-orbit-primary hover:text-orbit-primary-hover"
-                      >
-                        <PencilSquareIcon className="h-4 w-4" />
-                        Gestionar
-                      </button>
-                    ) : (
-                      <span className="text-xs text-orbit-muted">Solo lectura</span>
-                    )}
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
+      {formError && !formMode && (
+        <div className="rounded-2xl border border-orbit-danger/40 bg-orbit-danger/10 px-5 py-4 text-sm text-orbit-danger">
+          {formError}
         </div>
-      </div>
+      )}
+
+      {loading ? (
+        <div className="space-y-3">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-28 rounded-2xl border border-orbit-border bg-orbit-interactive/60 animate-pulse"
+            />
+          ))}
+        </div>
+      ) : (
+        <OrganizationHierarchy
+          forest={visibleForest}
+          expandedIds={expandedIds}
+          onToggle={toggleExpanded}
+          onManage={(id) => void openEdit(id)}
+          onAssign={openAssign}
+          canMutate={canMutateOrg}
+          emptyMessage="No hay personas que coincidan con los filtros."
+          openUnassigned={hasActiveQuery && visibleForest.unassigned.length > 0}
+          unassignedHeading={
+            listStatus === 'inactive'
+              ? 'Personas inactivas'
+              : 'Sin responsable asignado'
+          }
+          unassignedHint={
+            listStatus === 'inactive'
+              ? `${visibleForest.unassigned.length.toLocaleString('es-CO')} persona${
+                  visibleForest.unassigned.length === 1 ? '' : 's'
+                } inactivas · no participan en el árbol visual`
+              : undefined
+          }
+          unassignedTone={listStatus === 'inactive' ? 'muted' : 'warning'}
+        />
+      )}
 
       {typeof document !== 'undefined' &&
         createPortal(
           <AnimatePresence>
             {formMode && (
               <motion.div
-                key="planta-person-modal"
+                key="planta-person-drawer"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-                onClick={closeEdit}
               >
-                <motion.div
-                  initial={{ opacity: 0, y: 20, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 12 }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="glass-panel w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-5"
-                >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-xl font-display font-bold text-orbit-text">
-                    {formMode === 'create'
-                      ? 'Nueva persona'
-                      : 'Información general'}
-                  </h3>
-                  <p className="text-sm text-orbit-muted mt-1">
-                    {formMode === 'create'
-                      ? 'Registra una persona en planta activa'
-                      : 'Datos básicos de la persona en planta'}
-                  </p>
-                </div>
+                <PersonManagementDrawer
+                  mode={formMode}
+                  person={editing}
+                  people={rows}
+                  form={editForm}
+                  setForm={setEditForm}
+                  areas={areasForEdit}
+                  schools={editSchools}
+                  programs={editPrograms}
+                  roles={rolesForPlanta}
+                  areaRequired={editableAreaIds != null}
+                  showEmptyAreaOption={editableAreaIds == null}
+                  saving={saving}
+                  formError={formError}
+                  onClose={closeEdit}
+                  onSave={handleSave}
+                  onAssign={() => editing && openAssign(editing.id)}
+                  onChangeManager={() =>
+                    canMutateOrg && editing && setChangeManagerFor(editing)
+                  }
+                  onManageReport={(id) => void openEdit(id)}
+                  onRemoveReport={setRemoveTarget}
+                  canEditPerson={personCanEditDrawer}
+                  graph={orgGraph}
+                  canMutateOrg={canMutateOrg}
+                />
+              </motion.div>
+            )}
+            {assignFor && (
+              <AssignCollaboratorModal
+                open
+                manager={assignFor}
+                people={rows}
+                graph={orgGraph}
+                loading={mutating}
+                onClose={() => setAssignFor(null)}
+                onAssign={handleAssign}
+              />
+            )}
+            {changeManagerFor && (
+              <ChangeManagerModal
+                open
+                person={changeManagerFor}
+                people={rows}
+                graph={orgGraph}
+                loading={mutating}
+                onClose={() => setChangeManagerFor(null)}
+                onConfirm={async (managerId, followOrganigrama) => {
+                  await patchManager(
+                    changeManagerFor.id,
+                    managerId,
+                    followOrganigrama
+                  );
+                  setChangeManagerFor(null);
+                }}
+              />
+            )}
+            {removeTarget && (
+              <div className="fixed inset-0 z-[220] flex items-center justify-center p-4">
                 <button
                   type="button"
-                  onClick={closeEdit}
-                  className="p-2 rounded-xl hover:bg-orbit-interactive text-orbit-muted"
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
+                  className="absolute inset-0 bg-black/70"
+                  onClick={() => setRemoveTarget(null)}
+                />
+                <div className="relative glass-panel max-w-md w-full p-6 space-y-4">
+                  <h2 className="text-lg font-display font-bold text-orbit-text">
+                    Quitar colaborador
+                  </h2>
+                  <p className="text-sm text-orbit-text-secondary">
+                    {removeTarget.name} dejará de estar asignado
+                    {editing?.name ? ` a ${editing.name}` : ''}.
+                  </p>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      className="glass-button-secondary px-4 py-2 text-sm font-bold"
+                      onClick={() => setRemoveTarget(null)}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={mutating}
+                      className="glass-button-primary px-4 py-2 text-sm font-bold disabled:opacity-50"
+                      onClick={async () => {
+                        await patchManager(removeTarget.id, null);
+                        setRemoveTarget(null);
+                      }}
+                    >
+                      {mutating ? 'Quitando…' : 'Quitar'}
+                    </button>
+                  </div>
+                </div>
               </div>
-
-              <form onSubmit={handleSave} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <label className="space-y-1.5 sm:col-span-2">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Nombre completo
-                    </span>
-                    <input
-                      value={editForm.full_name}
-                      onChange={(e) =>
-                        setEditForm((f) => ({ ...f, full_name: e.target.value }))
-                      }
-                      className={selectClass}
-                      required
-                    />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Identificación
-                    </span>
-                    <input
-                      value={editForm.document}
-                      onChange={(e) =>
-                        setEditForm((f) => ({ ...f, document: e.target.value }))
-                      }
-                      className={selectClass}
-                      placeholder={
-                        formMode === 'edit' && editing?.document
-                          ? 'Solo editable si está vacío'
-                          : 'Cédula'
-                      }
-                      required={formMode === 'create'}
-                      disabled={
-                        formMode === 'edit' &&
-                        Boolean(editing?.document?.trim())
-                      }
-                    />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Teléfono
-                    </span>
-                    <input
-                      value={editForm.phone}
-                      onChange={(e) =>
-                        setEditForm((f) => ({ ...f, phone: e.target.value }))
-                      }
-                      className={selectClass}
-                    />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Correo personal
-                    </span>
-                    <input
-                      type="email"
-                      value={editForm.email}
-                      onChange={(e) =>
-                        setEditForm((f) => ({ ...f, email: e.target.value }))
-                      }
-                      className={selectClass}
-                    />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Correo institucional
-                    </span>
-                    <input
-                      type="email"
-                      value={editForm.edu_email}
-                      onChange={(e) =>
-                        setEditForm((f) => ({ ...f, edu_email: e.target.value }))
-                      }
-                      className={selectClass}
-                    />
-                  </label>
-                  <label className="space-y-1.5 sm:col-span-2">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Dirección
-                    </span>
-                    <input
-                      value={editForm.address}
-                      onChange={(e) =>
-                        setEditForm((f) => ({ ...f, address: e.target.value }))
-                      }
-                      className={selectClass}
-                    />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Área
-                    </span>
-                    <select
-                      value={editForm.area_id}
-                      onChange={(e) =>
-                        setEditForm((f) => ({
-                          ...f,
-                          area_id: e.target.value,
-                          school_id: '',
-                          program_id: '',
-                        }))
-                      }
-                      className={selectClass}
-                      required={editableAreaIds != null}
-                    >
-                      {editableAreaIds == null && (
-                        <option value="">Sin área</option>
-                      )}
-                      {areasForEdit.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Escuela
-                    </span>
-                    <select
-                      value={editForm.school_id}
-                      onChange={(e) =>
-                        setEditForm((f) => ({
-                          ...f,
-                          school_id: e.target.value,
-                          program_id: '',
-                        }))
-                      }
-                      className={selectClass}
-                    >
-                      <option value="">Sin escuela</option>
-                      {editSchools.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Programa
-                    </span>
-                    <select
-                      value={editForm.program_id}
-                      onChange={(e) =>
-                        setEditForm((f) => ({
-                          ...f,
-                          program_id: e.target.value,
-                        }))
-                      }
-                      className={selectClass}
-                    >
-                      <option value="">Sin programa</option>
-                      {editPrograms.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Rol
-                    </span>
-                    <select
-                      value={editForm.role_id}
-                      onChange={(e) =>
-                        setEditForm((f) => ({ ...f, role_id: e.target.value }))
-                      }
-                      className={selectClass}
-                    >
-                      <option value="">Sin rol</option>
-                      {rolesForPlanta.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="inline-flex items-start gap-2 text-sm text-orbit-text-secondary pt-6 sm:col-span-2">
-                    <input
-                      type="checkbox"
-                      checked={editForm.is_active}
-                      onChange={(e) =>
-                        setEditForm((f) => ({
-                          ...f,
-                          is_active: e.target.checked,
-                          create_vacancy: e.target.checked
-                            ? f.create_vacancy
-                            : true,
-                        }))
-                      }
-                      className="mt-0.5 rounded border-orbit-border text-orbit-primary focus:ring-violet-400"
-                    />
-                    <span>
-                      <span className="font-semibold">Persona activa</span>
-                      {formMode === 'edit' ? (
-                        <span className="block text-xs text-orbit-muted mt-0.5">
-                          Al desactivar se mueve a Inactivos.
-                        </span>
-                      ) : (
-                        <span className="block text-xs text-orbit-muted mt-0.5">
-                          Por defecto queda en la pestaña de Activos.
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                  {inactivatingActivePerson && skipsAutoVacancy && (
-                    <p className="text-xs text-orbit-muted sm:col-span-2 -mt-2">
-                      Para roles DOCENTE, LIDER o LITE no se crea vacante
-                      automática.
-                    </p>
-                  )}
-                  {inactivatingActivePerson && !skipsAutoVacancy && (
-                    <label className="inline-flex items-start gap-2 text-sm text-orbit-text-secondary sm:col-span-2 -mt-2">
-                      <input
-                        type="checkbox"
-                        checked={editForm.create_vacancy}
-                        onChange={(e) =>
-                          setEditForm((f) => ({
-                            ...f,
-                            create_vacancy: e.target.checked,
-                          }))
-                        }
-                        className="mt-0.5 rounded border-orbit-border text-orbit-primary focus:ring-violet-400"
-                      />
-                      <span>
-                        <span className="font-semibold">
-                          Crear vacante automáticamente
-                        </span>
-                        <span className="block text-xs text-orbit-muted mt-0.5">
-                          Activo por defecto. Desmárcalo si solo quieres
-                          inactivar sin abrir vacante.
-                        </span>
-                      </span>
-                    </label>
-                  )}
-                </div>
-
-                {formError && (
-                  <p className="text-sm text-orbit-danger font-medium">{formError}</p>
-                )}
-
-                <div className="flex justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={closeEdit}
-                    className="glass-button-secondary px-5 py-2.5 text-sm font-bold"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="glass-button-primary px-5 py-2.5 text-sm font-bold disabled:opacity-50"
-                  >
-                    {saving
-                      ? formMode === 'create'
-                        ? 'Creando…'
-                        : 'Guardando…'
-                      : formMode === 'create'
-                        ? 'Crear'
-                        : 'Guardar'}
-                  </button>
-                </div>
-              </form>
-                </motion.div>
-              </motion.div>
             )}
           </AnimatePresence>,
           document.body

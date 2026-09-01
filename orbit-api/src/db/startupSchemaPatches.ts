@@ -87,7 +87,106 @@ export async function runStartupSchemaPatches(): Promise<void> {
     );
   }
 
+  await ensurePersonManagerId();
+  await ensurePlantaOrgOverride();
   await ensureCoreUserIdSequence();
+}
+
+/** Responsable directo: `person.manager_id` → `person.id` (auto-FK). */
+async function ensurePersonManagerId(): Promise<void> {
+  await pool.query(`
+    DO $do$
+    DECLARE
+      sch text;
+    BEGIN
+      FOREACH sch IN ARRAY ARRAY['public', 'core'] LOOP
+        IF to_regclass(sch || '.person') IS NULL THEN
+          CONTINUE;
+        END IF;
+
+        EXECUTE format(
+          'ALTER TABLE %I.person ADD COLUMN IF NOT EXISTS manager_id BIGINT',
+          sch
+        );
+
+        EXECUTE format(
+          'CREATE INDEX IF NOT EXISTS idx_person_manager_id ON %I.person (manager_id)',
+          sch
+        );
+
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint c
+          JOIN pg_class t ON t.oid = c.conrelid
+          JOIN pg_namespace n ON n.oid = t.relnamespace
+          WHERE n.nspname = sch
+            AND t.relname = 'person'
+            AND c.conname = 'person_manager_id_fkey'
+        ) THEN
+          EXECUTE format(
+            'ALTER TABLE %I.person
+               ADD CONSTRAINT person_manager_id_fkey
+               FOREIGN KEY (manager_id) REFERENCES %I.person(id)
+               ON DELETE SET NULL',
+            sch,
+            sch
+          );
+        END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint c
+          JOIN pg_class t ON t.oid = c.conrelid
+          JOIN pg_namespace n ON n.oid = t.relnamespace
+          WHERE n.nspname = sch
+            AND t.relname = 'person'
+            AND c.conname = 'person_manager_not_self'
+        ) THEN
+          EXECUTE format(
+            'ALTER TABLE %I.person
+               ADD CONSTRAINT person_manager_not_self
+               CHECK (manager_id IS NULL OR manager_id <> id)',
+            sch
+          );
+        END IF;
+      END LOOP;
+    END
+    $do$;
+  `);
+}
+
+/** Jerarquía de Planta Activa: overlay local, no escribe Organigrama. */
+async function ensurePlantaOrgOverride(): Promise<void> {
+  await pool.query(`
+    DO $do$
+    DECLARE
+      sch text;
+    BEGIN
+      FOREACH sch IN ARRAY ARRAY['public', 'core'] LOOP
+        IF to_regclass(sch || '.person') IS NULL THEN
+          CONTINUE;
+        END IF;
+
+        EXECUTE format(
+          'CREATE TABLE IF NOT EXISTS %I.planta_org_override (
+             person_id BIGINT PRIMARY KEY REFERENCES %I.person(id) ON DELETE CASCADE,
+             parent_person_id BIGINT REFERENCES %I.person(id) ON DELETE SET NULL,
+             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+             CONSTRAINT planta_org_override_not_self
+               CHECK (parent_person_id IS NULL OR parent_person_id <> person_id)
+           )',
+          sch,
+          sch,
+          sch
+        );
+
+        EXECUTE format(
+          'CREATE INDEX IF NOT EXISTS idx_planta_org_override_parent
+             ON %I.planta_org_override (parent_person_id)',
+          sch
+        );
+      END LOOP;
+    END
+    $do$;
+  `);
 }
 
 /** `core.user.id` es NOT NULL sin DEFAULT ni sequence en algunas bases. */
