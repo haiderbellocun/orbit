@@ -11,6 +11,7 @@ import {
   type NewsScope,
 } from "../lib/newsScope";
 import { sqlPersonIsActive } from "../sql/personActive";
+import { sqlExcludeHarveyArea } from "../sql/excludeHarveyArea";
 import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
 import { sqlExcludeLiteAndDocenteRoles } from "../lib/orbitRoles";
 import {
@@ -163,13 +164,7 @@ async function getActiveTeachersCount(req: Request): Promise<number> {
   }
 
   // Command Center: toda la planta activa excepto Área investigativa (Harvey).
-  conditions.push(`(
-    a.id IS NULL
-    OR (
-      COALESCE(a.name, '') NOT ILIKE '%investigativ%'
-      AND COALESCE(a.name, '') NOT ILIKE '%harvey%'
-    )
-  )`);
+  conditions.push(sqlExcludeHarveyArea("a"));
 
   const result = await pool.query(
     `SELECT COUNT(*)::int AS total

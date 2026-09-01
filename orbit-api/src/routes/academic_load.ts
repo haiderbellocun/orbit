@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db/connection";
 import { sqlPersonIsActive } from "../sql/personActive";
+import { sqlExcludeHarveyFromAcademicLoad } from "../sql/excludeHarveyArea";
 import { schoolScopeFromRequest } from "../middleware/orbitAuth";
 
 const router = Router();
@@ -58,7 +59,10 @@ router.get("/academic-load/filter-options", async (req: Request, res: Response) 
         FROM academic_workload.academic_load al
         INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
         LEFT JOIN program pr ON pr.id = al.program_id
-        WHERE al.period_code IS NOT NULL AND TRIM(al.period_code) <> ''${schoolSql}
+        LEFT JOIN school sch ON sch.id = p.school_id
+        LEFT JOIN area a ON a.id = COALESCE(p.area_id, sch.area_id)
+        WHERE al.period_code IS NOT NULL AND TRIM(al.period_code) <> ''
+          AND ${sqlExcludeHarveyFromAcademicLoad("a")}${schoolSql}
         ORDER BY period DESC
         `,
         params
@@ -71,7 +75,10 @@ router.get("/academic-load/filter-options", async (req: Request, res: Response) 
           ON al.subject_code = cg.subject_code AND al.group_code = cg.group_code
         INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
         LEFT JOIN program pr ON pr.id = al.program_id
-        WHERE cg.block IS NOT NULL AND TRIM(cg.block) <> ''${schoolSql}
+        LEFT JOIN school sch ON sch.id = p.school_id
+        LEFT JOIN area a ON a.id = COALESCE(p.area_id, sch.area_id)
+        WHERE cg.block IS NOT NULL AND TRIM(cg.block) <> ''
+          AND ${sqlExcludeHarveyFromAcademicLoad("a")}${schoolSql}
         ORDER BY block ASC
         `,
         params
@@ -82,7 +89,10 @@ router.get("/academic-load/filter-options", async (req: Request, res: Response) 
         FROM academic_workload.academic_load al
         INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
         LEFT JOIN program pr ON pr.id = al.program_id
-        WHERE COALESCE(NULLIF(TRIM(al.program_name), ''), NULLIF(TRIM(pr.name), ''), NULL) IS NOT NULL${schoolSql}
+        LEFT JOIN school sch ON sch.id = p.school_id
+        LEFT JOIN area a ON a.id = COALESCE(p.area_id, sch.area_id)
+        WHERE COALESCE(NULLIF(TRIM(al.program_name), ''), NULLIF(TRIM(pr.name), ''), NULL) IS NOT NULL
+          AND ${sqlExcludeHarveyFromAcademicLoad("a")}${schoolSql}
         ORDER BY program ASC
         LIMIT 500
         `,
@@ -234,6 +244,9 @@ router.get("/academic-load", async (req: Request, res: Response) => {
       values.push(areaId);
     }
 
+    // Carga académica: no exponer Área investigativa (Harvey / Jarvey).
+    conditions.push(sqlExcludeHarveyFromAcademicLoad("a"));
+
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const query = `
@@ -257,6 +270,7 @@ router.get("/academic-load", async (req: Request, res: Response) => {
       INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
       LEFT JOIN program pr ON pr.id = al.program_id
       LEFT JOIN school sch ON sch.id = p.school_id
+      LEFT JOIN area a ON a.id = COALESCE(p.area_id, sch.area_id)
       LEFT JOIN academic_workload.subject s ON s.subject_code = al.subject_code
       LEFT JOIN academic_workload.class_group cg
         ON cg.subject_code = al.subject_code
@@ -302,7 +316,9 @@ router.get("/academic-load/summary", async (req: Request, res: Response) => {
       FROM academic_workload.academic_load al
       INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
       LEFT JOIN program pr ON pr.id = al.program_id
-      WHERE 1=1${schoolSql}
+      LEFT JOIN school sch ON sch.id = p.school_id
+      LEFT JOIN area a ON a.id = COALESCE(p.area_id, sch.area_id)
+      WHERE ${sqlExcludeHarveyFromAcademicLoad("a")}${schoolSql}
       GROUP BY al.period_code
       ORDER BY al.period_code DESC
     `,
@@ -347,11 +363,14 @@ router.get("/academic-load/teacher/:document", async (req: Request, res: Respons
       FROM academic_workload.academic_load al
       INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
       LEFT JOIN program pr ON pr.id = al.program_id
+      LEFT JOIN school sch ON sch.id = p.school_id
+      LEFT JOIN area a ON a.id = COALESCE(p.area_id, sch.area_id)
       LEFT JOIN academic_workload.subject s ON s.subject_code = al.subject_code
       LEFT JOIN academic_workload.class_group cg
         ON cg.subject_code = al.subject_code
        AND cg.group_code = al.group_code
-      WHERE p.document = $1${schoolSql}
+      WHERE p.document = $1
+        AND ${sqlExcludeHarveyFromAcademicLoad("a")}${schoolSql}
       ORDER BY al.period_code DESC, s.name ASC
       `,
       params

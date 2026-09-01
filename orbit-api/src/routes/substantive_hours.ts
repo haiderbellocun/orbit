@@ -9,6 +9,7 @@ import {
 } from "../lib/substantiveHours";
 import { schoolScopeFromRequest } from "../middleware/orbitAuth";
 import { sqlPersonIsActive } from "../sql/personActive";
+import { sqlExcludeHarveyArea } from "../sql/excludeHarveyArea";
 
 const router = Router();
 
@@ -184,13 +185,7 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
     }
 
     // Balance carga: excluir Área investigativa (Harvey).
-    conditions.push(`(
-      a.id IS NULL
-      OR (
-        COALESCE(a.name, '') NOT ILIKE '%investigativ%'
-        AND COALESCE(a.name, '') NOT ILIKE '%harvey%'
-      )
-    )`);
+    conditions.push(sqlExcludeHarveyArea("a"));
 
     const remainingExpr = `
       (${contractHoursExpr})

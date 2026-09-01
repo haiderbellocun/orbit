@@ -10,9 +10,11 @@ import { Teacher, Vacancy, Coordinator } from '@/src/types';
 import {
   getAcademicLoad,
   getAcademicLoadFilterOptions,
+  getCatalogAreas,
   getCatalogSchools,
   type CatalogSchool,
 } from '@/src/lib/api';
+import { isHarveyAreaName, isHarveyProgramName } from '@/src/lib/harveyArea';
 
 interface AcademicLoadRow {
   id: string;
@@ -167,15 +169,27 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
     let cancelled = false;
     (async () => {
       try {
-        const [opts, s] = await Promise.all([
+        const [opts, a, s] = await Promise.all([
           getAcademicLoadFilterOptions(),
+          getCatalogAreas(),
           getCatalogSchools(),
         ]);
         if (cancelled) return;
         setPeriodOptions(opts.periods);
         setBlockOptions(opts.blocks);
-        setProgramOptions(opts.programs);
-        setSchools(Array.isArray(s) ? s : []);
+        setProgramOptions(opts.programs.filter((p) => !isHarveyProgramName(p)));
+        const harveyAreaIds = new Set(
+          (Array.isArray(a) ? a : [])
+            .filter((area) => isHarveyAreaName(area.name ?? ''))
+            .map((area) => Number(area.id))
+        );
+        setSchools(
+          (Array.isArray(s) ? s : []).filter(
+            (school) =>
+              school.area_id == null ||
+              !harveyAreaIds.has(Number(school.area_id))
+          )
+        );
       } catch {
         /* catálogos opcionales */
       }

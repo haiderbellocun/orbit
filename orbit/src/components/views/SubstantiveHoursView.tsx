@@ -28,6 +28,7 @@ import {
   type CatalogArea,
   type CatalogSchool,
 } from '@/src/lib/api';
+import { isHarveyAreaName } from '@/src/lib/harveyArea';
 
 interface SubstantiveHoursViewProps {
   searchQuery?: string;
@@ -112,17 +113,13 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
           getAcademicLoadSummary(),
         ]);
         if (cancelled) return;
-        const isHarveyArea = (name: string) => {
-          const n = name.toLowerCase();
-          return n.includes('investigativ') || n.includes('harvey');
-        };
         const areasList = (Array.isArray(a) ? a : []).filter(
-          (area) => !isHarveyArea(area.name ?? '')
+          (area) => !isHarveyAreaName(area.name ?? '')
         );
         const harveyAreaIds = new Set(
           (Array.isArray(a) ? a : [])
-            .filter((area) => isHarveyArea(area.name ?? ''))
-            .map((area) => area.id)
+            .filter((area) => isHarveyAreaName(area.name ?? ''))
+            .map((area) => Number(area.id))
         );
         setAreas(areasList);
         setSchools(
