@@ -5,7 +5,7 @@ import {
 } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
 import { getRoleBand, personInitials } from '@/src/lib/roleHierarchy';
-import { schoolAccent } from '@/src/lib/schoolAccent';
+import { schoolAccent, type SchoolAccent } from '@/src/lib/schoolAccent';
 import {
   isBranchNode,
   splitReports,
@@ -22,6 +22,8 @@ type CoordinatorNodeProps = {
   onAssign: (personId: string) => void;
   canMutate?: boolean;
   variant?: 'apex' | 'default';
+  parentAccent?: SchoolAccent | null;
+  siblingIndex?: number;
 };
 
 export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
@@ -33,6 +35,8 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
     onAssign,
     canMutate = true,
     variant = 'default',
+    parentAccent = null,
+    siblingIndex,
   }) => {
     const person = node.person;
     const isApex = variant === 'apex';
@@ -40,13 +44,18 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
     const { nested, collaborators } = splitReports(node);
     const canEdit = person.can_edit === true;
     const canExpand = true;
-    const tone = schoolAccent({
-      schoolId: person.school_id,
-      schoolName: person.school,
-      areaName: person.area,
-      roleName: person.role_name,
-      personName: person.name,
-    });
+    const tone = schoolAccent(
+      {
+        schoolId: person.school_id,
+        schoolName: person.school,
+        programName: person.program,
+        areaName: person.area,
+        roleName: person.role_name,
+        personName: person.name,
+      },
+      parentAccent,
+      siblingIndex
+    );
 
     return (
       <article
@@ -92,21 +101,12 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
             ) : null}
             <p className="mt-1 text-sm text-orbit-text-secondary">
               {person.area || 'Sin área'}
-              {person.school ? (
-                <>
-                  {' · '}
-                  <span
-                    className="inline-flex items-center gap-1 font-semibold"
-                    style={{ color: tone.accent }}
-                  >
-                    <span
-                      className="inline-block h-1.5 w-1.5 rounded-full"
-                      style={{ backgroundColor: tone.accent }}
-                    />
-                    {person.school}
-                  </span>
-                </>
-              ) : null}
+            </p>
+            <p
+              className="mt-0.5 text-sm font-semibold truncate"
+              style={{ color: tone.accent }}
+            >
+              {person.school || person.program || 'Sin programa'}
             </p>
             {person.edu_email?.trim() ? (
               <p className="text-xs text-orbit-muted truncate">
@@ -201,10 +201,11 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
             ) : (
               <div className="relative space-y-3 pl-3 sm:pl-5">
                 <div
-                  className="absolute bottom-2 left-0 top-2 w-px bg-orbit-border"
+                  className="absolute bottom-2 left-0 top-2 w-px"
+                  style={{ backgroundColor: tone.border }}
                   aria-hidden
                 />
-                {nested.map((child) => {
+                {nested.map((child, index) => {
                   const band = getRoleBand({
                     roleName: child.person.role_name,
                     roleCode: child.person.role_code,
@@ -219,6 +220,8 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
                         onManage={onManage}
                         onAssign={onAssign}
                         canMutate={canMutate}
+                        parentAccent={tone}
+                        siblingIndex={index}
                       />
                     );
                   }
@@ -232,6 +235,8 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
                         onManage={onManage}
                         onAssign={onAssign}
                         canMutate={canMutate}
+                        parentAccent={tone}
+                        siblingIndex={index}
                       />
                     );
                   }
@@ -245,6 +250,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
                     <CollaboratorTable
                       nodes={collaborators}
                       onManage={onManage}
+                      parentAccent={tone}
                     />
                   </div>
                 )}

@@ -2,18 +2,20 @@ import React from 'react';
 import { PencilSquareIcon } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
 import type { OrganizationNode } from '@/src/lib/organizationTree';
-import { schoolAccent } from '@/src/lib/schoolAccent';
+import { schoolAccent, type SchoolAccent } from '@/src/lib/schoolAccent';
 
 type CollaboratorTableProps = {
   nodes: OrganizationNode[];
   onManage: (personId: string) => void;
   className?: string;
+  parentAccent?: SchoolAccent | null;
 };
 
 export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
   nodes,
   onManage,
   className,
+  parentAccent = null,
 }) => {
   if (nodes.length === 0) return null;
 
@@ -36,12 +38,17 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
           {nodes.map((node) => {
             const person = node.person;
             const canEdit = person.can_edit !== false;
-            const tone = schoolAccent({
-              schoolId: person.school_id,
-              schoolName: person.school,
-              areaName: person.area,
-              roleName: person.role_name,
-            });
+            const tone = schoolAccent(
+              {
+                schoolId: person.school_id,
+                schoolName: person.school,
+                programName: person.program,
+                areaName: person.area,
+                roleName: person.role_name,
+                personName: person.name,
+              },
+              parentAccent
+            );
             return (
               <tr
                 key={node.nodeKey}

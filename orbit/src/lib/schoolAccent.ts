@@ -7,6 +7,7 @@ export type SchoolAccent = {
 export type AccentSubject = {
   schoolId?: number | null;
   schoolName?: string | null;
+  programName?: string | null;
   areaName?: string | null;
   roleName?: string | null;
   personName?: string | null;
@@ -15,13 +16,16 @@ export type AccentSubject = {
 type CatalogRow = {
   accent: string;
   soft: string;
+  border: string;
   match: (ctx: FoldedCtx) => boolean;
 };
 
 type FoldedCtx = {
   area: string;
   school: string;
+  program: string;
   role: string;
+  unit: string;
   hay: string;
 };
 
@@ -56,139 +60,156 @@ function has(hay: string, ...needles: string[]): boolean {
   return needles.some((n) => hay.includes(n));
 }
 
+function inUnit(c: FoldedCtx, ...needles: string[]): boolean {
+  return has(c.school, ...needles) || has(c.program, ...needles) || has(c.role, ...needles);
+}
+
 function isFabrica(ctx: FoldedCtx): boolean {
   return has(ctx.hay, 'FABRICA');
 }
 
-/**
- * Paleta oficial de áreas / escuelas. El orden importa: lo más específico primero.
- */
-const CATALOG: CatalogRow[] = [
-  {
-    ...tone('#5A8C74', '#F4F7F5'),
-    match: (c) =>
-      has(c.hay, 'DIRECTOR DE OPERACIONES', 'DIRECTOR OPERACIONES') ||
-      has(c.role, 'DIRECTOR DE OPERACIONES') ||
-      has(c.hay, 'IRON'),
-  },
-  {
-    ...tone('#F59E0B', '#FEF3C7'),
-    match: (c) =>
-      has(c.hay, 'COORDINACION GENERAL', 'COORDINADOR GENERAL') ||
-      has(c.hay, 'RAUL VALENCIA') ||
-      (has(c.hay, 'RAUL') && has(c.hay, 'OPERACIONES')),
-  },
-  {
-    ...tone('#EF4444', '#FECACA'),
-    match: (c) => has(c.hay, 'B2B'),
-  },
-  {
-    ...tone('#F472B6', '#FCE7F3'),
-    match: (c) => has(c.hay, 'DESARROLLO PROFESIONAL'),
-  },
-  {
-    ...tone('#719475', '#DCFCE7'),
-    match: (c) =>
-      has(c.school, 'GIF') ||
-      has(c.hay, 'FABRICA GIF') ||
-      (isFabrica(c) && has(c.hay, ' GIF')),
-  },
-  {
-    ...tone('#2563EB', '#DBEAFE'),
-    match: (c) =>
-      has(
-        c.hay,
+function row(
+  accent: string,
+  soft: string,
+  match: CatalogRow['match']
+): CatalogRow {
+  return { ...tone(accent, soft), match };
+}
+
+/** Identidad de la persona (escuela / programa / cargo), no el área del jefe. */
+const BY_UNIT: CatalogRow[] = [
+  row('#F472B6', '#FCE7F3', (c) => inUnit(c, 'DESARROLLO PROFESIONAL')),
+  row('#EF4444', '#FECACA', (c) => inUnit(c, 'B2B')),
+  row('#719475', '#DCFCE7', (c) => inUnit(c, 'GIF')),
+  row(
+    '#2563EB',
+    '#DBEAFE',
+    (c) =>
+      inUnit(
+        c,
         'PRODUCCION AUDIOVISUAL',
-        'AUDIOVISUAL DE CONTENIDO',
+        'AUDIOVISUAL',
         'EDITORES Y PRESENTADORAS',
-        'EDITOR Y PRESENTADORA'
-      ) || has(c.school, 'AUDIOVISUAL', 'PRESENTADORA', 'PRESENTADORAS'),
-  },
-  {
-    ...tone('#2563EB', '#DBEAFE'),
-    match: (c) => {
-      if (has(c.school, 'DESARROLLO PROFESIONAL')) return false;
-      if (has(c.school, 'DESARROLLO') && !has(c.school, 'FABRICA Y DESARROLLO')) {
-        return true;
-      }
-      return (
-        isFabrica(c) &&
-        has(c.hay, 'FABRICA DESARROLLO') &&
-        !has(c.area, 'FABRICA Y DESARROLLO')
-      );
-    },
-  },
-  {
-    ...tone('#AE00EB', '#F3E8FF'),
-    match: (c) =>
-      has(c.school, 'MARKETING') ||
-      (has(c.hay, 'MARKETING') &&
-        isFabrica(c) &&
-        !has(c.hay, 'AUDIOVISUAL') &&
-        !has(c.school, 'DESARROLLO')),
-  },
-  {
-    ...tone('#AE00EB', '#F3E8FF'),
-    match: (c) =>
-      has(c.hay, 'ANALISTA') &&
-      (isFabrica(c) || has(c.school, 'ANALISTA')) &&
-      !has(c.school, 'MARKETING') &&
-      !has(c.school, 'DESARROLLO') &&
-      !has(c.hay, 'AUDIOVISUAL', 'PRESENTADORA'),
-  },
-  {
-    ...tone('#2563EB', '#DBEAFE'),
-    match: (c) =>
-      has(c.school, 'DATOS') ||
-      (isFabrica(c) && has(c.hay, ' DATOS')),
-  },
-  {
-    ...tone('#52BEB5', '#D5FFF8'),
-    match: (c) =>
-      has(c.hay, 'FABRICA Y DESARROLLO', 'FABRICA DE CONTENIDOS', 'FABRICA CONTENIDOS') ||
-      (isFabrica(c) && !has(c.school, 'GIF', 'ANALISTA', 'MARKETING', 'DATOS', 'AUDIOVISUAL', 'DESARROLLO')),
-  },
-  {
-    ...tone('#60D2FF', '#DCF6FF'),
-    match: (c) => has(c.hay, 'OPERACION ACADEMICA'),
-  },
-  {
-    ...tone('#FF4C4C', '#FFE2E2'),
-    match: (c) => has(c.hay, 'ESPECIALIZACION'),
-  },
-  {
-    ...tone('#BEF23C', '#F0FDCE'),
-    match: (c) => has(c.hay, 'PRUEBAS SABER', 'SABER PRO') || has(c.area, 'SABER'),
-  },
-  {
-    ...tone('#4ADE80', '#DCFCE7'),
-    match: (c) => has(c.hay, 'PROYECCION SOCIAL'),
-  },
-  {
-    ...tone('#F43F94', '#FCE7F3'),
-    match: (c) => has(c.area, 'SERVICIO') || c.school === 'SERVICIO',
-  },
-  {
-    ...tone('#BC4C00', '#FFDCBE'),
-    match: (c) => has(c.hay, 'INGENIER'),
-  },
-  {
-    ...tone('#F8B133', '#FFEDC2'),
-    match: (c) => has(c.hay, 'TRANSVERSAL'),
-  },
-  {
-    ...tone('#D7502C', '#FFDACF'),
-    match: (c) => has(c.hay, 'NEGOCIO'),
-  },
-  {
-    ...tone('#533583', '#E1D6FF'),
-    match: (c) => has(c.hay, 'BELLAS ARTES', 'BELLAS ARTE'),
-  },
-  {
-    ...tone('#540077', '#EBCFFF'),
-    match: (c) => has(c.hay, 'TRANSFORMACION EMPRESARIAL'),
-  },
+        'PRESENTADORA',
+        'PRESENTADORAS'
+      )
+  ),
+  row('#2563EB', '#DBEAFE', (c) => {
+    if (inUnit(c, 'DESARROLLO PROFESIONAL')) return false;
+    return inUnit(c, 'DESARROLLO') && !inUnit(c, 'FABRICA Y DESARROLLO');
+  }),
+  row('#AE00EB', '#F3E8FF', (c) => inUnit(c, 'MARKETING')),
+  row(
+    '#AE00EB',
+    '#F3E8FF',
+    (c) => inUnit(c, 'ANALISTA') && !inUnit(c, 'MARKETING', 'DESARROLLO', 'AUDIOVISUAL')
+  ),
+  row('#2563EB', '#DBEAFE', (c) => inUnit(c, 'DATOS')),
+  row('#FF4C4C', '#FFE2E2', (c) => inUnit(c, 'ESPECIALIZACION')),
+  row('#BC4C00', '#FFDCBE', (c) => inUnit(c, 'INGENIER')),
+  row('#F8B133', '#FFEDC2', (c) => inUnit(c, 'TRANSVERSAL')),
+  row('#D7502C', '#FFDACF', (c) => inUnit(c, 'NEGOCIO')),
+  row('#533583', '#E1D6FF', (c) => inUnit(c, 'BELLAS ARTES', 'BELLAS ARTE')),
+  row('#540077', '#EBCFFF', (c) => inUnit(c, 'TRANSFORMACION EMPRESARIAL')),
+  row('#BEF23C', '#F0FDCE', (c) => inUnit(c, 'PRUEBAS SABER', 'SABER PRO')),
+  row('#4ADE80', '#DCFCE7', (c) => inUnit(c, 'PROYECCION SOCIAL')),
+  row('#F43F94', '#FCE7F3', (c) => inUnit(c, 'SERVICIO')),
 ];
+
+const BY_PERSON: CatalogRow[] = [
+  row(
+    '#5A8C74',
+    '#F4F7F5',
+    (c) =>
+      has(c.role, 'DIRECTOR DE OPERACIONES', 'DIRECTOR OPERACIONES') ||
+      has(c.hay, 'IRON')
+  ),
+  row(
+    '#F59E0B',
+    '#FEF3C7',
+    (c) =>
+      has(c.role, 'COORDINACION GENERAL', 'COORDINADOR GENERAL') ||
+      has(c.hay, 'RAUL VALENCIA')
+  ),
+];
+
+const BY_AREA: CatalogRow[] = [
+  row('#52BEB5', '#D5FFF8', (c) =>
+    has(c.area, 'FABRICA Y DESARROLLO', 'FABRICA DE CONTENIDOS', 'FABRICA CONTENIDOS')
+  ),
+  row('#60D2FF', '#DCF6FF', (c) => has(c.area, 'OPERACION ACADEMICA')),
+  row('#BEF23C', '#F0FDCE', (c) => has(c.area, 'SABER', 'PRUEBAS SABER')),
+  row('#4ADE80', '#DCFCE7', (c) => has(c.area, 'PROYECCION SOCIAL')),
+  row('#F43F94', '#FCE7F3', (c) => has(c.area, 'SERVICIO')),
+  row('#EF4444', '#FECACA', (c) => has(c.area, 'B2B')),
+];
+
+const NESTED_ALTERNATES: SchoolAccent[] = [
+  tone('#BC4C00', '#FFDCBE'),
+  tone('#F8B133', '#FFEDC2'),
+  tone('#D7502C', '#FFDACF'),
+  tone('#533583', '#E1D6FF'),
+  tone('#540077', '#EBCFFF'),
+  tone('#AE00EB', '#F3E8FF'),
+  tone('#2563EB', '#DBEAFE'),
+  tone('#52BEB5', '#D5FFF8'),
+  tone('#F97316', '#FFEDD5'),
+  tone('#719475', '#DCFCE7'),
+];
+
+function pick(rows: CatalogRow[], ctx: FoldedCtx): SchoolAccent | null {
+  const hit = rows.find((r) => r.match(ctx));
+  if (!hit) return null;
+  return { accent: hit.accent, soft: hit.soft, border: hit.border };
+}
+
+function resolveAccent(subject: AccentSubject): SchoolAccent {
+  const area = fold(subject.areaName);
+  const school = fold(subject.schoolName);
+  const program = fold(subject.programName);
+  const role = fold(subject.roleName);
+  const personName = fold(subject.personName);
+  const unit = school || program;
+  const hay = [area, school, program, role, personName].filter(Boolean).join(' ');
+  if (!hay) return NEUTRAL;
+  const ctx: FoldedCtx = { area, school, program, role, unit, hay };
+
+  return (
+    pick(BY_PERSON, ctx) ??
+    pick(BY_UNIT, ctx) ??
+    pick(BY_AREA, ctx) ??
+    NEUTRAL
+  );
+}
+
+function hashSeed(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h);
+}
+
+function distinctFromParent(
+  accent: SchoolAccent,
+  parentAccent: SchoolAccent | null | undefined,
+  seed: string,
+  siblingIndex?: number
+): SchoolAccent {
+  if (!parentAccent || accent.accent.toLowerCase() !== parentAccent.accent.toLowerCase()) {
+    return accent;
+  }
+  const start =
+    (siblingIndex ?? hashSeed(seed)) % NESTED_ALTERNATES.length;
+  for (let i = 0; i < NESTED_ALTERNATES.length; i += 1) {
+    const candidate = NESTED_ALTERNATES[(start + i) % NESTED_ALTERNATES.length];
+    if (candidate.accent.toLowerCase() !== parentAccent.accent.toLowerCase()) {
+      return candidate;
+    }
+  }
+  return accent;
+}
 
 export function isOrgApexPerson(person: {
   id?: string | number | null;
@@ -204,15 +225,16 @@ export function isOrgApexPerson(person: {
   );
 }
 
-export function schoolAccent(subject: AccentSubject): SchoolAccent {
-  const area = fold(subject.areaName);
-  const school = fold(subject.schoolName);
-  const role = fold(subject.roleName);
-  const personName = fold(subject.personName);
-  const hay = [area, school, role, personName].filter(Boolean).join(' ');
-  if (!hay) return NEUTRAL;
-  const ctx: FoldedCtx = { area, school, role, hay };
-  const hit = CATALOG.find((row) => row.match(ctx));
-  if (!hit) return NEUTRAL;
-  return { accent: hit.accent, soft: hit.soft, border: hit.border };
+export function schoolAccent(
+  subject: AccentSubject,
+  parentAccent?: SchoolAccent | null,
+  siblingIndex?: number
+): SchoolAccent {
+  const resolved = resolveAccent(subject);
+  return distinctFromParent(
+    resolved,
+    parentAccent,
+    `${subject.schoolName ?? ''}|${subject.programName ?? ''}|${subject.roleName ?? ''}|${subject.personName ?? ''}`,
+    siblingIndex
+  );
 }

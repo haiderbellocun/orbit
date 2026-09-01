@@ -5,7 +5,7 @@ import {
 } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
 import { personInitials } from '@/src/lib/roleHierarchy';
-import { schoolAccent } from '@/src/lib/schoolAccent';
+import { schoolAccent, type SchoolAccent } from '@/src/lib/schoolAccent';
 import {
   isBranchNode,
   splitReports,
@@ -21,21 +21,29 @@ type LeaderNodeProps = {
   onAssign: (personId: string) => void;
   depth?: number;
   canMutate?: boolean;
+  parentAccent?: SchoolAccent | null;
+  siblingIndex?: number;
 };
 
 export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
-  ({ node, expandedIds, onToggle, onManage, onAssign, depth = 1, canMutate = true }) => {
+  ({ node, expandedIds, onToggle, onManage, onAssign, depth = 1, canMutate = true, parentAccent = null, siblingIndex }) => {
     const person = node.person;
     const expanded = expandedIds.has(node.nodeKey);
     const { nested, collaborators } = splitReports(node);
     const canExpand = true;
     const canEdit = person.can_edit === true;
-    const tone = schoolAccent({
-      schoolId: person.school_id,
-      schoolName: person.school,
-      areaName: person.area,
-      roleName: person.role_name,
-    });
+    const tone = schoolAccent(
+      {
+        schoolId: person.school_id,
+        schoolName: person.school,
+        programName: person.program,
+        areaName: person.area,
+        roleName: person.role_name,
+        personName: person.name,
+      },
+      parentAccent,
+      siblingIndex
+    );
 
     return (
       <div className="relative">
@@ -79,23 +87,8 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
                   {node.assignmentLabel}
                 </p>
               ) : null}
-              <p className="text-xs truncate">
-                {person.program ? (
-                  <span className="text-orbit-muted">{person.program}</span>
-                ) : null}
-                {person.school ? (
-                  <span
-                    className="inline-flex items-center gap-1 font-semibold"
-                    style={{ color: tone.accent }}
-                  >
-                    {person.program ? ' · ' : null}
-                    {person.school}
-                  </span>
-                ) : (
-                  !person.program && (
-                    <span className="text-orbit-muted">Sin programa</span>
-                  )
-                )}
+              <p className="text-xs truncate font-semibold" style={{ color: tone.accent }}>
+                {person.school || person.program || 'Sin programa'}
               </p>
               <p className="mt-1 text-xs text-orbit-text-secondary">
                 {node.totalReportsCount} colaborador
@@ -153,7 +146,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
                 </div>
               ) : (
                 <div className="space-y-3 pt-3">
-                  {nested.map((child) =>
+                  {nested.map((child, index) =>
                     isBranchNode(child) ? (
                       <LeaderNode
                         key={child.nodeKey}
@@ -164,12 +157,15 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
                         onAssign={onAssign}
                         depth={depth + 1}
                         canMutate={canMutate}
+                        parentAccent={tone}
+                        siblingIndex={index}
                       />
                     ) : null
                   )}
                   <CollaboratorTable
                     nodes={collaborators}
                     onManage={onManage}
+                    parentAccent={tone}
                   />
                 </div>
               )}
