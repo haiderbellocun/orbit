@@ -5,11 +5,30 @@ import {
 } from "../lib/coreSchema";
 import {
   canEditPlantaArea,
+  canEditPlantaPerson,
   canViewPlantaArea,
+  getPlantaActivaGrant,
+  shouldExcludeLiteAndDocenteFromPlantaView,
   type PlantaActivaGrant,
 } from "../lib/plantaActivaAccess";
-import { shouldSkipVacancyOnInactivation } from "../lib/orbitRoles";
+import {
+  isLiteOrDocenteRole,
+  shouldSkipVacancyOnInactivation,
+  sqlExcludeLiteAndDocenteRoles,
+} from "../lib/orbitRoles";
 import { toUpperAscii } from "../lib/textNormalize";
+import {
+  deletePlantaOrgOverride,
+  listPlantaOrgOverrides,
+  loadOrgChartGraph,
+  serializeOrgChartGraph,
+  upsertPlantaOrgOverride,
+} from "../lib/orgChartGraph";
+import {
+  applyPlantaOrgOverrides,
+  assignmentCreatesOrgCycle,
+  parentByChildFromRelations,
+} from "../lib/orgChartTreeEngine";
 import { validateDocument } from "../lib/dataValidators";
 import {
   orbitPersonIdFromRequest,
@@ -46,21 +65,158 @@ function parsePersonStatusFilter(raw: unknown): "active" | "inactive" {
   return s === "inactive" ? "inactive" : "active";
 }
 
+function parseManagerIdInput(
+  raw: unknown
+): { ok: true; value: number | null } | { ok: false } {
+  if (raw == null || raw === "" || raw === "null") {
+    return { ok: true, value: null };
+  }
+  const n = parsePositiveInt(raw);
+  if (n == null) return { ok: false };
+  return { ok: true, value: n };
+}
+
+const PLANTA_PERSON_SELECT = `
+         p.id,
+         p.document,
+         p.type_document,
+         p.full_name AS name,
+         NULLIF(TRIM(p.email), '') AS email,
+         NULLIF(TRIM(p.edu_email), '') AS edu_email,
+         p.phone,
+         p.address,
+         p.area_id,
+         COALESCE(a.name, '') AS area,
+         p.school_id,
+         COALESCE(s.name, '') AS school,
+         p.program_id,
+         COALESCE(pr.name, '') AS program,
+         r.id AS role_id,
+         COALESCE(r.name, '') AS role_name,
+         COALESCE(r.code, '') AS role_code,
+         p.manager_id,
+         mgr.full_name AS manager_name,
+         COALESCE(mgr_r.name, '') AS manager_role_name,
+         mgr.document AS manager_document`;
+
+function plantaPersonJoins(prefix: string): string {
+  return `FROM ${prefix}person p
+       LEFT JOIN ${prefix}role r ON r.id = p.role_id
+       LEFT JOIN ${prefix}school s ON s.id = p.school_id
+       LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
+       LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
+       LEFT JOIN ${prefix}person mgr ON mgr.id = p.manager_id
+       LEFT JOIN ${prefix}role mgr_r ON mgr_r.id = mgr.role_id`;
+}
+
+async function loadDirectReports(
+  prefix: string,
+  managerId: number,
+  plantaGrant: PlantaActivaGrant | null
+): Promise<Record<string, unknown>[]> {
+  const { rows } = await pool.query(
+    `SELECT
+       p.id,
+       p.document,
+       p.full_name AS name,
+       NULLIF(TRIM(p.edu_email), '') AS edu_email,
+       p.role_id,
+       COALESCE(r.name, '') AS role_name,
+       COALESCE(r.code, '') AS role_code,
+       COALESCE(pr.name, '') AS program,
+       ${sqlPersonStatusText("p")} AS status,
+       ${effectiveAreaSql()} AS effective_area_id
+     FROM ${prefix}person p
+     LEFT JOIN ${prefix}role r ON r.id = p.role_id
+     LEFT JOIN ${prefix}school s ON s.id = p.school_id
+     LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
+     WHERE p.manager_id = $1
+     ORDER BY p.full_name ASC NULLS LAST`,
+    [managerId]
+  );
+  return rows.map((row: Record<string, unknown>) => {
+    const { effective_area_id: ea, role_code: roleCode, ...rest } = row;
+    const effectiveArea = ea != null ? Number(ea) : null;
+    return {
+      ...rest,
+      role_code: roleCode,
+      can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
+        roleId: rest.role_id != null ? Number(rest.role_id) : null,
+        roleName: String(rest.role_name ?? ""),
+        roleCode: String(roleCode ?? ""),
+      }),
+    };
+  });
+}
+
+async function loadAssignedPrograms(
+  prefix: string,
+  personId: number
+): Promise<{ id: number; name: string }[]> {
+  try {
+    const { rows } = await pool.query<{ id: number; name: string }>(
+      `SELECT pr.id, pr.name
+       FROM ${prefix}person_program_assignments ppa
+       CROSS JOIN LATERAL unnest(ppa.programs_id) AS pid
+       INNER JOIN ${prefix}program pr ON pr.id = pid
+       WHERE ppa.person_id = $1
+       ORDER BY pr.name ASC`,
+      [personId]
+    );
+    return rows.map((r) => ({ id: Number(r.id), name: String(r.name ?? "") }));
+  } catch {
+    return [];
+  }
+}
+
 /** Grant de Planta Activa del usuario; `null` = admin sin recorte. */
 function plantaGrantFromRequest(req: Request): PlantaActivaGrant | null {
   const u = req.orbitUser;
   if (!u) return null;
   // Admin allowlist: plantaEditAreaIds === null → sin grant / sin recorte.
   if (u.plantaEditAreaIds == null) return null;
-  return {
-    email: u.email,
-    viewAreaIds: u.plantaViewAreaIds,
-    editAreaIds: u.plantaEditAreaIds,
-  };
+  return (
+    getPlantaActivaGrant(u.email) ?? {
+      email: u.email,
+      viewAreaIds: u.plantaViewAreaIds,
+      editAreaIds: u.plantaEditAreaIds,
+    }
+  );
 }
 
 function effectiveAreaSql(aliasP = "p", aliasS = "s"): string {
   return `COALESCE(${aliasP}.area_id, ${aliasS}.area_id)`;
+}
+
+/** Bloquea asignación de rol LITE/DOCENTE para grants acotados (Sara/Cindy). */
+async function rejectLiteOrDocenteRoleAssignment(
+  plantaGrant: PlantaActivaGrant | null,
+  prefix: string,
+  roleId: number | null,
+  res: Response
+): Promise<boolean> {
+  if (!shouldExcludeLiteAndDocenteFromPlantaView(plantaGrant) || roleId == null) {
+    return true;
+  }
+  const roleRow = await pool.query<{ name: string; code: string }>(
+    `SELECT name, code FROM ${prefix}role WHERE id = $1`,
+    [roleId]
+  );
+  if (roleRow.rows.length === 0) return true;
+  const role = roleRow.rows[0];
+  if (
+    isLiteOrDocenteRole({
+      roleId,
+      roleName: role.name,
+      roleCode: role.code,
+    })
+  ) {
+    res.status(403).json({
+      error: "No puedes asignar roles LITE/LIDER o DOCENTE/DOCENTES",
+    });
+    return false;
+  }
+  return true;
 }
 
 /** GET /planta-activa — personas activas o inactivas según `status`. */
@@ -92,13 +248,16 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
     const withoutDocument = parseBoolFlag(
       req.query.without_document ?? req.query.withoutDocument
     );
+    const includeOrg = parseBoolFlag(
+      req.query.include_org ?? req.query.includeOrg
+    );
 
     const pageNum = Math.max(
       1,
       Number.parseInt(String(req.query.page ?? "1"), 10) || 1
     );
     const limitNum = Math.min(
-      200,
+      5000,
       Math.max(1, Number.parseInt(String(req.query.limit ?? "50"), 10) || 50)
     );
     const offset = (pageNum - 1) * limitNum;
@@ -184,6 +343,10 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
       i++;
     }
 
+    if (shouldExcludeLiteAndDocenteFromPlantaView(plantaGrant)) {
+      conditions.push(sqlExcludeLiteAndDocenteRoles("r"));
+    }
+
     const where = `WHERE ${conditions.join(" AND ")}`;
 
     const result = await pool.query(
@@ -203,6 +366,10 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
          COALESCE(pr.name, '') AS program,
          r.id AS role_id,
          COALESCE(r.name, '') AS role_name,
+         COALESCE(r.code, '') AS role_code,
+         p.manager_id,
+         mgr.full_name AS manager_name,
+         COALESCE(mgr_r.name, '') AS manager_role_name,
          ${sqlPersonStatusText("p")} AS status,
          ${effectiveAreaSql()} AS effective_area_id,
          COUNT(*) OVER() AS total_count
@@ -211,6 +378,8 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
        LEFT JOIN ${prefix}school s ON s.id = p.school_id
        LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
        LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
+       LEFT JOIN ${prefix}person mgr ON mgr.id = p.manager_id
+       LEFT JOIN ${prefix}role mgr_r ON mgr_r.id = mgr.role_id
        ${where}
        ORDER BY p.full_name ASC NULLS LAST
        LIMIT $${i} OFFSET $${i + 1}`,
@@ -226,9 +395,18 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
         ...rest
       } = row;
       const effectiveArea = ea != null ? Number(ea) : null;
+      const roleId = rest.role_id != null ? Number(rest.role_id) : null;
+      const roleName =
+        typeof rest.role_name === "string" ? rest.role_name : null;
+      const roleCode =
+        typeof rest.role_code === "string" ? rest.role_code : null;
       return {
         ...rest,
-        can_edit: canEditPlantaArea(plantaGrant, effectiveArea),
+        can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
+          roleId,
+          roleName,
+          roleCode,
+        }),
       };
     });
 
@@ -240,6 +418,13 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum) || 0,
       },
+      ...(includeOrg
+        ? {
+            org: await loadOrgChartGraph().then((g) =>
+              g ? serializeOrgChartGraph(g) : null
+            ),
+          }
+        : {}),
     });
   } catch (e) {
     console.error("GET /planta-activa failed:", e);
@@ -267,29 +452,10 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
 
     const { rows } = await pool.query(
       `SELECT
-         p.id,
-         p.document,
-         p.type_document,
-         p.full_name AS name,
-         NULLIF(TRIM(p.email), '') AS email,
-         NULLIF(TRIM(p.edu_email), '') AS edu_email,
-         p.phone,
-         p.address,
-         p.area_id,
-         COALESCE(a.name, '') AS area,
-         p.school_id,
-         COALESCE(s.name, '') AS school,
-         p.program_id,
-         COALESCE(pr.name, '') AS program,
-         r.id AS role_id,
-         COALESCE(r.name, '') AS role_name,
+         ${PLANTA_PERSON_SELECT},
          ${sqlPersonStatusText("p")} AS status,
          ${effectiveAreaSql()} AS effective_area_id
-       FROM ${prefix}person p
-       LEFT JOIN ${prefix}role r ON r.id = p.role_id
-       LEFT JOIN ${prefix}school s ON s.id = p.school_id
-       LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
-       LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
+       ${plantaPersonJoins(prefix)}
        WHERE p.id = $1`,
       [id]
     );
@@ -315,10 +481,31 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
       return;
     }
 
-    const { effective_area_id: _ea, ...rest } = row;
+    const roleId = row.role_id != null ? Number(row.role_id) : null;
+    const roleName = String(row.role_name ?? "");
+    if (
+      shouldExcludeLiteAndDocenteFromPlantaView(plantaGrant) &&
+      isLiteOrDocenteRole({ roleId, roleName })
+    ) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const { effective_area_id: _ea, role_code: roleCode, ...rest } = row;
+    const [directReports, assignedPrograms] = await Promise.all([
+      loadDirectReports(prefix, id, plantaGrant),
+      loadAssignedPrograms(prefix, id),
+    ]);
     res.json({
       ...rest,
-      can_edit: canEditPlantaArea(plantaGrant, effectiveArea),
+      role_code: roleCode,
+      can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
+        roleId,
+        roleName,
+        roleCode: String(roleCode ?? ""),
+      }),
+      direct_reports: directReports,
+      assigned_programs: assignedPrograms,
     });
   } catch (e) {
     console.error("GET /planta-activa/:id failed:", e);
@@ -332,30 +519,10 @@ async function loadPlantaPersonDetail(
 ): Promise<Record<string, unknown> | null> {
   const detail = await pool.query(
     `SELECT
-       p.id,
-       p.document,
-       p.type_document,
-       p.full_name AS name,
-       NULLIF(TRIM(p.email), '') AS email,
-       NULLIF(TRIM(p.edu_email), '') AS edu_email,
-       p.phone,
-       p.address,
-       p.area_id,
-       COALESCE(a.name, '') AS area,
-       p.school_id,
-       COALESCE(s.name, '') AS school,
-       p.program_id,
-       COALESCE(pr.name, '') AS program,
-       r.id AS role_id,
-       COALESCE(r.name, '') AS role_name,
-       COALESCE(r.code, '') AS role_code,
+       ${PLANTA_PERSON_SELECT},
        ${sqlPersonStatusText("p")} AS status,
        ${effectiveAreaSql()} AS effective_area_id
-     FROM ${prefix}person p
-     LEFT JOIN ${prefix}role r ON r.id = p.role_id
-     LEFT JOIN ${prefix}school s ON s.id = p.school_id
-     LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
-     LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
+     ${plantaPersonJoins(prefix)}
      WHERE p.id = $1`,
     [id]
   );
@@ -498,6 +665,16 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
         res.status(400).json({ error: "role_id no encontrado" });
         return;
       }
+      if (
+        !(await rejectLiteOrDocenteRoleAssignment(
+          plantaGrant,
+          prefix,
+          roleId,
+          res
+        ))
+      ) {
+        return;
+      }
     }
 
     if (schoolId != null) {
@@ -592,10 +769,14 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
       personRow.effective_area_id != null
         ? Number(personRow.effective_area_id)
         : null;
-    const { effective_area_id: _ea, role_code: _rc, ...rest } = personRow;
+    const { effective_area_id: _ea, role_code: roleCode, ...rest } = personRow;
     res.status(201).json({
       ...rest,
-      can_edit: canEditPlantaArea(plantaGrant, effectiveArea),
+      can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
+        roleId: rest.role_id != null ? Number(rest.role_id) : null,
+        roleName: String(rest.role_name ?? ""),
+        roleCode: String(roleCode ?? ""),
+      }),
     });
   } catch (e: unknown) {
     const err = e as { code?: string };
@@ -609,6 +790,156 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+/**
+ * PATCH /planta-activa/:id/org-parent — asigna/quita responsable en Planta Activa.
+ * No escribe Organigrama. Overlay en `planta_org_override`.
+ */
+router.patch(
+  "/planta-activa/:id/org-parent",
+  async (req: Request, res: Response) => {
+    try {
+      const childId = parsePositiveInt(req.params.id);
+      if (childId == null) {
+        res.status(400).json({ error: "Invalid id" });
+        return;
+      }
+      const graph = await loadOrgChartGraph();
+      if (graph == null) {
+        res.status(503).json({ error: "Organigrama no está disponible" });
+        return;
+      }
+
+      const mode = await resolveCoreSchemaMode();
+      if (mode == null) {
+        res.status(503).json({ error: "CORE catalog is not available" });
+        return;
+      }
+      const prefix = mode === "core" ? "core." : "";
+      const plantaGrant = plantaGrantFromRequest(req);
+      const schoolScope = schoolScopeFromRequest(req);
+
+      const existing = await pool.query(
+        `SELECT
+           p.id,
+           p.school_id,
+           p.role_id,
+           ${effectiveAreaSql()} AS effective_area_id,
+           COALESCE(r.name, '') AS role_name,
+           COALESCE(r.code, '') AS role_code
+         FROM ${prefix}person p
+         LEFT JOIN ${prefix}school s ON s.id = p.school_id
+         LEFT JOIN ${prefix}role r ON r.id = p.role_id
+         WHERE p.id = $1`,
+        [childId]
+      );
+      if (existing.rows.length === 0) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const current = existing.rows[0] as {
+        school_id: number | null;
+        role_id: number | null;
+        effective_area_id: number | null;
+        role_name: string;
+        role_code: string;
+      };
+      if (
+        schoolScope != null &&
+        (current.school_id == null ||
+          Number(current.school_id) !== schoolScope.schoolId)
+      ) {
+        res.status(403).json({ error: "No tienes permiso para este recurso" });
+        return;
+      }
+      const currentArea =
+        current.effective_area_id != null
+          ? Number(current.effective_area_id)
+          : null;
+      if (
+        !canEditPlantaPerson(plantaGrant, currentArea, {
+          roleId: current.role_id,
+          roleName: current.role_name,
+          roleCode: current.role_code,
+        })
+      ) {
+        res.status(403).json({
+          error: "No tienes permiso para editar la jerarquía de esta persona",
+        });
+        return;
+      }
+
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const followOrganigrama = parseBoolFlag(
+        b.follow_organigrama ?? b.followOrganigrama
+      );
+
+      if (followOrganigrama) {
+        await deletePlantaOrgOverride(childId);
+        res.json({
+          ok: true,
+          child_person_id: childId,
+          parent_person_id: null,
+          follow_organigrama: true,
+        });
+        return;
+      }
+
+      const parsed = parseManagerIdInput(b.parent_person_id ?? b.parentPersonId);
+      if (!parsed.ok) {
+        res.status(400).json({ error: "parent_person_id inválido" });
+        return;
+      }
+      const parentId = parsed.value;
+      if (parentId === childId) {
+        res.status(400).json({
+          error: "Una persona no puede ser responsable de sí misma",
+        });
+        return;
+      }
+
+      if (parentId != null) {
+        const parentOk = await pool.query(
+          `SELECT id FROM ${prefix}person WHERE id = $1`,
+          [parentId]
+        );
+        if (parentOk.rows.length === 0) {
+          res.status(400).json({ error: "El responsable indicado no existe" });
+          return;
+        }
+        const nextOverrides = [
+          ...graph.plantaOverrides.filter((o) => o.person_id !== childId),
+          { person_id: childId, parent_person_id: parentId },
+        ];
+        const effective = applyPlantaOrgOverrides(
+          graph.relations,
+          graph.positionChildren,
+          nextOverrides
+        );
+        const parentByChild = parentByChildFromRelations(effective.relations);
+        if (assignmentCreatesOrgCycle(childId, parentId, parentByChild)) {
+          res.status(400).json({
+            error: "La asignación crearía una relación jerárquica circular",
+          });
+          return;
+        }
+      }
+
+      await upsertPlantaOrgOverride(childId, parentId);
+      const overrides = await listPlantaOrgOverrides();
+      res.json({
+        ok: true,
+        child_person_id: childId,
+        parent_person_id: parentId,
+        follow_organigrama: false,
+        planta_overrides: overrides.filter((o) => o.person_id === childId),
+      });
+    } catch (e) {
+      console.error("PATCH /planta-activa/:id/org-parent failed:", e);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 /** PATCH /planta-activa/:id — datos generales. */
 router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
@@ -675,7 +1006,13 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
       current.effective_area_id != null
         ? Number(current.effective_area_id)
         : null;
-    if (!canEditPlantaArea(plantaGrant, currentArea)) {
+    if (
+      !canEditPlantaPerson(plantaGrant, currentArea, {
+        roleId: current.role_id,
+        roleName: current.role_name,
+        roleCode: current.role_code,
+      })
+    ) {
       res.status(403).json({
         error: "No tienes permiso para editar personal de esta área",
       });
@@ -778,6 +1115,18 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
           return;
         }
       }
+      if (col === "role_id" && n != null) {
+        if (
+          !(await rejectLiteOrDocenteRoleAssignment(
+            plantaGrant,
+            prefix,
+            n,
+            res
+          ))
+        ) {
+          return;
+        }
+      }
       sets.push(`${col} = $${i}`);
       values.push(n);
       i++;
@@ -809,30 +1158,10 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
 
     const detail = await pool.query(
       `SELECT
-         p.id,
-         p.document,
-         p.type_document,
-         p.full_name AS name,
-         NULLIF(TRIM(p.email), '') AS email,
-         NULLIF(TRIM(p.edu_email), '') AS edu_email,
-         p.phone,
-         p.address,
-         p.area_id,
-         COALESCE(a.name, '') AS area,
-         p.school_id,
-         COALESCE(s.name, '') AS school,
-         p.program_id,
-         COALESCE(pr.name, '') AS program,
-         r.id AS role_id,
-         COALESCE(r.name, '') AS role_name,
-         COALESCE(r.code, '') AS role_code,
+         ${PLANTA_PERSON_SELECT},
          ${sqlPersonStatusText("p")} AS status,
          ${effectiveAreaSql()} AS effective_area_id
-       FROM ${prefix}person p
-       LEFT JOIN ${prefix}role r ON r.id = p.role_id
-       LEFT JOIN ${prefix}school s ON s.id = p.school_id
-       LEFT JOIN ${prefix}program pr ON pr.id = p.program_id
-       LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
+       ${plantaPersonJoins(prefix)}
        WHERE p.id = $1`,
       [id]
     );
@@ -870,12 +1199,20 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
       });
     }
 
-    const { effective_area_id: _ea, role_code: _rc, ...rest } = personRow;
+    const { effective_area_id: _ea, role_code: roleCode, ...rest } = personRow;
     res.json({
       ...rest,
+      role_code: roleCode,
       created_vacancy_id: createdVacancyId,
     });
-  } catch (e) {
+  } catch (e: unknown) {
+    const err = e as { code?: string };
+    if (err?.code === "23514") {
+      res.status(400).json({
+        error: "Una persona no puede ser responsable de sí misma",
+      });
+      return;
+    }
     console.error("PATCH /planta-activa/:id failed:", e);
     res.status(500).json({ error: "Internal server error" });
   }

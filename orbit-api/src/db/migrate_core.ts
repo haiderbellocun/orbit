@@ -107,6 +107,7 @@ export async function migrateCore(): Promise<void> {
       hierarchy_id INTEGER REFERENCES hierarchy(id),
       hierarchy_temp_id INTEGER,
       role_id INTEGER REFERENCES role(id),
+      manager_id INTEGER REFERENCES person(id) ON DELETE SET NULL,
       gender VARCHAR(20),
       born_date DATE,
       born_city VARCHAR(150),
@@ -162,6 +163,9 @@ export async function migrateCore(): Promise<void> {
     -- person.is_active: inactivos no aparecen en listados (LITE / coordinador / docente)
     ALTER TABLE person ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
     UPDATE person SET is_active = true WHERE is_active IS NULL;
+
+    ALTER TABLE person ADD COLUMN IF NOT EXISTS manager_id INTEGER REFERENCES person(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_person_manager_id ON person(manager_id);
 
     -- Login usa role.code/name: filas con code vacío fallan otras integraciones; rellenar desde name
     UPDATE role

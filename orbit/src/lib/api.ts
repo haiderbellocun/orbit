@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   Vacancy,
   VacancyDetail,
   VacancyOperationNoteEntry,
@@ -44,6 +44,7 @@ export type PaginationMeta = {
 export type PaginatedResponse<T = unknown> = {
   data: T[];
   pagination: PaginationMeta;
+  org?: unknown;
 };
 
 /** Listados / lecturas habituales */
@@ -889,6 +890,7 @@ export type PlantaActivaFilters = {
   status?: "active" | "inactive";
   page?: number;
   limit?: number;
+  include_org?: boolean;
 };
 
 export type UpdatePlantaPersonPayload = {
@@ -945,6 +947,7 @@ export async function getPlantaActiva(
   if (params?.status) url.searchParams.set("status", params.status);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
+  if (params?.include_org) url.searchParams.set("include_org", "1");
   const response = await authFetch(url.toString(), { headers: jsonHeaders });
   return handleJson(response);
 }
@@ -976,6 +979,26 @@ export async function updatePlantaPerson(
     headers: jsonHeaders,
     body: JSON.stringify(data),
   });
+  return handleJson(response);
+}
+
+export async function updatePlantaOrgParent(
+  id: number,
+  parentPersonId: number | null,
+  opts?: { followOrganigrama?: boolean }
+): Promise<unknown> {
+  const response = await authFetch(
+    `${BASE_URL}/planta-activa/${id}/org-parent`,
+    {
+      method: "PATCH",
+      headers: jsonHeaders,
+      body: JSON.stringify(
+        opts?.followOrganigrama
+          ? { follow_organigrama: true }
+          : { parent_person_id: parentPersonId }
+      ),
+    }
+  );
   return handleJson(response);
 }
 
