@@ -77,7 +77,7 @@ function mapRow(r: Record<string, unknown>): AcademicLoadRow {
     .toUpperCase();
   let mod = modRaw;
   if (/^P\b|^PRES/i.test(modNorm)) mod = 'P';
-  else if (/^V\b|^VIR/i.test(modNorm)) mod = 'V';
+  else if (/^V\b|^VIR|^T\b|^VIRTUAL$/i.test(modNorm)) mod = 'V';
   const modalityLabel =
     mod === 'P' ? 'Presencial' : mod === 'V' ? 'Virtual' : modRaw || '—';
   const creditsVal = r.credits;

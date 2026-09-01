@@ -2,12 +2,12 @@
  * Importa carga academica scrapeada (JSON ACA) hacia academic_workload.*.
  *
  * Flujo:
- *   1) Resuelve personas + contexto de horas (contrato / prep / sustantivas)
+ *   1) Resuelve personas existentes (NO crea docentes)
  *   2) Valida: cupo, cruces de horario, tope vs balance de horas
  *   3) DELETE academic_workload.academic_load (carga actual)
  *   4) Limpia class_group / subject huerfanos
  *   5) Por cada assignment: subject (con hours_quantity) -> class_group -> academic_load
- *   6) Escribe JSON de progreso/resultados (incl. validation)
+ *   6) Excel + correo de data no congruente (docentes sin match en core.person)
  *
  * Uso (desde orbit-api):
  *   node scripts/import-academic-workload-from-json.mjs
@@ -15,6 +15,7 @@
  *   node scripts/import-academic-workload-from-json.mjs --dry-run
  *   node scripts/import-academic-workload-from-json.mjs --validate-only
  *   node scripts/import-academic-workload-from-json.mjs --fail-on-validation
+ *   node scripts/import-academic-workload-from-json.mjs --no-email
  */
 import fs from "fs";
 import path from "path";
@@ -27,6 +28,14 @@ import {
   runImportValidations,
   summarizeValidationIssues,
 } from "./lib/academicLoadImportValidation.mjs";
+import {
+  classifyFromAssignment,
+  resolveStoredModality,
+} from "./lib/acaBusinessRules.mjs";
+import {
+  sendIncongruentReportEmail,
+  writeIncongruentExcel,
+} from "./lib/incongruentWorkloadReport.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../.env"), override: true });
@@ -44,6 +53,7 @@ function argValue(flag) {
 const DRY_RUN = args.includes("--dry-run");
 const VALIDATE_ONLY = args.includes("--validate-only");
 const FAIL_ON_VALIDATION = args.includes("--fail-on-validation");
+const NO_EMAIL = args.includes("--no-email");
 const SOURCE = argValue("--source") || DEFAULT_SOURCE;
 const PROGRESS_PATH =
   argValue("--progress") ||
@@ -503,6 +513,7 @@ function buildNormalizedRows(assignments, personMaps) {
     if (!personId) {
       skipped.push({
         index: i,
+        reason: "docente_no_existe_en_orbit",
         document: doc || null,
         email: email || null,
         name: a.teacher?.name ?? null,
@@ -562,7 +573,30 @@ async function main() {
     throw new Error(`No existe source JSON: ${SOURCE}`);
   }
   const payload = JSON.parse(fs.readFileSync(SOURCE, "utf8"));
-  const assignments = Array.isArray(payload.assignments) ? payload.assignments : [];
+  const rawAssignments = Array.isArray(payload.assignments)
+    ? payload.assignments
+    : [];
+  const classifiedOut = [];
+  const assignments = [];
+  for (const a of rawAssignments) {
+    const classified = classifyFromAssignment(a);
+    if (!classified.includeInCarga) {
+      classifiedOut.push({
+        ...a,
+        classification: {
+          activity_kind: classified.activityKind,
+          include_in_carga: false,
+          tags: classified.tags,
+          classification_rule: classified.classificationRule,
+          classification_rules: classified.classificationRules,
+          source_modality: classified.sourceModality,
+          normalized_modality: classified.normalizedModality,
+        },
+      });
+      continue;
+    }
+    assignments.push(a);
+  }
 
   const progress = {
     started_at: new Date().toISOString(),
@@ -575,8 +609,12 @@ async function main() {
     source_meta: {
       generated_at: payload.generated_at ?? null,
       load_type: payload.load_type ?? null,
-      periods: (payload.periods || []).map((p) => p.period_code),
+      rules_version: payload.rules_version ?? null,
+      periods: (payload.periods || []).map((p) => p.period_code || p),
       total_assignments: assignments.length,
+      total_assignments_raw: rawAssignments.length,
+      classified_out: classifiedOut.length,
+      create_teachers: false,
     },
     deleted: {
       academic_load: 0,
@@ -606,17 +644,24 @@ async function main() {
       issues: [],
     },
     skipped_missing_person: [],
+    classified_out: [],
+    incongruent_report: null,
+    email: null,
     errors: [],
     by_period: {},
   };
 
   writeProgress(progress);
   console.log(`Source: ${SOURCE}`);
-  console.log(`Assignments: ${assignments.length}`);
+  console.log(
+    `Assignments carga: ${assignments.length} | fuera de carga: ${classifiedOut.length} | raw: ${rawAssignments.length}`
+  );
   console.log(`Progress: ${PROGRESS_PATH}`);
   console.log(`Dry-run: ${DRY_RUN}`);
   console.log(`Validate-only: ${VALIDATE_ONLY}`);
   console.log(`Fail-on-validation: ${FAIL_ON_VALIDATION}`);
+  console.log(`Create teachers: false`);
+  console.log(`Email report: ${NO_EMAIL ? "off" : "on"}`);
 
   const client = await pool.connect();
   try {
@@ -652,7 +697,14 @@ async function main() {
     );
     progress.totals.skipped_missing_person = skipped.length;
     progress.totals.matched_by_email = matchedByEmail;
-    progress.skipped_missing_person = skipped.slice(0, 500);
+    progress.skipped_missing_person = skipped;
+    progress.classified_out = classifiedOut.map((a) => ({
+      document: a.person_document || a.teacher?.document || null,
+      name: a.teacher?.name ?? null,
+      period: a.period_code,
+      subject: a.subject?.subject_code || null,
+      activity_kind: a.classification?.activity_kind,
+    }));
     progress.errors.push(...hardErrors);
     progress.totals.errors += hardErrors.length;
     progress.totals.validated_rows = rows.length;
@@ -673,9 +725,64 @@ async function main() {
     writeProgress(progress);
     console.log("Validation summary:", progress.validation.summary);
 
+    async function emitIncongruentArtifacts() {
+      const excelPath = path.join(
+        path.dirname(SOURCE),
+        `data_no_congruente__${stamp()}.xlsx`
+      );
+      try {
+        const summary = await writeIncongruentExcel({
+          outputPath: excelPath,
+          progress,
+          payload,
+          skipped,
+          hardErrors,
+          classifiedOut,
+        });
+        progress.incongruent_report = {
+          file: excelPath,
+          people_count: summary.peopleCount,
+          skipped_count: summary.skippedCount,
+          excluded_count: summary.excludedCount,
+        };
+        console.log(`Reporte incongruente: ${excelPath}`);
+        console.log(
+          `  docentes sin match=${summary.peopleCount} | filas omitidas=${summary.skippedCount} | fuera de carga=${summary.excludedCount}`
+        );
+
+        if (NO_EMAIL) {
+          progress.email = { sent: false, reason: "no_email_flag" };
+        } else {
+          try {
+            progress.email = await sendIncongruentReportEmail({
+              excelPath,
+              summary: { ...summary, ok: progress.totals.ok },
+              dryRun: DRY_RUN,
+            });
+            if (progress.email?.sent) {
+              console.log(
+                `Correo incongruente enviado a: ${(progress.email.to || []).join(", ")}`
+              );
+            } else {
+              console.log(
+                `Correo incongruente no enviado: ${progress.email?.reason}`
+              );
+            }
+          } catch (err) {
+            progress.email = { sent: false, reason: String(err?.message || err) };
+            console.error("No se pudo enviar el correo de incongruencias:", err);
+          }
+        }
+      } catch (err) {
+        progress.incongruent_report = { error: String(err?.message || err) };
+        console.error("No se pudo generar Excel de incongruencias:", err);
+      }
+      writeProgress(progress);
+    }
+
     if (FAIL_ON_VALIDATION && issues.length > 0) {
       progress.finished_at = new Date().toISOString();
-      writeProgress(progress);
+      await emitIncongruentArtifacts();
       console.error(
         `Abortado por --fail-on-validation (${issues.length} hallazgo(s)).`
       );
@@ -686,7 +793,7 @@ async function main() {
     if (VALIDATE_ONLY) {
       progress.finished_at = new Date().toISOString();
       progress.counts_after = progress.counts_before;
-      writeProgress(progress);
+      await emitIncongruentArtifacts();
       console.log("=".repeat(60));
       console.log("VALIDATE-ONLY DONE");
       console.log("Totals:", progress.totals);
@@ -754,7 +861,7 @@ async function main() {
             capacity: row.capacity,
             block: row.block,
             scheduleTime: scheduleText(a.class_group),
-            modality: a.class_group?.modality ?? null,
+            modality: resolveStoredModality(a),
           });
           if (g.isNew) progress.upserts.class_group_new += 1;
           else progress.upserts.class_group_existing += 1;
@@ -812,16 +919,19 @@ async function main() {
     `);
     progress.counts_after = after.rows[0];
     progress.finished_at = new Date().toISOString();
-    writeProgress(progress);
+    await emitIncongruentArtifacts();
 
     console.log("=".repeat(60));
-    console.log("DONE");
+    console.log("DONE (sin crear docentes)");
     console.log("Deleted:", progress.deleted);
     console.log("Totals:", progress.totals);
     console.log("Upserts:", progress.upserts);
     console.log("Validation:", progress.validation.summary);
     console.log("Counts after:", progress.counts_after);
     console.log("Progress JSON:", PROGRESS_PATH);
+    if (progress.incongruent_report?.file) {
+      console.log("Reporte incongruente:", progress.incongruent_report.file);
+    }
   } finally {
     client.release();
     await pool.end();

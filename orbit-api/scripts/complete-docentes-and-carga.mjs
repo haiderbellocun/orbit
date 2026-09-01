@@ -1,4 +1,12 @@
 /**
+ * NO USAR EN EL FLUJO REGULAR DE CARGA ACADEMICA.
+ *
+ * A partir de la reorganización ACA 2026, ORBIT ya no crea docentes:
+ * el import solo carga asignaciones cuyo documento/email existe en core.person
+ * y genera un reporte de data no congruente.
+ *
+ * Este script queda como herramienta puntual / histórica.
+ *
  * Completa al 100% el match BASE docente + carga academica:
  * 1) Crea en core.person los NUEVOS (y omitidos de carga) que faltan
  * 2) Reimporta solo las asignaciones previamente omitidas

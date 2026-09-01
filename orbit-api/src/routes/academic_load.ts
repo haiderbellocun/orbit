@@ -36,8 +36,8 @@ function normalizeModalityQueryParam(value: string): {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+  if (ascii === "v" || ascii === "t") return { code: "V", literal: null };
   if (ascii === "p") return { code: "P", literal: null };
-  if (ascii === "v") return { code: "V", literal: null };
   if (ascii.startsWith("pres")) return { code: "P", literal: null };
   if (ascii.startsWith("vir")) return { code: "V", literal: null };
   return { code: null, literal: trimmed };
@@ -162,12 +162,16 @@ router.get("/academic-load", async (req: Request, res: Response) => {
     }
     if (modality) {
       const { code, literal } = normalizeModalityQueryParam(modality);
-      if (code) {
+      if (code === "V") {
         conditions.push(
-          `(UPPER(TRIM(cg.modality)) = $${i} OR LOWER(TRIM(cg.modality)) LIKE $${i + 1})`
+          `(UPPER(TRIM(cg.modality)) IN ('V', 'T', 'VIRTUAL')
+            OR LOWER(TRIM(cg.modality)) LIKE 'vir%')`
         );
-        values.push(code, `${code === "P" ? "pres" : "vir"}%`);
-        i += 2;
+      } else if (code === "P") {
+        conditions.push(
+          `(UPPER(TRIM(cg.modality)) IN ('P', 'PRESENCIAL')
+            OR LOWER(TRIM(cg.modality)) LIKE 'pres%')`
+        );
       } else if (literal) {
         conditions.push(`cg.modality ILIKE $${i++}`);
         values.push(`%${literal}%`);
