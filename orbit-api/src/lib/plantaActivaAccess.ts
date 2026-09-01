@@ -40,6 +40,15 @@ const SARA_LEVEL_EXTRAS = [
 const SARA_LEVEL_VIEW_AREA_IDS = [2, 3, 4, 5, 6, 7, 8];
 const SARA_LEVEL_EDIT_AREA_IDS = SARA_LEVEL_VIEW_AREA_IDS;
 
+/** OPERACION ACADEMICA (1) + ESPECIALIZACIONES (9). Sin recorte de LITE/DOCENTE. */
+const RAUL_ANALYST_AREA_IDS = [1, 9];
+const RAUL_ANALYST_EXTRAS = ["view:academic_load", "view:news"] as const;
+const RAUL_ANALYST_GRANT = {
+  viewAreaIds: RAUL_ANALYST_AREA_IDS,
+  editAreaIds: RAUL_ANALYST_AREA_IDS,
+  extraCapabilities: RAUL_ANALYST_EXTRAS,
+} as const;
+
 const GRANTS: readonly PlantaActivaGrant[] = [
   {
     email: "sara_murillofo@cun.edu.co",
@@ -66,6 +75,22 @@ const GRANTS: readonly PlantaActivaGrant[] = [
     viewAreaIds: [9],
     editAreaIds: [9],
     extraCapabilities: ["view:academic_load", "view:news"],
+  },
+  {
+    email: "katherinn_devia@cun.edu.co",
+    ...RAUL_ANALYST_GRANT,
+  },
+  {
+    email: "leidy_diazgranados@cun.edu.co",
+    ...RAUL_ANALYST_GRANT,
+  },
+  {
+    email: "lidy_alonso@cun.edu.co",
+    ...RAUL_ANALYST_GRANT,
+  },
+  {
+    email: "monica_pachon@cun.edu.co",
+    ...RAUL_ANALYST_GRANT,
   },
 ];
 

@@ -20,6 +20,12 @@ const SARA_LEVEL_ACCESS: PlantaActivaAccess = {
   excludeLiteAndDocenteRoles: true,
 };
 
+/** OPERACION ACADEMICA (1) + ESPECIALIZACIONES (9). Sin recorte de LITE/DOCENTE. */
+const RAUL_ANALYST_ACCESS: PlantaActivaAccess = {
+  viewAreaIds: [1, 9],
+  editAreaIds: [1, 9],
+};
+
 const GRANTS: Readonly<Record<string, PlantaActivaAccess>> = {
   "sara_murillofo@cun.edu.co": SARA_LEVEL_ACCESS,
   "cindy_russi@cun.edu.co": SARA_LEVEL_ACCESS,
@@ -31,6 +37,10 @@ const GRANTS: Readonly<Record<string, PlantaActivaAccess>> = {
     viewAreaIds: [9],
     editAreaIds: [9],
   },
+  "katherinn_devia@cun.edu.co": RAUL_ANALYST_ACCESS,
+  "leidy_diazgranados@cun.edu.co": RAUL_ANALYST_ACCESS,
+  "lidy_alonso@cun.edu.co": RAUL_ANALYST_ACCESS,
+  "monica_pachon@cun.edu.co": RAUL_ANALYST_ACCESS,
 };
 
 function normEmail(email: string | null | undefined): string {
