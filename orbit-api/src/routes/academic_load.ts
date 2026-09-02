@@ -303,9 +303,22 @@ router.get("/academic-load", async (req: Request, res: Response) => {
         COALESCE(al.program_name, pr.name) AS program,
         s.name AS subject_name,
         s.credits_quantity AS credits,
+        s.hours_quantity AS subject_hours,
         al.enrolled_quantity,
+        al.semester,
+        al.substantive_hours_quantity,
         cg.modality AS modality,
         cg.block AS block,
+        cg.capacity AS group_capacity,
+        cg.start_date AS group_start_date,
+        cg.end_date AS group_end_date,
+        cg.start_time AS group_start_time,
+        cg.end_time AS group_end_time,
+        cg.classroom_name,
+        cg.schedule_type,
+        camp.name AS campus_name,
+        city.name AS city_name,
+        reg.name AS region_name,
         al.period_code AS period,
         'projection'::text AS type,
         al.subject_code,
@@ -322,6 +335,9 @@ router.get("/academic-load", async (req: Request, res: Response) => {
       LEFT JOIN academic_workload.class_group cg
         ON cg.subject_code = al.subject_code
        AND cg.group_code = al.group_code
+      LEFT JOIN campus camp ON camp.id = al.campus_id
+      LEFT JOIN city ON city.id = al.city_id
+      LEFT JOIN region reg ON reg.id = al.region_id
       ${where}
       ORDER BY p.full_name ASC NULLS LAST, s.name ASC NULLS LAST
       LIMIT $${i++} OFFSET $${i++}

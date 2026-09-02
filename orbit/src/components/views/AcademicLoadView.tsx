@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   MagnifyingGlassIcon,
   XMarkIcon,
@@ -26,19 +26,37 @@ interface AcademicLoadRow {
   id: string;
   personId: string;
   teacherName: string;
+  teacherDocument: string;
   program: string;
   subjectName: string;
   subjectCode: string;
   groupCode: string;
+  acaGroupId: string;
   credits: string;
+  subjectHours: string;
   enrolled: string;
+  enrolledNum: number | null;
+  capacity: string;
+  capacityNum: number | null;
   modality: string;
   modalityLabel: string;
+  modalityRaw: string;
   block: string;
   period: string;
+  semester: string;
   type: string;
   studyLevel: "pregrado" | "especializacion" | "otro";
   studyLevelLabel: string;
+  scheduleType: string;
+  classroomName: string;
+  startDate: string;
+  endDate: string;
+  startTime: string;
+  endTime: string;
+  campusName: string;
+  cityName: string;
+  regionName: string;
+  substantiveHours: string;
 }
 
 /** Áreas operativas de Carga Académica (solo estas dos). */
@@ -79,6 +97,33 @@ function studyLevelFromArea(area: string): string | undefined {
   return opt?.studyLevel;
 }
 
+function displayOrDash(v: unknown): string {
+  const s = String(v ?? "").trim();
+  return s || "—";
+}
+
+function formatDateValue(v: unknown): string {
+  if (v == null || v === "") return "—";
+  const s = String(v);
+  // ISO date or timestamp → YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  return s;
+}
+
+function formatTimeValue(v: unknown): string {
+  if (v == null || v === "") return "—";
+  const s = String(v);
+  // "HH:MM:SS" or "HH:MM:SS.sss"
+  const m = s.match(/^(\d{2}:\d{2})/);
+  return m ? m[1] : s;
+}
+
+function toNullableNumber(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function mapRow(r: Record<string, unknown>): AcademicLoadRow {
   const modRaw = String(r.modality ?? '').trim();
   const modNorm = modRaw
@@ -95,39 +140,292 @@ function mapRow(r: Record<string, unknown>): AcademicLoadRow {
     creditsVal != null && creditsVal !== ''
       ? String(creditsVal)
       : '—';
-  const enrolledVal = r.enrolled_quantity ?? r.enrolledQuantity ?? r.enrolled;
-  const enrolled =
-    enrolledVal != null && enrolledVal !== ''
-      ? String(enrolledVal)
-      : '—';
+  const enrolledNum = toNullableNumber(
+    r.enrolled_quantity ?? r.enrolledQuantity ?? r.enrolled
+  );
+  const capacityNum = toNullableNumber(
+    r.group_capacity ?? r.groupCapacity ?? r.capacity
+  );
   const program =
     String(r.program ?? '') ||
     String(r.pensum_code ?? '') ||
     String(r.unit_code ?? '') ||
     '—';
   const studyLevel = mapStudyLevel(r.study_level ?? r.studyLevel);
+  const subjectHoursVal = r.subject_hours ?? r.subjectHours;
+  const substantiveVal =
+    r.substantive_hours_quantity ?? r.substantiveHoursQuantity;
 
   return {
     id: String(r.id ?? ''),
     personId: String(r.person_id ?? r.personId ?? ''),
-    teacherName: String(r.teacher_name ?? ''),
+    teacherName: String(r.teacher_name ?? r.teacherName ?? ''),
+    teacherDocument: String(r.teacher_document ?? r.teacherDocument ?? ''),
     program,
-    subjectName: String(r.subject_name ?? ''),
-    subjectCode: String(r.subject_code ?? ''),
-    groupCode: String(r.group_code ?? ''),
+    subjectName: String(r.subject_name ?? r.subjectName ?? ''),
+    subjectCode: String(r.subject_code ?? r.subjectCode ?? ''),
+    groupCode: String(r.group_code ?? r.groupCode ?? ''),
+    acaGroupId: String(r.aca_group_id ?? r.acaGroupId ?? ''),
     credits,
-    enrolled,
+    subjectHours:
+      subjectHoursVal != null && subjectHoursVal !== ''
+        ? String(subjectHoursVal)
+        : '—',
+    enrolled: enrolledNum != null ? String(enrolledNum) : '—',
+    enrolledNum,
+    capacity: capacityNum != null ? String(capacityNum) : '—',
+    capacityNum,
     modality: mod,
     modalityLabel,
+    modalityRaw: modRaw || '—',
     block: String(r.block ?? '') || '—',
-    period: String(r.period ?? ''),
+    period: String(r.period ?? '') || '—',
+    semester: displayOrDash(r.semester),
     type: String(r.type ?? 'projection'),
     studyLevel,
     studyLevelLabel: STUDY_LEVEL_LABELS[studyLevel],
+    scheduleType: displayOrDash(r.schedule_type ?? r.scheduleType),
+    classroomName: displayOrDash(r.classroom_name ?? r.classroomName),
+    startDate: formatDateValue(r.group_start_date ?? r.groupStartDate),
+    endDate: formatDateValue(r.group_end_date ?? r.groupEndDate),
+    startTime: formatTimeValue(r.group_start_time ?? r.groupStartTime),
+    endTime: formatTimeValue(r.group_end_time ?? r.groupEndTime),
+    campusName: displayOrDash(r.campus_name ?? r.campusName),
+    cityName: displayOrDash(r.city_name ?? r.cityName),
+    regionName: displayOrDash(r.region_name ?? r.regionName),
+    substantiveHours:
+      substantiveVal != null && substantiveVal !== ''
+        ? String(substantiveVal)
+        : '—',
   };
 }
 
-function AssignmentBreakdownTable({ rows }: { rows: AcademicLoadRow[] }) {
+function DetailField({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+        {label}
+      </div>
+      <div
+        className={cn(
+          'mt-0.5 text-sm font-medium text-orbit-text break-words',
+          mono && 'font-mono text-xs'
+        )}
+      >
+        {value || '—'}
+      </div>
+    </div>
+  );
+}
+
+function ClassDetailModal({
+  row,
+  onClose,
+}: {
+  row: AcademicLoadRow;
+  onClose: () => void;
+}) {
+  const overCapacity =
+    row.enrolledNum != null &&
+    row.capacityNum != null &&
+    row.capacityNum > 0 &&
+    row.enrolledNum > row.capacityNum;
+  const occupancy =
+    row.enrolledNum != null && row.capacityNum != null && row.capacityNum > 0
+      ? Math.round((row.enrolledNum / row.capacityNum) * 100)
+      : null;
+  const scheduleLabel =
+    row.startTime !== '—' || row.endTime !== '—'
+      ? `${row.startTime} – ${row.endTime}`
+      : '—';
+  const dateRange =
+    row.startDate !== '—' || row.endDate !== '—'
+      ? `${row.startDate} → ${row.endDate}`
+      : '—';
+  const location = [row.campusName, row.cityName, row.regionName]
+    .filter((x) => x && x !== '—')
+    .join(' · ');
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="class-detail-title"
+        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-orbit-border bg-orbit-bg shadow-2xl"
+        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-orbit-border/70 bg-orbit-bg/95 px-5 py-4 backdrop-blur">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+              Detalle de clase
+            </p>
+            <h2
+              id="class-detail-title"
+              className="text-lg font-bold text-orbit-text leading-snug"
+            >
+              {row.subjectName || 'Sin materia'}
+            </h2>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span
+                className={cn(
+                  'inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold',
+                  row.modality === 'P' &&
+                    'border-sky-200 bg-sky-50 text-sky-800',
+                  row.modality === 'V' &&
+                    'border-violet-200 bg-violet-50 text-violet-800',
+                  row.modality !== 'P' &&
+                    row.modality !== 'V' &&
+                    'border-orbit-border bg-orbit-interactive text-orbit-muted'
+                )}
+              >
+                {row.modalityLabel}
+              </span>
+              <span
+                className={cn(
+                  'inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold',
+                  row.studyLevel === 'especializacion' &&
+                    'border-violet-200 bg-violet-50 text-violet-700',
+                  row.studyLevel === 'pregrado' &&
+                    'border-sky-200 bg-sky-50 text-sky-700',
+                  row.studyLevel === 'otro' &&
+                    'border-orbit-border bg-orbit-interactive text-orbit-muted'
+                )}
+              >
+                {row.studyLevelLabel}
+              </span>
+              <span className="inline-flex rounded-md border border-orbit-border bg-orbit-interactive px-2 py-0.5 text-[11px] font-mono font-semibold text-orbit-text-secondary">
+                Grupo {row.groupCode || '—'}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg text-orbit-muted hover:bg-orbit-interactive shrink-0"
+            aria-label="Cerrar"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-5">
+          <section className="space-y-3">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+              Identificación
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary/50 p-3">
+              <DetailField label="Docente" value={row.teacherName || '—'} />
+              <DetailField
+                label="Documento"
+                value={row.teacherDocument || '—'}
+                mono
+              />
+              <DetailField label="Programa" value={row.program} />
+              <DetailField label="Periodo" value={row.period} mono />
+              <DetailField label="Semestre" value={row.semester} />
+              <DetailField label="Código materia" value={row.subjectCode || '—'} mono />
+              <DetailField label="Código grupo" value={row.groupCode || '—'} mono />
+              <DetailField
+                label="ACA group ID"
+                value={row.acaGroupId || '—'}
+                mono
+              />
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+              Cupo y matrícula
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary/50 p-3">
+              <DetailField label="Matriculados" value={row.enrolled} mono />
+              <DetailField label="Cupo" value={row.capacity} mono />
+              <DetailField
+                label="Ocupación"
+                value={
+                  occupancy != null ? (
+                    <span
+                      className={cn(
+                        overCapacity && 'text-orbit-danger font-bold'
+                      )}
+                    >
+                      {occupancy}%
+                      {overCapacity ? ' · sobrecupo' : ''}
+                    </span>
+                  ) : (
+                    '—'
+                  )
+                }
+              />
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+              Materia
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary/50 p-3">
+              <DetailField label="Créditos" value={row.credits} mono />
+              <DetailField label="Horas materia" value={row.subjectHours} mono />
+              <DetailField
+                label="Horas sustantivas (fila)"
+                value={row.substantiveHours}
+                mono
+              />
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+              Horario y lugar
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary/50 p-3">
+              <DetailField label="Bloque" value={row.block} />
+              <DetailField label="Tipo de horario" value={row.scheduleType} />
+              <DetailField label="Horario" value={scheduleLabel} mono />
+              <DetailField label="Fechas" value={dateRange} mono />
+              <DetailField label="Salón" value={row.classroomName} />
+              <DetailField
+                label="Ubicación"
+                value={location || '—'}
+              />
+              <DetailField label="Modalidad (raw)" value={row.modalityRaw} />
+              <DetailField label="Campus" value={row.campusName} />
+              <DetailField label="Ciudad" value={row.cityName} />
+              <DetailField label="Región" value={row.regionName} />
+            </div>
+          </section>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function AssignmentBreakdownTable({
+  rows,
+  onOpenClass,
+}: {
+  rows: AcademicLoadRow[];
+  onOpenClass: (row: AcademicLoadRow) => void;
+}) {
   return (
     <div className="overflow-x-auto border-t border-orbit-border/70">
       <table className="w-full text-left text-sm min-w-[960px]">
@@ -148,7 +446,17 @@ function AssignmentBreakdownTable({ rows }: { rows: AcademicLoadRow[] }) {
           {rows.map((r) => (
             <tr
               key={r.id}
-              className="border-t border-orbit-border/50 hover:bg-orbit-interactive/40 transition-colors"
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpenClass(r)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onOpenClass(r);
+                }
+              }}
+              className="border-t border-orbit-border/50 hover:bg-orbit-primary/5 transition-colors cursor-pointer"
+              title="Ver detalle de la clase"
             >
               <td className="py-2.5 px-4">
                 <span
@@ -182,6 +490,9 @@ function AssignmentBreakdownTable({ rows }: { rows: AcademicLoadRow[] }) {
               </td>
               <td className="py-2.5 px-4 text-orbit-text-secondary font-mono text-xs">
                 {r.enrolled}
+                {r.capacityNum != null ? (
+                  <span className="text-orbit-muted"> / {r.capacity}</span>
+                ) : null}
               </td>
               <td className="py-2.5 px-4 text-orbit-text-secondary">
                 {r.modalityLabel}
@@ -192,6 +503,9 @@ function AssignmentBreakdownTable({ rows }: { rows: AcademicLoadRow[] }) {
           ))}
         </tbody>
       </table>
+      <p className="px-4 py-2 text-[11px] text-orbit-muted border-t border-orbit-border/50">
+        Clic en una fila para ver el detalle completo de esa clase.
+      </p>
     </div>
   );
 }
@@ -255,6 +569,9 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
   >({});
   const [loadingTeacherIds, setLoadingTeacherIds] = useState<Set<number>>(
     () => new Set()
+  );
+  const [selectedClass, setSelectedClass] = useState<AcademicLoadRow | null>(
+    null
   );
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -466,7 +783,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
 
       <Header
         title="Carga Académica"
-        subtitle="Un docente, toda su carga: abre el desplegable para ver el desglose"
+        subtitle="Abre el docente, clic en una clase para ver su detalle"
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
@@ -802,7 +1119,10 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                           actuales.
                         </p>
                       ) : (
-                        <AssignmentBreakdownTable rows={assignments} />
+                        <AssignmentBreakdownTable
+                          rows={assignments}
+                          onOpenClass={setSelectedClass}
+                        />
                       )}
                     </div>
                   )}
@@ -837,6 +1157,15 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
           )}
         </>
       )}
+
+      <AnimatePresence>
+        {selectedClass && (
+          <ClassDetailModal
+            row={selectedClass}
+            onClose={() => setSelectedClass(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
