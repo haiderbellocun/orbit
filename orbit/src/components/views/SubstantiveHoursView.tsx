@@ -51,6 +51,7 @@ type Filters = {
   hasCatedra: '' | 'true' | 'false';
   hasSubstantive: '' | 'true' | 'false';
   withoutEduEmail: boolean;
+  role: '' | 'docente' | 'docente_pensionado' | 'lite';
 };
 
 const EMPTY_FILTERS: Filters = {
@@ -63,6 +64,7 @@ const EMPTY_FILTERS: Filters = {
   hasCatedra: '',
   hasSubstantive: '',
   withoutEduEmail: false,
+  role: '',
 };
 
 const PLACEHOLDER_CATEGORY = 'PEDIR LISTA CATEGORIAS HORAS SUSTANTIVAS';
@@ -172,6 +174,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
             ? undefined
             : applied.hasSubstantive === 'true',
         without_edu_email: applied.withoutEduEmail || undefined,
+        role: applied.role || undefined,
         page: currentPage,
         limit: 50,
       });
@@ -221,6 +224,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     if (applied.hasCatedra) n++;
     if (applied.hasSubstantive) n++;
     if (applied.withoutEduEmail) n++;
+    if (applied.role) n++;
     return n;
   }, [applied]);
 
@@ -480,6 +484,28 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-orbit-border/60">
                 <label className="space-y-1">
                   <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
+                    Rol
+                  </span>
+                  <select
+                    className={selectClass}
+                    value={filters.role}
+                    onChange={(e) =>
+                      setFilters((f) => ({
+                        ...f,
+                        role: e.target.value as Filters['role'],
+                      }))
+                    }
+                  >
+                    <option value="">Todos</option>
+                    <option value="docente">Docente</option>
+                    <option value="docente_pensionado">
+                      Docente pensionado
+                    </option>
+                    <option value="lite">LITE</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                     Área
                   </span>
                   <select
@@ -678,10 +704,28 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               {rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-b border-orbit-border/80 hover:bg-orbit-interactive/30 transition-colors"
+                  className={cn(
+                    'border-b border-orbit-border/80 hover:bg-orbit-interactive/30 transition-colors',
+                    row.isLite && 'bg-amber-50/70 hover:bg-amber-50'
+                  )}
                 >
                   <td className="px-5 py-4">
-                    <div className="font-semibold text-orbit-text">{row.name}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-orbit-text">{row.name}</span>
+                      {row.isLite && (
+                        <span
+                          className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800"
+                          title="Rol actual LITE: tiene cátedra, no es docente de planta"
+                        >
+                          LITE
+                        </span>
+                      )}
+                    </div>
+                    {row.isLite && (
+                      <div className="text-[11px] font-medium text-amber-800/80 mt-0.5">
+                        Tiene cátedra · rol actual LITE
+                      </div>
+                    )}
                     <div className="text-xs text-orbit-muted mt-0.5">
                       {row.document || '—'}
                       {' · '}
@@ -815,12 +859,22 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                         : 'Horas sustantivas'}
                     </span>
                   </div>
-                  <h2 className="text-lg font-bold text-orbit-text">
+                  <h2 className="text-lg font-bold text-orbit-text flex items-center gap-2 flex-wrap">
                     {modalTeacher.name}
+                    {modalTeacher.isLite && (
+                      <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                        LITE
+                      </span>
+                    )}
                   </h2>
                   <p className="text-xs text-orbit-muted mt-0.5">
                     {modalTeacher.document || 'Sin documento'}
                   </p>
+                  {modalTeacher.isLite && (
+                    <p className="text-[11px] font-medium text-amber-800 mt-1">
+                      Es LITE y tiene carga académica. El balance incluye su cátedra para que no quede por fuera.
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"

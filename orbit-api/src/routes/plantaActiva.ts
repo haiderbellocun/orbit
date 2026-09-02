@@ -13,9 +13,11 @@ import {
 } from "../lib/plantaActivaAccess";
 import {
   isLiteOrDocenteRole,
+  isNamedLiteOrLiderRole,
   shouldSkipVacancyOnInactivation,
   sqlExcludeLiteAndDocenteRoles,
 } from "../lib/orbitRoles";
+import { purgeTeacherHoursForPerson } from "../lib/substantiveHours";
 import { toUpperAscii } from "../lib/textNormalize";
 import {
   deletePlantaOrgOverride,
@@ -1167,6 +1169,15 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
     );
 
     const personRow = detail.rows[0] as Record<string, unknown>;
+    if (
+      isNamedLiteOrLiderRole({
+        roleName: String(personRow.role_name ?? ""),
+        roleCode: String(personRow.role_code ?? ""),
+      })
+    ) {
+      await purgeTeacherHoursForPerson(pool, id);
+    }
+
     let createdVacancyId: string | null = null;
 
     const wasActive = Boolean(current.is_active);

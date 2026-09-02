@@ -1,6 +1,14 @@
 import { Router, type Request, type Response } from "express";
+import type { PoolClient } from "pg";
 import { pool } from "../db/connection";
 import { resolveCoreSchemaMode } from "../lib/coreSchema";
+import {
+  isNamedLiteOrLiderRole,
+  sqlPersonIsFacultyRole,
+  sqlRoleIsLiteOrLider,
+  sqlSubstantiveHoursRoleFilter,
+  type SubstantiveHoursRoleFilter,
+} from "../lib/orbitRoles";
 import {
   DEFAULT_CLASS_PREPARATION_HOURS,
   PLACEHOLDER_SUBSTANTIVE_CATEGORY,
@@ -10,6 +18,60 @@ import {
 import { schoolScopeFromRequest } from "../middleware/orbitAuth";
 import { sqlPersonIsActive } from "../sql/personActive";
 import { sqlExcludeHarveyArea } from "../sql/excludeHarveyArea";
+
+const LITE_HOURS_ERROR =
+  "Esta persona es LITE y no tiene carga académica";
+
+function sqlPersonHasAcademicLoad(personAlias = "p"): string {
+  return `EXISTS (
+    SELECT 1 FROM academic_workload.academic_load al_carga
+    WHERE al_carga.person_id = ${personAlias}.id
+  )`;
+}
+
+function personRowIsLite(row: {
+  role_name?: unknown;
+  role_code?: unknown;
+}): boolean {
+  return isNamedLiteOrLiderRole({
+    roleName: String(row.role_name ?? ""),
+    roleCode: String(row.role_code ?? ""),
+  });
+}
+
+async function personHasAcademicLoad(
+  personId: number,
+  db: typeof pool | PoolClient = pool
+): Promise<boolean> {
+  const result = await db.query(
+    `SELECT 1 FROM academic_workload.academic_load WHERE person_id = $1 LIMIT 1`,
+    [personId]
+  );
+  return result.rows.length > 0;
+}
+
+async function loadActivePersonForHours(
+  prefix: string,
+  personId: number,
+  db: typeof pool | PoolClient = pool
+) {
+  const result = await db.query(
+    `SELECT
+       p.id,
+       p.full_name,
+       p.role_id,
+       COALESCE(r.name, '') AS role_name,
+       COALESCE(r.code, '') AS role_code,
+       ct.name AS contract_type,
+       ct.work_schedule
+     FROM ${prefix}person p
+     LEFT JOIN ${prefix}role r ON r.id = p.role_id
+     LEFT JOIN ${prefix}contract_type ct ON ct.id = p.contract_type_id
+     WHERE p.id = $1 AND ${sqlPersonIsActive("p")}`,
+    [personId]
+  );
+  return result.rows[0] ?? null;
+}
 
 const router = Router();
 
@@ -49,12 +111,13 @@ router.get("/substantive-hours/categories", async (_req, res) => {
 /**
  * GET /substantive-hours/teachers
  * Lista docentes activos con resumen de horas (contrato / cátedra / prep / sustantivas).
+ * LITE/LIDER solo entran si tienen carga académica (cátedra); el resto de LITE no.
  *
  * Filtros:
  *  search, area_id, school_id, period (cátedra),
  *  contract_hours (21|42), availability (available|none|unknown),
  *  has_catedra (true|false), has_substantive (true|false),
- *  without_edu_email (true)
+ *  without_edu_email (true), role (docente|docente_pensionado|lite)
  */
 router.get("/substantive-hours/teachers", async (req: Request, res: Response) => {
   try {
@@ -104,6 +167,16 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
       withoutEduEmailRaw === "1" ||
       withoutEduEmailRaw === "true" ||
       withoutEduEmailRaw === "yes";
+    const roleRaw = String(req.query.role ?? req.query.role_filter ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/-/g, "_");
+    const roleFilter: SubstantiveHoursRoleFilter | null =
+      roleRaw === "docente" ||
+      roleRaw === "docente_pensionado" ||
+      roleRaw === "lite"
+        ? roleRaw
+        : null;
 
     const pageNum = Math.max(
       1,
@@ -116,7 +189,33 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
     const offset = (pageNum - 1) * limitNum;
 
     const schoolScope = schoolScopeFromRequest(req);
-    const conditions: string[] = [sqlPersonIsActive("p")];
+    const hasCargaSql = sqlPersonHasAcademicLoad("p");
+    const prepHoursExpr = `
+      CASE
+        WHEN ${sqlRoleIsLiteOrLider("r")}
+          THEN COALESCE(cp.class_preparation_hours, 0)
+        ELSE COALESCE(cp.class_preparation_hours, ${DEFAULT_CLASS_PREPARATION_HOURS})
+      END
+    `;
+    const conditions: string[] = [
+      sqlPersonIsActive("p"),
+      `(NOT ${sqlRoleIsLiteOrLider("r")} OR ${hasCargaSql})`,
+      `(
+        ${sqlPersonIsFacultyRole("r")}
+        OR EXISTS (
+          SELECT 1 FROM academic_workload.class_preparation cp_f
+          WHERE cp_f.person_id = p.id
+        )
+        OR EXISTS (
+          SELECT 1 FROM substantive_hours.assignment a_f
+          WHERE a_f.person_id = p.id
+        )
+        OR ${hasCargaSql}
+      )`,
+    ];
+    if (roleFilter != null) {
+      conditions.push(sqlSubstantiveHoursRoleFilter("r", roleFilter));
+    }
     const values: unknown[] = [];
     let i = 1;
 
@@ -190,7 +289,7 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
     const remainingExpr = `
       (${contractHoursExpr})
       - COALESCE(cath.catedra_hours, 0)
-      - COALESCE(cp.class_preparation_hours, ${DEFAULT_CLASS_PREPARATION_HOURS})
+      - (${prepHoursExpr})
       - COALESCE(sub.substantive_hours, 0)
     `;
 
@@ -218,12 +317,14 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         s.name AS school,
         ct.name AS contract_type,
         ct.work_schedule,
-        COALESCE(cp.class_preparation_hours, ${DEFAULT_CLASS_PREPARATION_HOURS})
-          AS preparation_hours,
+        COALESCE(r.name, '') AS role_name,
+        ${sqlRoleIsLiteOrLider("r")} AS is_lite,
+        ${prepHoursExpr} AS preparation_hours,
         COALESCE(cath.catedra_hours, 0) AS catedra_hours,
         COALESCE(sub.substantive_hours, 0) AS substantive_hours_assigned,
         COUNT(*) OVER() AS total_count
       FROM ${prefix}person p
+      LEFT JOIN ${prefix}role r ON r.id = p.role_id
       LEFT JOIN ${prefix}school s ON s.id = p.school_id
       LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
       LEFT JOIN ${prefix}contract_type ct ON ct.id = p.contract_type_id
@@ -270,7 +371,13 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         r.work_schedule as string | null,
         r.contract_type as string | null
       );
-      const preparationHours = Number(r.preparation_hours) || DEFAULT_CLASS_PREPARATION_HOURS;
+      const isLite = Boolean(r.is_lite);
+      const rawPrep = Number(r.preparation_hours);
+      const preparationHours = Number.isFinite(rawPrep)
+        ? rawPrep
+        : isLite
+          ? 0
+          : DEFAULT_CLASS_PREPARATION_HOURS;
       const catedraHours = Number(r.catedra_hours) || 0;
       const substantiveAssigned = Number(r.substantive_hours_assigned) || 0;
       const remaining =
@@ -290,6 +397,8 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         school: r.school != null ? String(r.school) : "",
         contractType: r.contract_type != null ? String(r.contract_type) : "",
         workSchedule: r.work_schedule != null ? String(r.work_schedule) : "",
+        roleName: r.role_name != null ? String(r.role_name) : "",
+        isLite,
         contractHoursWeekly: contractHours,
         catedraHours,
         preparationHours,
@@ -321,6 +430,25 @@ router.get(
       const personId = parsePositiveInt(req.params.personId);
       if (personId == null) {
         res.status(400).json({ error: "personId inválido" });
+        return;
+      }
+
+      const mode = await resolveCoreSchemaMode();
+      if (mode == null) {
+        res.status(500).json({ error: "Esquema de personas no disponible" });
+        return;
+      }
+      const prefix = mode === "core" ? "core." : "";
+      const person = await loadActivePersonForHours(prefix, personId);
+      if (person == null) {
+        res.status(404).json({ error: "Docente no encontrado" });
+        return;
+      }
+      if (
+        personRowIsLite(person) &&
+        !(await personHasAcademicLoad(personId))
+      ) {
+        res.status(400).json({ error: LITE_HOURS_ERROR });
         return;
       }
 
@@ -422,12 +550,16 @@ router.post("/substantive-hours/assignments", async (req: Request, res: Response
       return;
     }
     const prefix = mode === "core" ? "core." : "";
-    const personCheck = await client.query(
-      `SELECT id FROM ${prefix}person p WHERE p.id = $1 AND ${sqlPersonIsActive("p")}`,
-      [personId]
-    );
-    if (personCheck.rows.length === 0) {
+    const personCheck = await loadActivePersonForHours(prefix, personId, client);
+    if (personCheck == null) {
       res.status(404).json({ error: "Docente no encontrado" });
+      return;
+    }
+    if (
+      personRowIsLite(personCheck) &&
+      !(await personHasAcademicLoad(personId, client))
+    ) {
+      res.status(400).json({ error: LITE_HOURS_ERROR });
       return;
     }
 
@@ -548,22 +680,18 @@ router.put(
       }
       const prefix = mode === "core" ? "core." : "";
 
-      const personR = await pool.query(
-        `SELECT
-           p.id,
-           p.full_name,
-           ct.name AS contract_type,
-           ct.work_schedule
-         FROM ${prefix}person p
-         LEFT JOIN ${prefix}contract_type ct ON ct.id = p.contract_type_id
-         WHERE p.id = $1 AND ${sqlPersonIsActive("p")}`,
-        [personId]
-      );
-      if (personR.rows.length === 0) {
+      const person = await loadActivePersonForHours(prefix, personId);
+      if (person == null) {
         res.status(404).json({ error: "Docente no encontrado" });
         return;
       }
-      const person = personR.rows[0];
+      if (
+        personRowIsLite(person) &&
+        !(await personHasAcademicLoad(personId))
+      ) {
+        res.status(400).json({ error: LITE_HOURS_ERROR });
+        return;
+      }
 
       const [catedraR, substR] = await Promise.all([
         pool.query(

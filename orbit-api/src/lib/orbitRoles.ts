@@ -18,14 +18,11 @@ function normalizeRoleLabel(s: string | null | undefined): string {
     .replace(/\s+/g, " ");
 }
 
-/** Roles LITE / LIDER (mismo perfil Orbit LITE). */
-export function isLiteOrLiderRole(input: {
-  roleId: number | null;
+/** Catálogo LITE / LIDER por nombre o código (no usa `ORBIT_LITE_ROLE_ID`). */
+export function isNamedLiteOrLiderRole(input: {
   roleCode?: string | null;
   roleName?: string | null;
 }): boolean {
-  const roleId = input.roleId;
-  if (roleId != null && roleId === getLiteRoleId()) return true;
   const nameNorm = normalizeRoleLabel(input.roleName);
   const codeNorm = normalizeRoleLabel(input.roleCode);
   return (
@@ -34,6 +31,17 @@ export function isLiteOrLiderRole(input: {
     nameNorm === "LIDER" ||
     codeNorm === "LIDER"
   );
+}
+
+/** Roles LITE / LIDER (mismo perfil Orbit LITE). */
+export function isLiteOrLiderRole(input: {
+  roleId: number | null;
+  roleCode?: string | null;
+  roleName?: string | null;
+}): boolean {
+  const roleId = input.roleId;
+  if (roleId != null && roleId === getLiteRoleId()) return true;
+  return isNamedLiteOrLiderRole(input);
 }
 
 /** Roles LITE/LIDER o DOCENTE/DOCENTES (gestionados fuera del alcance Sara/Cindy). */
@@ -75,6 +83,49 @@ export function shouldSkipVacancyOnInactivation(input: {
   return isDocenteRole(input) || isLiteOrLiderRole(input);
 }
 
+/** Nombre/código LITE o LIDER. Requiere JOIN a `role` como `${roleAlias}`. */
+export function sqlRoleIsLiteOrLider(roleAlias = "r"): string {
+  return `(
+    trim(upper(COALESCE(${roleAlias}.name, ''))) IN ('LITE', 'LIDER')
+    OR trim(upper(COALESCE(${roleAlias}.code, ''))) IN ('LITE', 'LIDER')
+  )`;
+}
+
+/** DOCENTE / DOCENTES / DOCENTE FACILITADOR / DOCENTES PENSIONADOS. */
+export function sqlPersonIsFacultyRole(roleAlias = "r"): string {
+  return `(
+    trim(upper(COALESCE(${roleAlias}.name, ''))) IN ('DOCENTE', 'DOCENTES')
+    OR trim(upper(COALESCE(${roleAlias}.code, ''))) IN ('DOCENTE', 'DOCENTES')
+    OR trim(upper(COALESCE(${roleAlias}.name, ''))) LIKE 'DOCENTES %'
+    OR trim(upper(COALESCE(${roleAlias}.code, ''))) LIKE 'DOCENTES %'
+    OR trim(upper(COALESCE(${roleAlias}.name, ''))) LIKE 'DOCENTE %'
+    OR trim(upper(COALESCE(${roleAlias}.code, ''))) LIKE 'DOCENTE %'
+  )`;
+}
+
+export type SubstantiveHoursRoleFilter =
+  | "docente"
+  | "docente_pensionado"
+  | "lite";
+
+/** Filtro de Balance carga: docente | docente pensionado | LITE. */
+export function sqlSubstantiveHoursRoleFilter(
+  roleAlias: string,
+  filter: SubstantiveHoursRoleFilter
+): string {
+  if (filter === "lite") return sqlRoleIsLiteOrLider(roleAlias);
+  if (filter === "docente_pensionado") {
+    return `(
+      trim(upper(COALESCE(${roleAlias}.name, ''))) LIKE '%PENSIONAD%'
+      OR trim(upper(COALESCE(${roleAlias}.code, ''))) LIKE '%PENSIONAD%'
+    )`;
+  }
+  return `(
+    trim(upper(COALESCE(${roleAlias}.name, ''))) = 'DOCENTE'
+    OR trim(upper(COALESCE(${roleAlias}.code, ''))) = 'DOCENTE'
+  )`;
+}
+
 /**
  * Coincide con `resolveOrbitAccess` (perfil LITE en ORBIT): id configurable o rol LITE/LIDER en catálogo.
  * Requiere `LEFT JOIN …role ${roleAlias} ON ${roleAlias}.id = ${personAlias}.role_id`.
@@ -86,8 +137,7 @@ export function sqlPersonIsOrbitLite(
 ): string {
   return `(
     ${personAlias}.role_id = ${liteRoleId}
-    OR trim(upper(COALESCE(${roleAlias}.name, ''))) IN ('LITE', 'LIDER')
-    OR trim(upper(COALESCE(${roleAlias}.code, ''))) IN ('LITE', 'LIDER')
+    OR ${sqlRoleIsLiteOrLider(roleAlias)}
   )`;
 }
 
@@ -118,10 +168,7 @@ export function sqlPersonIsOrbitLiteExists(
       SELECT 1
       FROM ${schemaPrefix}role r_orbit_lite
       WHERE r_orbit_lite.id = ${personAlias}.role_id
-        AND (
-          trim(upper(COALESCE(r_orbit_lite.name, ''))) IN ('LITE', 'LIDER')
-          OR trim(upper(COALESCE(r_orbit_lite.code, ''))) IN ('LITE', 'LIDER')
-        )
+        AND ${sqlRoleIsLiteOrLider("r_orbit_lite")}
     )
   )`;
 }

@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   Vacancy,
   VacancyDetail,
   VacancyOperationNoteEntry,
@@ -1162,6 +1162,8 @@ export type SubstantiveHoursTeacher = {
   school: string;
   contractType: string;
   workSchedule: string;
+  roleName: string;
+  isLite: boolean;
   contractHoursWeekly: number | null;
   catedraHours: number;
   preparationHours: number;
@@ -1201,6 +1203,7 @@ export async function getSubstantiveHoursTeachers(params?: {
   has_catedra?: boolean;
   has_substantive?: boolean;
   without_edu_email?: boolean;
+  role?: "docente" | "docente_pensionado" | "lite";
   page?: number;
   limit?: number;
 }): Promise<PaginatedResponse<SubstantiveHoursTeacher>> {
@@ -1221,6 +1224,7 @@ export async function getSubstantiveHoursTeachers(params?: {
     url.searchParams.set("has_substantive", String(params.has_substantive));
   if (params?.without_edu_email)
     url.searchParams.set("without_edu_email", "1");
+  if (params?.role) url.searchParams.set("role", params.role);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });
