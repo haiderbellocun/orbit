@@ -857,6 +857,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                         quotaStatus: row.quotaStatus ?? 'unknown',
                         creditsGap: row.creditsGap ?? null,
                         studentsGap: row.studentsGap ?? null,
+                        actionHint: row.actionHint ?? null,
                       }}
                     />
                   </td>

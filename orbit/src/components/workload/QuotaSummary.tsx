@@ -3,6 +3,7 @@ import { cn } from "@/src/lib/utils";
 import {
   QUOTA_STATUS_LABEL,
   TEACHING_MODALITY_LABEL,
+  formatQuotaActionHint,
   formatQuotaRatio,
   quotaStatusBadgeClass,
   teachingModalityBadgeClass,
@@ -38,6 +39,13 @@ export const QuotaSummary: React.FC<{
   const status = (quota.quotaStatus ?? "unknown") as QuotaStatus;
   const showCredits = modality === "presencial" || modality === "mixto";
   const showStudents = modality === "virtual" || modality === "mixto";
+  const hint = formatQuotaActionHint({
+    teachingModality: modality,
+    quotaStatus: status,
+    creditsGap: quota.creditsGap,
+    studentsGap: quota.studentsGap,
+    actionHint: quota.actionHint,
+  });
 
   return (
     <div className={cn("space-y-1", compact ? "text-xs" : "text-sm")}>
@@ -54,18 +62,32 @@ export const QuotaSummary: React.FC<{
       <div className="text-xs text-orbit-muted space-y-0.5 tabular-nums">
         {showCredits && (
           <div>
-            Créditos P:{" "}
+            Créditos presenciales:{" "}
             <span className="font-medium text-orbit-text-secondary">
-              {formatQuotaRatio(quota.creditsPresencial, quota.creditTarget)}
+              {modality === "mixto"
+                ? String(quota.creditsPresencial)
+                : formatQuotaRatio(quota.creditsPresencial, quota.creditTarget)}
             </span>
           </div>
         )}
         {showStudents && (
           <div>
-            Estudiantes V:{" "}
+            Estudiantes virtuales:{" "}
             <span className="font-medium text-orbit-text-secondary">
-              {formatQuotaRatio(quota.studentsVirtual, quota.studentTarget)}
+              {modality === "mixto"
+                ? String(quota.studentsVirtual)
+                : formatQuotaRatio(quota.studentsVirtual, quota.studentTarget)}
             </span>
+          </div>
+        )}
+        {hint && (
+          <div
+            className={cn(
+              "font-semibold pt-0.5",
+              status === "over" ? "text-red-700" : "text-amber-800"
+            )}
+          >
+            {hint}
           </div>
         )}
         {!modality && (

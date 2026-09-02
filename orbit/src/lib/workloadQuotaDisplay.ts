@@ -60,9 +60,45 @@ export type WorkloadQuotaFields = {
   quotaStatus: QuotaStatus;
   creditsGap: number | null;
   studentsGap: number | null;
+  actionHint?: string | null;
 };
 
 export function formatQuotaRatio(used: number, target: number | null): string {
   if (target == null) return String(used);
   return `${used} / ${target}`;
+}
+
+export function formatQuotaActionHint(quota: {
+  teachingModality: TeachingModality | null;
+  quotaStatus: QuotaStatus;
+  creditsGap: number | null;
+  studentsGap: number | null;
+  actionHint?: string | null;
+}): string | null {
+  if (quota.actionHint) return quota.actionHint;
+  if (quota.quotaStatus !== "under" && quota.quotaStatus !== "over") return null;
+  const credits = quota.creditsGap;
+  const students = quota.studentsGap;
+  const hasCredits = credits != null && Math.abs(credits) >= 0.05;
+  const hasStudents = students != null && Math.abs(students) >= 0.5;
+  if (!hasCredits && !hasStudents) return null;
+  const fmtC = (n: number) => {
+    const r = Math.round(Math.abs(n) * 10) / 10;
+    return Number.isInteger(r) ? String(r) : r.toFixed(1);
+  };
+  const fmtS = (n: number) => String(Math.max(0, Math.round(Math.abs(n))));
+  const mixto = quota.teachingModality === "mixto";
+  if (quota.quotaStatus === "under") {
+    if (mixto && hasCredits && hasStudents) {
+      return `Faltan ${fmtC(credits!)} créditos presenciales o ${fmtS(students!)} estudiantes virtuales`;
+    }
+    if (hasCredits) return `Faltan ${fmtC(credits!)} créditos presenciales`;
+    if (hasStudents) return `Faltan ${fmtS(students!)} estudiantes virtuales`;
+  }
+  if (mixto && hasCredits && hasStudents) {
+    return `Exceso equivalente a ${fmtC(credits!)} créditos presenciales o ${fmtS(students!)} estudiantes virtuales`;
+  }
+  if (hasCredits) return `Exceso de ${fmtC(credits!)} créditos presenciales`;
+  if (hasStudents) return `Exceso de ${fmtS(students!)} estudiantes virtuales`;
+  return null;
 }

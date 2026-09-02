@@ -31,8 +31,13 @@ export type WorkloadQuotaResult = {
   loadIndex: number | null;
   fulfillmentPct: number | null;
   status: QuotaStatus;
+  /**
+   * Equivalente a completar (o exceso si negativo).
+   * En mixto no es meta−usado, sino (1 − loadIndex) × meta.
+   */
   creditsGap: number | null;
   studentsGap: number | null;
+  actionHint: string | null;
 };
 
 export function classifyGroupModality(
@@ -96,6 +101,45 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+function fmtCreditsEq(n: number): string {
+  const r = round1(Math.abs(n));
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+function fmtStudentsEq(n: number): string {
+  return String(Math.max(0, Math.round(Math.abs(n))));
+}
+
+/** Mensaje para armar carga: faltante o exceso en unidades nativas. */
+export function formatQuotaActionHint(result: {
+  modality: TeachingModality | null;
+  status: QuotaStatus;
+  creditsGap: number | null;
+  studentsGap: number | null;
+}): string | null {
+  if (result.status !== "under" && result.status !== "over") return null;
+  const credits = result.creditsGap;
+  const students = result.studentsGap;
+  const hasCredits = credits != null && Math.abs(credits) >= 0.05;
+  const hasStudents = students != null && Math.abs(students) >= 0.5;
+  if (!hasCredits && !hasStudents) return null;
+
+  if (result.status === "under") {
+    if (result.modality === "mixto" && hasCredits && hasStudents) {
+      return `Faltan ${fmtCreditsEq(credits!)} créditos presenciales o ${fmtStudentsEq(students!)} estudiantes virtuales`;
+    }
+    if (hasCredits) return `Faltan ${fmtCreditsEq(credits!)} créditos presenciales`;
+    if (hasStudents) return `Faltan ${fmtStudentsEq(students!)} estudiantes virtuales`;
+  }
+
+  if (result.modality === "mixto" && hasCredits && hasStudents) {
+    return `Exceso equivalente a ${fmtCreditsEq(credits!)} créditos presenciales o ${fmtStudentsEq(students!)} estudiantes virtuales`;
+  }
+  if (hasCredits) return `Exceso de ${fmtCreditsEq(credits!)} créditos presenciales`;
+  if (hasStudents) return `Exceso de ${fmtStudentsEq(students!)} estudiantes virtuales`;
+  return null;
+}
+
 export function quotaStatusFromLoadIndex(
   loadIndex: number | null
 ): QuotaStatus {
@@ -131,6 +175,7 @@ export function evaluateWorkloadQuota(
       status: "unknown",
       creditsGap: null,
       studentsGap: null,
+      actionHint: null,
     };
   }
 
@@ -144,12 +189,19 @@ export function evaluateWorkloadQuota(
   }
 
   const status = quotaStatusFromLoadIndex(loadIndex);
-  const creditsGap =
-    modality === "virtual" ? null : round1(creditTarget - creditsP);
-  const studentsGap =
-    modality === "presencial" ? null : round1(studentTarget - studentsV);
+  const remainingIndex = 1 - loadIndex;
+  let creditsGap: number | null = null;
+  let studentsGap: number | null = null;
+  if (modality === "presencial") {
+    creditsGap = round1(creditTarget - creditsP);
+  } else if (modality === "virtual") {
+    studentsGap = round1(studentTarget - studentsV);
+  } else {
+    creditsGap = round1(remainingIndex * creditTarget);
+    studentsGap = round1(remainingIndex * studentTarget);
+  }
 
-  return {
+  const result: WorkloadQuotaResult = {
     modality,
     creditsP,
     studentsV,
@@ -160,7 +212,10 @@ export function evaluateWorkloadQuota(
     status,
     creditsGap,
     studentsGap,
+    actionHint: null,
   };
+  result.actionHint = formatQuotaActionHint(result);
+  return result;
 }
 
 export function sqlGroupIsPresencial(alias = "cg"): string {
@@ -240,5 +295,6 @@ export function quotaApiFields(result: WorkloadQuotaResult) {
     quotaStatus: result.status,
     creditsGap: result.creditsGap,
     studentsGap: result.studentsGap,
+    actionHint: result.actionHint,
   };
 }

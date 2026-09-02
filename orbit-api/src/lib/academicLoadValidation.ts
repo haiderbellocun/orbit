@@ -387,8 +387,9 @@ export function findQuotaIssues(
       document: sample.document ?? ctx?.document,
       personName: sample.personName ?? ctx?.fullName ?? null,
       periodCode: sample.periodCode,
-      message:
-        quota.status === "under"
+      message: quota.actionHint
+        ? `${quota.actionHint} (${pct}, periodo ${sample.periodCode})`
+        : quota.status === "under"
           ? `Cuota ${modalityLabel} incompleta (${pct}) en periodo ${sample.periodCode}`
           : `Cuota ${modalityLabel} excedida (${pct}) en periodo ${sample.periodCode}`,
       detail: {
@@ -402,6 +403,7 @@ export function findQuotaIssues(
         fulfillmentPct: quota.fulfillmentPct,
         creditsGap: quota.creditsGap,
         studentsGap: quota.studentsGap,
+        actionHint: quota.actionHint,
       },
     });
   }

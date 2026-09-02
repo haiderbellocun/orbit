@@ -92,6 +92,10 @@ test("presencial 14 de 28 = under", () => {
   assert.equal(r.status, "under");
   assert.equal(r.fulfillmentPct, 50);
   assert.equal(r.creditsGap, 14);
+  assert.equal(
+    r.actionHint,
+    "Faltan 14 créditos presenciales"
+  );
 });
 
 test("presencial 30 de 28 = over", () => {
@@ -143,8 +147,9 @@ test("mixto proporcional 14 créditos + 250 estudiantes = 100%", () => {
   assert.equal(r.modality, "mixto");
   assert.equal(r.status, "ok");
   assert.equal(r.fulfillmentPct, 100);
-  assert.equal(r.creditsGap, 14);
-  assert.equal(r.studentsGap, 250);
+  assert.equal(r.creditsGap, 0);
+  assert.equal(r.studentsGap, 0);
+  assert.equal(r.actionHint, null);
 });
 
 test("mixto medio tiempo 7 + 125 = 100%", () => {
@@ -169,6 +174,12 @@ test("mixto 21 créditos + 100 estudiantes = 95% under", () => {
   });
   assert.equal(r.status, "under");
   assert.equal(r.fulfillmentPct, 95);
+  assert.equal(r.creditsGap, 1.4);
+  assert.equal(r.studentsGap, 25);
+  assert.equal(
+    r.actionHint,
+    "Faltan 1.4 créditos presenciales o 25 estudiantes virtuales"
+  );
 });
 
 test("mixto 28 créditos + 100 estudiantes = over", () => {
@@ -181,6 +192,12 @@ test("mixto 28 créditos + 100 estudiantes = over", () => {
   });
   assert.equal(r.status, "over");
   assert.ok((r.loadIndex ?? 0) > 1);
+  assert.equal(r.creditsGap, -5.6);
+  assert.equal(r.studentsGap, -100);
+  assert.equal(
+    r.actionHint,
+    "Exceso equivalente a 5.6 créditos presenciales o 100 estudiantes virtuales"
+  );
 });
 
 test("sin jornada o sin carga = unknown", () => {

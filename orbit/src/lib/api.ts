@@ -1169,6 +1169,7 @@ export type AcademicLoadTeacherSummary = {
   quotaStatus: "under" | "ok" | "over" | "unknown";
   creditsGap: number | null;
   studentsGap: number | null;
+  actionHint: string | null;
 };
 
 export async function getAcademicLoadTeacherSummaries(params?: {
@@ -1242,6 +1243,7 @@ export type SubstantiveHoursTeacher = {
   quotaStatus: "under" | "ok" | "over" | "unknown";
   creditsGap: number | null;
   studentsGap: number | null;
+  actionHint: string | null;
 };
 
 export type SubstantiveHoursCategory = {
