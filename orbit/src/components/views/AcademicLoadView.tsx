@@ -19,6 +19,7 @@ import {
 } from '@/src/lib/api';
 import { isHarveyAreaName, isHarveyProgramName } from '@/src/lib/harveyArea';
 import { QuotaSummary } from '@/src/components/workload/QuotaSummary';
+import { WeeklyHoursBadge } from '@/src/components/workload/WeeklyHoursBadge';
 import type { QuotaStatus, TeachingModality } from '@/src/lib/workloadQuotaDisplay';
 
 interface AcademicLoadRow {
@@ -761,21 +762,22 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                         open && 'rotate-180'
                       )}
                     />
-                    <div className="min-w-0 flex-1 grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] gap-3 items-start">
-                      <div className="min-w-0">
-                        <div className="font-semibold text-orbit-text truncate">
-                          {teacher.name || '—'}
+                    <div className="min-w-0 flex-1 flex flex-col lg:flex-row lg:items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-orbit-text truncate">
+                            {teacher.name || '—'}
+                          </span>
+                          <WeeklyHoursBadge
+                            hours={teacher.contractHoursWeekly}
+                            workSchedule={teacher.workSchedule}
+                          />
                         </div>
                         <div className="text-[11px] text-orbit-muted mt-0.5">
                           {teacher.document || '—'}
                           {' · '}
                           {teacher.assignmentCount} asignación
                           {teacher.assignmentCount === 1 ? '' : 'es'}
-                          {teacher.contractHoursWeekly != null
-                            ? ` · ${teacher.contractHoursWeekly} h/sem`
-                            : teacher.workSchedule
-                              ? ` · ${teacher.workSchedule}`
-                              : ''}
                         </div>
                         <div className="text-xs text-orbit-text-secondary mt-1 truncate">
                           {[teacher.area, teacher.school]
@@ -783,7 +785,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                             .join(' · ') || '—'}
                         </div>
                       </div>
-                      <div className="lg:justify-self-end">
+                      <div className="shrink-0 lg:ml-auto lg:text-right">
                         <QuotaSummary quota={teacher} compact />
                       </div>
                     </div>

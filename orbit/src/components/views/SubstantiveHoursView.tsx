@@ -30,6 +30,7 @@ import {
 } from '@/src/lib/api';
 import { isHarveyAreaName } from '@/src/lib/harveyArea';
 import { QuotaSummary } from '@/src/components/workload/QuotaSummary';
+import { WeeklyHoursBadge } from '@/src/components/workload/WeeklyHoursBadge';
 import type { QuotaStatus, TeachingModality } from '@/src/lib/workloadQuotaDisplay';
 
 interface SubstantiveHoursViewProps {
@@ -738,8 +739,8 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                 <th className="px-5 py-3 font-bold hidden lg:table-cell">
                   Contrato
                 </th>
-                <th className="px-5 py-3 font-bold">Cuota</th>
                 <th className="px-5 py-3 font-bold text-right">Horas</th>
+                <th className="px-5 py-3 font-bold">Cuota</th>
                 <th className="px-5 py-3 font-bold text-right">Acción</th>
               </tr>
             </thead>
@@ -773,6 +774,10 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                           LITE
                         </span>
                       )}
+                      <WeeklyHoursBadge
+                        hours={row.contractHoursWeekly}
+                        workSchedule={row.workSchedule}
+                      />
                     </div>
                     {row.isLite && (
                       <div className="text-[11px] font-medium text-amber-800/80 mt-0.5">
@@ -790,17 +795,53 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                         </span>
                       )}
                     </div>
+                    <div className="mt-1.5 lg:hidden">
+                      <span className="text-[11px] text-orbit-muted">
+                        {row.contractType || 'Sin tipo de contrato'}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-5 py-4 hidden md:table-cell text-orbit-text-secondary">
                     <div>{row.area || '—'}</div>
                     <div className="text-xs text-orbit-muted">{row.school || '—'}</div>
                   </td>
                   <td className="px-5 py-4 hidden lg:table-cell text-orbit-text-secondary">
-                    <div>{row.contractType || '—'}</div>
-                    <div className="text-xs text-orbit-muted">
-                      {row.contractHoursWeekly != null
-                        ? `${row.contractHoursWeekly} h/sem`
-                        : row.workSchedule || '—'}
+                    <div className="font-medium text-orbit-text">
+                      {row.contractType || '—'}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 text-right text-orbit-text-secondary">
+                    <div className="inline-flex flex-col items-end gap-1 text-xs tabular-nums">
+                      {row.contractHoursWeekly != null && (
+                        <div className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 font-bold text-sky-900">
+                          Jornada {row.contractHoursWeekly} h/sem
+                        </div>
+                      )}
+                      <div className="space-y-0.5 text-right">
+                        <div>
+                          <span className="text-orbit-muted">Cátedra</span>{' '}
+                          <span className="font-semibold text-orbit-text">
+                            {row.catedraHours} h
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-orbit-muted">Preparación</span>{' '}
+                          <span className="font-semibold text-orbit-text">
+                            {row.preparationHours} h
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-orbit-muted">Sustantivas</span>{' '}
+                          <span className="font-semibold text-orbit-text">
+                            {row.substantiveHoursAssigned} h
+                          </span>
+                        </div>
+                        {row.substantiveHoursRemaining != null && (
+                          <div className="font-bold text-orbit-primary pt-0.5">
+                            Disponibles {row.substantiveHoursRemaining} h
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className="px-5 py-4">
@@ -819,33 +860,6 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                         studentsGap: row.studentsGap ?? null,
                       }}
                     />
-                  </td>
-                  <td className="px-5 py-4 text-right text-orbit-text-secondary">
-                    <div className="text-xs space-y-0.5 tabular-nums">
-                      <div>
-                        <span className="text-orbit-muted">Cátedra:</span>{' '}
-                        <span className="font-medium text-orbit-text-secondary">
-                          {row.catedraHours}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-orbit-muted">Preparación clase:</span>{' '}
-                        <span className="font-medium text-orbit-text-secondary">
-                          {row.preparationHours}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-orbit-muted">Sustantivas:</span>{' '}
-                        <span className="font-medium text-orbit-text-secondary">
-                          {row.substantiveHoursAssigned}
-                        </span>
-                      </div>
-                      {row.substantiveHoursRemaining != null && (
-                        <div className="font-semibold text-orbit-primary">
-                          Disponibles: {row.substantiveHoursRemaining}
-                        </div>
-                      )}
-                    </div>
                   </td>
                   <td className="px-5 py-4 text-right">
                     <button
@@ -936,6 +950,11 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                         LITE
                       </span>
                     )}
+                    <WeeklyHoursBadge
+                      hours={modalTeacher.contractHoursWeekly}
+                      workSchedule={modalTeacher.workSchedule}
+                      size="md"
+                    />
                   </h2>
                   <p className="text-xs text-orbit-muted mt-0.5">
                     {modalTeacher.document || 'Sin documento'}
@@ -958,10 +977,10 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
 
               {modalKind === 'preparation' ? (
                 <>
-                  <div className="rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary/60 p-3 text-xs text-orbit-text-secondary space-y-1 tabular-nums">
+                  <div className="rounded-xl border border-sky-200 bg-sky-50/80 p-3 text-xs text-orbit-text-secondary space-y-1 tabular-nums">
                     <div className="flex justify-between gap-3">
-                      <span>Jornada semanal</span>
-                      <span className="font-semibold text-orbit-text">
+                      <span className="font-semibold text-sky-900">Jornada semanal</span>
+                      <span className="font-bold text-sky-950 text-sm">
                         {modalTeacher.contractHoursWeekly != null
                           ? `${modalTeacher.contractHoursWeekly} h`
                           : '—'}
