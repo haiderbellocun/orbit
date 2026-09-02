@@ -26,6 +26,9 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
           <tr className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
             <th className="py-2 pr-3 font-bold">Persona</th>
             <th className="py-2 pr-3 font-bold">Identificación</th>
+            <th className="hidden py-2 pr-3 font-bold xl:table-cell">
+              Correo CUN
+            </th>
             <th className="hidden py-2 pr-3 font-bold lg:table-cell">
               Programa
             </th>
@@ -70,12 +73,28 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
                       {person.school}
                     </p>
                   ) : null}
+                  {person.edu_email?.trim() ? null : (
+                    <p className="mt-0.5 text-xs font-semibold text-orbit-danger xl:hidden">
+                      Sin correo CUN
+                    </p>
+                  )}
                   <p className="text-xs text-orbit-muted truncate max-w-[16rem] md:hidden">
                     {person.document || 'Sin identificación'}
                   </p>
                 </td>
                 <td className="hidden py-2.5 pr-3 text-orbit-text-secondary md:table-cell">
                   {person.document || '—'}
+                </td>
+                <td className="hidden py-2.5 pr-3 xl:table-cell">
+                  {person.edu_email?.trim() ? (
+                    <span className="block max-w-[14rem] truncate text-orbit-text-secondary">
+                      {person.edu_email}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-orbit-danger">
+                      Sin correo CUN
+                    </span>
+                  )}
                 </td>
                 <td className="hidden py-2.5 pr-3 text-orbit-text-secondary lg:table-cell">
                   {person.program || '—'}

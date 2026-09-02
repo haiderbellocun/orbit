@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowDownTrayIcon,
   ChevronDownIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/solid';
@@ -8,6 +9,7 @@ import type { PlantaPerson } from '@/src/types';
 import { CollaboratorTable } from '@/src/components/planta/CollaboratorTable';
 import type { OrganizationNode } from '@/src/lib/organizationTree';
 import { getRoleBand, getRoleHierarchyLevel } from '@/src/lib/roleHierarchy';
+import { downloadUnassignedPeopleExcel } from '@/src/lib/exportUnassignedPeopleExcel';
 
 type UnassignedPeopleSectionProps = {
   people: PlantaPerson[];
@@ -55,11 +57,16 @@ export const UnassignedPeopleSection: React.FC<
   tone = 'warning',
 }) => {
   const [open, setOpen] = useState(defaultOpen);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (defaultOpen) setOpen(true);
   }, [defaultOpen]);
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [people]);
 
   const totalPages = Math.max(1, Math.ceil(people.length / PAGE_SIZE));
   const pagePeople = useMemo(() => {
@@ -68,6 +75,17 @@ export const UnassignedPeopleSection: React.FC<
   }, [people, page]);
 
   if (people.length === 0) return null;
+
+  function handleExport(e: React.MouseEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    setExporting(true);
+    try {
+      downloadUnassignedPeopleExcel(people, { title: heading });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <section
@@ -78,35 +96,49 @@ export const UnassignedPeopleSection: React.FC<
           : 'border-orbit-border'
       )}
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 px-4 py-4 text-left sm:px-5"
-      >
-        {tone === 'warning' ? (
-          <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-orbit-warning" />
-        ) : null}
-        <div className="min-w-0 flex-1">
-          <h3 className="font-display text-base font-semibold text-orbit-text">
-            {heading}
-          </h3>
-          <p className="text-sm text-orbit-muted">
-            {hint ??
-              `${people.length.toLocaleString('es-CO')} persona${
-                people.length === 1 ? '' : 's'
-              } sin responsable asignado`}
-          </p>
-        </div>
-        <span className="text-xs font-bold text-orbit-primary">
-          {open ? 'Ocultar' : 'Ver personas'}
-        </span>
-        <ChevronDownIcon
-          className={cn(
-            'h-4 w-4 text-orbit-muted transition-transform',
-            open && 'rotate-180'
-          )}
-        />
-      </button>
+      <div className="flex w-full items-center gap-2 px-4 py-4 sm:gap-3 sm:px-5">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          {tone === 'warning' ? (
+            <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-orbit-warning" />
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <h3 className="font-display text-base font-semibold text-orbit-text">
+              {heading}
+            </h3>
+            <p className="text-sm text-orbit-muted">
+              {hint ??
+                `${people.length.toLocaleString('es-CO')} persona${
+                  people.length === 1 ? '' : 's'
+                } sin responsable asignado`}
+            </p>
+          </div>
+          <span className="hidden text-xs font-bold text-orbit-primary sm:inline">
+            {open ? 'Ocultar' : 'Ver personas'}
+          </span>
+          <ChevronDownIcon
+            className={cn(
+              'h-4 w-4 shrink-0 text-orbit-muted transition-transform',
+              open && 'rotate-180'
+            )}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting || people.length === 0}
+          className="glass-button-secondary inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-bold disabled:opacity-40"
+          title="Exportar Excel"
+        >
+          <ArrowDownTrayIcon className="h-4 w-4" />
+          <span className="hidden sm:inline">
+            {exporting ? 'Generando…' : 'Excel'}
+          </span>
+        </button>
+      </div>
       {open && (
         <div className="border-t border-orbit-border px-4 pb-4 sm:px-5">
           <CollaboratorTable nodes={toNodes(pagePeople)} onManage={onManage} />
@@ -120,7 +152,7 @@ export const UnassignedPeopleSection: React.FC<
               >
                 Anterior
               </button>
-              <span className="text-xs font-bold text-orbit-muted">
+              <span className="text-xs text-orbit-muted font-bold">
                 {page} / {totalPages}
               </span>
               <button

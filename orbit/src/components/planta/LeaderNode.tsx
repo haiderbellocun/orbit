@@ -90,6 +90,15 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
               <p className="text-xs truncate font-semibold" style={{ color: tone.accent }}>
                 {person.school || person.program || 'Sin programa'}
               </p>
+              {person.edu_email?.trim() ? (
+                <p className="text-xs text-orbit-muted truncate">
+                  {person.edu_email}
+                </p>
+              ) : (
+                <p className="text-xs font-semibold text-orbit-danger">
+                  Sin correo CUN
+                </p>
+              )}
               <p className="mt-1 text-xs text-orbit-text-secondary">
                 {node.totalReportsCount} colaborador
                 {node.totalReportsCount === 1 ? '' : 'es'}
