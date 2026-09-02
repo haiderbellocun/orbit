@@ -29,6 +29,8 @@ import {
   type CatalogSchool,
 } from '@/src/lib/api';
 import { isHarveyAreaName } from '@/src/lib/harveyArea';
+import { QuotaSummary } from '@/src/components/workload/QuotaSummary';
+import type { QuotaStatus, TeachingModality } from '@/src/lib/workloadQuotaDisplay';
 
 interface SubstantiveHoursViewProps {
   searchQuery?: string;
@@ -52,6 +54,8 @@ type Filters = {
   hasSubstantive: '' | 'true' | 'false';
   withoutEduEmail: boolean;
   role: '' | 'docente' | 'docente_pensionado' | 'lite';
+  teachingModality: '' | TeachingModality;
+  quotaStatus: '' | QuotaStatus;
 };
 
 const EMPTY_FILTERS: Filters = {
@@ -65,6 +69,8 @@ const EMPTY_FILTERS: Filters = {
   hasSubstantive: '',
   withoutEduEmail: false,
   role: '',
+  teachingModality: '',
+  quotaStatus: '',
 };
 
 const PLACEHOLDER_CATEGORY = 'PEDIR LISTA CATEGORIAS HORAS SUSTANTIVAS';
@@ -175,6 +181,8 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
             : applied.hasSubstantive === 'true',
         without_edu_email: applied.withoutEduEmail || undefined,
         role: applied.role || undefined,
+        teaching_modality: applied.teachingModality || undefined,
+        quota_status: applied.quotaStatus || undefined,
         page: currentPage,
         limit: 50,
       });
@@ -225,6 +233,8 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     if (applied.hasSubstantive) n++;
     if (applied.withoutEduEmail) n++;
     if (applied.role) n++;
+    if (applied.teachingModality) n++;
+    if (applied.quotaStatus) n++;
     return n;
   }, [applied]);
 
@@ -646,6 +656,48 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                     <option value="false">Sin horas sustantivas</option>
                   </select>
                 </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
+                    Modalidad enseñanza
+                  </span>
+                  <select
+                    className={selectClass}
+                    value={filters.teachingModality}
+                    onChange={(e) =>
+                      setFilters((f) => ({
+                        ...f,
+                        teachingModality: e.target
+                          .value as Filters['teachingModality'],
+                      }))
+                    }
+                  >
+                    <option value="">Todas</option>
+                    <option value="presencial">Presencial</option>
+                    <option value="virtual">Virtual</option>
+                    <option value="mixto">Mixto</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
+                    Cuota académica
+                  </span>
+                  <select
+                    className={selectClass}
+                    value={filters.quotaStatus}
+                    onChange={(e) =>
+                      setFilters((f) => ({
+                        ...f,
+                        quotaStatus: e.target.value as Filters['quotaStatus'],
+                      }))
+                    }
+                  >
+                    <option value="">Todas</option>
+                    <option value="under">Faltante</option>
+                    <option value="ok">Completa</option>
+                    <option value="over">Exceso</option>
+                    <option value="unknown">Sin cuota</option>
+                  </select>
+                </label>
                 <label className="inline-flex items-center gap-2 text-sm text-orbit-text-secondary cursor-pointer sm:col-span-2 lg:col-span-3 pt-1">
                   <input
                     type="checkbox"
@@ -686,6 +738,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                 <th className="px-5 py-3 font-bold hidden lg:table-cell">
                   Contrato
                 </th>
+                <th className="px-5 py-3 font-bold">Cuota</th>
                 <th className="px-5 py-3 font-bold text-right">Horas</th>
                 <th className="px-5 py-3 font-bold text-right">Acción</th>
               </tr>
@@ -694,7 +747,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               {!loading && rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-5 py-12 text-center text-orbit-muted"
                   >
                     No hay docentes para mostrar
@@ -749,6 +802,23 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                         ? `${row.contractHoursWeekly} h/sem`
                         : row.workSchedule || '—'}
                     </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <QuotaSummary
+                      compact
+                      quota={{
+                        teachingModality: row.teachingModality ?? null,
+                        creditsPresencial: row.creditsPresencial ?? 0,
+                        studentsVirtual: row.studentsVirtual ?? 0,
+                        creditTarget: row.creditTarget ?? null,
+                        studentTarget: row.studentTarget ?? null,
+                        loadIndex: row.loadIndex ?? null,
+                        fulfillmentPct: row.fulfillmentPct ?? null,
+                        quotaStatus: row.quotaStatus ?? 'unknown',
+                        creditsGap: row.creditsGap ?? null,
+                        studentsGap: row.studentsGap ?? null,
+                      }}
+                    />
                   </td>
                   <td className="px-5 py-4 text-right text-orbit-text-secondary">
                     <div className="text-xs space-y-0.5 tabular-nums">

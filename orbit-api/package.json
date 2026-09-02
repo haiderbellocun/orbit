@@ -31,7 +31,7 @@
     "seed:v3": "ts-node src/db/seed_v3.ts",
     "seed:v4": "ts-node src/db/seed_v4.ts",
     "schema:apply:gcp": "node scripts/apply-gcp-schema.mjs",
-    "test": "ts-node --transpile-only src/lib/orbitCapabilities.test.ts && ts-node --transpile-only src/lib/academicLoadValidation.test.ts && ts-node --transpile-only src/lib/roleHierarchy.test.ts && ts-node --transpile-only src/lib/orgChartTreeEngine.test.ts && ts-node --transpile-only src/lib/orbitRoles.test.ts",
+    "test": "ts-node --transpile-only src/lib/orbitCapabilities.test.ts && ts-node --transpile-only src/lib/academicLoadValidation.test.ts && ts-node --transpile-only src/lib/workloadQuota.test.ts && ts-node --transpile-only src/lib/roleHierarchy.test.ts && ts-node --transpile-only src/lib/orgChartTreeEngine.test.ts && ts-node --transpile-only src/lib/orbitRoles.test.ts",
     "test:smtp": "node scripts/test-smtp.mjs",
     "template:person": "node scripts/generate-person-load-template.mjs"
   },

@@ -15,6 +15,14 @@ import {
   parsePositiveIntHours,
   weeklyContractHoursFromLabels,
 } from "../lib/substantiveHours";
+import {
+  evaluateWorkloadQuota,
+  quotaApiFields,
+  sqlGroupIsPresencial,
+  sqlGroupIsVirtual,
+  sqlQuotaLoadIndexExpr,
+  sqlQuotaStatusExpr,
+} from "../lib/workloadQuota";
 import { schoolScopeFromRequest } from "../middleware/orbitAuth";
 import { sqlPersonIsActive } from "../sql/personActive";
 import { sqlExcludeHarveyArea } from "../sql/excludeHarveyArea";
@@ -117,7 +125,9 @@ router.get("/substantive-hours/categories", async (_req, res) => {
  *  search, area_id, school_id, period (cátedra),
  *  contract_hours (21|42), availability (available|none|unknown),
  *  has_catedra (true|false), has_substantive (true|false),
- *  without_edu_email (true), role (docente|docente_pensionado|lite)
+ *  without_edu_email (true), role (docente|docente_pensionado|lite),
+ *  teaching_modality (presencial|virtual|mixto),
+ *  quota_status (under|ok|over|unknown)
  */
 router.get("/substantive-hours/teachers", async (req: Request, res: Response) => {
   try {
@@ -176,6 +186,29 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
       roleRaw === "docente_pensionado" ||
       roleRaw === "lite"
         ? roleRaw
+        : null;
+    const teachingModalityRaw = String(
+      req.query.teaching_modality ?? req.query.teachingModality ?? ""
+    )
+      .trim()
+      .toLowerCase();
+    const teachingModalityFilter =
+      teachingModalityRaw === "presencial" ||
+      teachingModalityRaw === "virtual" ||
+      teachingModalityRaw === "mixto"
+        ? teachingModalityRaw
+        : null;
+    const quotaStatusRaw = String(
+      req.query.quota_status ?? req.query.quotaStatus ?? ""
+    )
+      .trim()
+      .toLowerCase();
+    const quotaStatusFilter =
+      quotaStatusRaw === "under" ||
+      quotaStatusRaw === "ok" ||
+      quotaStatusRaw === "over" ||
+      quotaStatusRaw === "unknown"
+        ? quotaStatusRaw
         : null;
 
     const pageNum = Math.max(
@@ -305,6 +338,35 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
       conditions.push(`(${contractHoursExpr}) IS NULL`);
     }
 
+    if (teachingModalityFilter === "presencial") {
+      conditions.push(
+        `COALESCE(quota.has_p, false) AND NOT COALESCE(quota.has_v, false)`
+      );
+    } else if (teachingModalityFilter === "virtual") {
+      conditions.push(
+        `COALESCE(quota.has_v, false) AND NOT COALESCE(quota.has_p, false)`
+      );
+    } else if (teachingModalityFilter === "mixto") {
+      conditions.push(
+        `COALESCE(quota.has_p, false) AND COALESCE(quota.has_v, false)`
+      );
+    }
+
+    const quotaLoadIndexExpr = sqlQuotaLoadIndexExpr({
+      contractHoursExpr: `(${contractHoursExpr})`,
+      creditsPExpr: "COALESCE(quota.credits_p, 0)",
+      studentsVExpr: "COALESCE(quota.students_v, 0)",
+      hasPExpr: "COALESCE(quota.has_p, false)",
+      hasVExpr: "COALESCE(quota.has_v, false)",
+    });
+    if (quotaStatusFilter != null) {
+      conditions.push(
+        `(${sqlQuotaStatusExpr(quotaLoadIndexExpr)}) = $${i}`
+      );
+      values.push(quotaStatusFilter);
+      i++;
+    }
+
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const query = `
@@ -322,6 +384,10 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         ${prepHoursExpr} AS preparation_hours,
         COALESCE(cath.catedra_hours, 0) AS catedra_hours,
         COALESCE(sub.substantive_hours, 0) AS substantive_hours_assigned,
+        COALESCE(quota.credits_p, 0) AS credits_p,
+        COALESCE(quota.students_v, 0) AS students_v,
+        COALESCE(quota.has_p, false) AS has_p,
+        COALESCE(quota.has_v, false) AS has_v,
         COUNT(*) OVER() AS total_count
       FROM ${prefix}person p
       LEFT JOIN ${prefix}role r ON r.id = p.role_id
@@ -351,6 +417,20 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
           ON subj.subject_code = al.subject_code
         WHERE al.person_id = p.id${periodSql}
       ) cath ON true
+      LEFT JOIN LATERAL (
+        SELECT
+          COALESCE(SUM(CASE WHEN ${sqlGroupIsPresencial("cgq")} THEN COALESCE(subj.credits_quantity, 0) ELSE 0 END), 0) AS credits_p,
+          COALESCE(SUM(CASE WHEN ${sqlGroupIsVirtual("cgq")} THEN COALESCE(al.enrolled_quantity, 0) ELSE 0 END), 0) AS students_v,
+          COALESCE(BOOL_OR(${sqlGroupIsPresencial("cgq")}), false) AS has_p,
+          COALESCE(BOOL_OR(${sqlGroupIsVirtual("cgq")}), false) AS has_v
+        FROM academic_workload.academic_load al
+        LEFT JOIN academic_workload.subject subj
+          ON subj.subject_code = al.subject_code
+        LEFT JOIN academic_workload.class_group cgq
+          ON cgq.subject_code = al.subject_code
+         AND cgq.group_code = al.group_code
+        WHERE al.person_id = p.id${periodSql}
+      ) quota ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(a.hours_quantity), 0) AS substantive_hours
         FROM substantive_hours.assignment a
@@ -387,6 +467,13 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
               contractHours - catedraHours - preparationHours - substantiveAssigned
             )
           : null;
+      const quota = evaluateWorkloadQuota({
+        contractHours,
+        creditsP: Number(r.credits_p) || 0,
+        studentsV: Number(r.students_v) || 0,
+        hasP: Boolean(r.has_p),
+        hasV: Boolean(r.has_v),
+      });
 
       return {
         id: String(r.id),
@@ -404,6 +491,7 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         preparationHours,
         substantiveHoursAssigned: substantiveAssigned,
         substantiveHoursRemaining: remaining,
+        ...quotaApiFields(quota),
       };
     });
 

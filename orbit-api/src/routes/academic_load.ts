@@ -3,6 +3,15 @@ import { pool } from "../db/connection";
 import { sqlPersonIsActive } from "../sql/personActive";
 import { sqlExcludeHarveyFromAcademicLoad } from "../sql/excludeHarveyArea";
 import { schoolScopeFromRequest } from "../middleware/orbitAuth";
+import { weeklyContractHoursFromLabels } from "../lib/substantiveHours";
+import {
+  evaluateWorkloadQuota,
+  quotaApiFields,
+  sqlGroupIsPresencial,
+  sqlGroupIsVirtual,
+  sqlQuotaLoadIndexExpr,
+  sqlQuotaStatusExpr,
+} from "../lib/workloadQuota";
 
 const router = Router();
 
@@ -42,6 +51,159 @@ function normalizeModalityQueryParam(value: string): {
   if (ascii.startsWith("pres")) return { code: "P", literal: null };
   if (ascii.startsWith("vir")) return { code: "V", literal: null };
   return { code: null, literal: trimmed };
+}
+
+const CONTRACT_HOURS_SQL = `
+  CASE
+    WHEN lower(coalesce(ct.work_schedule, '') || ' ' || coalesce(ct.name, ''))
+      ~ '(medio|media|medio[[:space:]]*tiempo|1/2|[[:<:]]21[[:>:]])' THEN 21
+    WHEN lower(coalesce(ct.work_schedule, '') || ' ' || coalesce(ct.name, ''))
+      ~ '(tiempo[[:space:]]*completo|[[:<:]]completo[[:>:]]|[[:<:]]full[[:>:]]|[[:<:]]42[[:>:]])' THEN 42
+    ELSE NULL
+  END
+`;
+
+function parseTeachingModalityParam(raw: unknown): string | null {
+  const v = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (v === "presencial" || v === "virtual" || v === "mixto") return v;
+  return null;
+}
+
+function parseQuotaStatusParam(raw: unknown): string | null {
+  const v = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (v === "under" || v === "ok" || v === "over" || v === "unknown") return v;
+  return null;
+}
+
+function buildAcademicLoadFilters(
+  req: Request,
+  options?: { includeGroupModality?: boolean }
+): { conditions: string[]; values: unknown[]; i: number } {
+  const includeGroupModality = options?.includeGroupModality !== false;
+  const teacherDocument = qStr(req.query.teacher_document);
+  const personId = parsePositiveInt(req.query.person_id ?? req.query.personId);
+  const period = qStr(req.query.period);
+  const unitName = qStr(req.query.unit_name ?? req.query.search);
+  const modality = qStr(req.query.modality);
+  const type = qStr(req.query.type);
+  const program = qStr(req.query.program);
+  const subject = qStr(req.query.subject);
+  const groupCode = qStr(req.query.group_code ?? req.query.groupCode);
+  const acaGroupId = qStr(req.query.aca_group_id ?? req.query.acaGroupId);
+  const block = qStr(req.query.block);
+  const areaId = parsePositiveInt(req.query.area_id ?? req.query.areaId);
+  const schoolId = parsePositiveInt(req.query.school_id ?? req.query.schoolId);
+  const studyLevel = qStr(
+    req.query.study_level ?? req.query.studyLevel ?? req.query.program_level
+  ).toLowerCase();
+
+  const conditions: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+
+  if (personId != null) {
+    conditions.push(`al.person_id = $${i++}`);
+    values.push(personId);
+  }
+  if (teacherDocument) {
+    conditions.push(`p.document ILIKE $${i++}`);
+    values.push(`%${teacherDocument}%`);
+  }
+  if (period) {
+    conditions.push(`al.period_code = $${i++}`);
+    values.push(period);
+  }
+  if (unitName) {
+    conditions.push(
+      `(p.full_name ILIKE $${i}
+        OR s.name ILIKE $${i}
+        OR COALESCE(al.program_name, pr.name, '') ILIKE $${i}
+        OR al.subject_code ILIKE $${i}
+        OR COALESCE(al.aca_group_id, '') ILIKE $${i}
+        OR p.document ILIKE $${i}
+        OR COALESCE(p.email, '') ILIKE $${i}
+        OR COALESCE(p.edu_email, '') ILIKE $${i})`
+    );
+    values.push(`%${unitName}%`);
+    i++;
+  }
+  if (includeGroupModality && modality) {
+    const { code, literal } = normalizeModalityQueryParam(modality);
+    if (code === "V") {
+      conditions.push(
+        `(UPPER(TRIM(cg.modality)) IN ('V', 'T', 'VIRTUAL')
+          OR LOWER(TRIM(cg.modality)) LIKE 'vir%')`
+      );
+    } else if (code === "P") {
+      conditions.push(
+        `(UPPER(TRIM(cg.modality)) IN ('P', 'PRESENCIAL')
+          OR LOWER(TRIM(cg.modality)) LIKE 'pres%')`
+      );
+    } else if (literal) {
+      conditions.push(`cg.modality ILIKE $${i++}`);
+      values.push(`%${literal}%`);
+    }
+  }
+  if (type) {
+    const normalizedType = type.toLowerCase();
+    if (normalizedType === "current") {
+      // Sin tabla de “carga actual” separada.
+    } else if (normalizedType === "projection") {
+      // Todas las filas son proyección ACA.
+    }
+  }
+  if (program) {
+    conditions.push(`COALESCE(al.program_name, pr.name, '') ILIKE $${i++}`);
+    values.push(`%${program}%`);
+  }
+  if (subject) {
+    conditions.push(`(s.name ILIKE $${i} OR al.subject_code ILIKE $${i})`);
+    values.push(`%${subject}%`);
+    i++;
+  }
+  if (groupCode) {
+    conditions.push(`al.group_code ILIKE $${i++}`);
+    values.push(`%${groupCode}%`);
+  }
+  if (acaGroupId) {
+    conditions.push(`al.aca_group_id = $${i++}`);
+    values.push(acaGroupId);
+  }
+  if (block) {
+    conditions.push(`cg.block ILIKE $${i++}`);
+    values.push(`%${block}%`);
+  }
+  if (
+    studyLevel === "pregrado" ||
+    studyLevel === "especializacion" ||
+    studyLevel === "otro"
+  ) {
+    conditions.push(`(${SQL_STUDY_LEVEL}) = $${i++}`);
+    values.push(studyLevel);
+  }
+
+  const schoolScope = schoolScopeFromRequest(req);
+  if (schoolScope != null) {
+    conditions.push(`(p.school_id = $${i} OR pr.school_id = $${i})`);
+    values.push(schoolScope.schoolId);
+    i++;
+  } else if (schoolId != null) {
+    conditions.push(`p.school_id = $${i++}`);
+    values.push(schoolId);
+  }
+
+  if (areaId != null) {
+    conditions.push(`COALESCE(p.area_id, sch.area_id) = $${i++}`);
+    values.push(areaId);
+  }
+
+  conditions.push(sqlExcludeHarveyFromAcademicLoad("a"));
+
+  return { conditions, values, i };
 }
 
 router.get("/academic-load/filter-options", async (req: Request, res: Response) => {
@@ -128,135 +290,20 @@ router.get("/academic-load", async (req: Request, res: Response) => {
     );
     const offset = (pageNum - 1) * limitNum;
 
-    const teacherDocument = qStr(req.query.teacher_document);
-    const period = qStr(req.query.period);
-    const unitName = qStr(req.query.unit_name ?? req.query.search);
-    const modality = qStr(req.query.modality);
-    const type = qStr(req.query.type);
-    const program = qStr(req.query.program);
-    const subject = qStr(req.query.subject);
-    const groupCode = qStr(req.query.group_code ?? req.query.groupCode);
-    const acaGroupId = qStr(req.query.aca_group_id ?? req.query.acaGroupId);
-    const block = qStr(req.query.block);
-    const areaId = parsePositiveInt(req.query.area_id ?? req.query.areaId);
-    const schoolId = parsePositiveInt(req.query.school_id ?? req.query.schoolId);
-    const studyLevel = qStr(
-      req.query.study_level ?? req.query.studyLevel ?? req.query.program_level
-    ).toLowerCase();
-
-    const conditions: string[] = [];
-    const values: unknown[] = [];
-    let i = 1;
-
-    if (teacherDocument) {
-      conditions.push(`p.document ILIKE $${i++}`);
-      values.push(`%${teacherDocument}%`);
-    }
-    if (period) {
-      conditions.push(`al.period_code = $${i++}`);
-      values.push(period);
-    }
-    if (unitName) {
-      conditions.push(
-        `(p.full_name ILIKE $${i}
-          OR s.name ILIKE $${i}
-          OR COALESCE(al.program_name, pr.name, '') ILIKE $${i}
-          OR al.subject_code ILIKE $${i}
-          OR COALESCE(al.aca_group_id, '') ILIKE $${i}
-          OR p.document ILIKE $${i}
-          OR COALESCE(p.email, '') ILIKE $${i}
-          OR COALESCE(p.edu_email, '') ILIKE $${i})`
-      );
-      values.push(`%${unitName}%`);
-      i++;
-    }
-    if (modality) {
-      const { code, literal } = normalizeModalityQueryParam(modality);
-      if (code === "V") {
-        conditions.push(
-          `(UPPER(TRIM(cg.modality)) IN ('V', 'T', 'VIRTUAL')
-            OR LOWER(TRIM(cg.modality)) LIKE 'vir%')`
-        );
-      } else if (code === "P") {
-        conditions.push(
-          `(UPPER(TRIM(cg.modality)) IN ('P', 'PRESENCIAL')
-            OR LOWER(TRIM(cg.modality)) LIKE 'pres%')`
-        );
-      } else if (literal) {
-        conditions.push(`cg.modality ILIKE $${i++}`);
-        values.push(`%${literal}%`);
-      }
-    }
-    if (type) {
-      const normalizedType = type.toLowerCase();
-      if (normalizedType === "current") {
-        // Sin tabla de “carga actual” separada.
-      } else if (normalizedType === "projection") {
-        // Todas las filas son proyección ACA.
-      }
-    }
-    if (program) {
-      conditions.push(`COALESCE(al.program_name, pr.name, '') ILIKE $${i++}`);
-      values.push(`%${program}%`);
-    }
-    if (subject) {
-      conditions.push(
-        `(s.name ILIKE $${i} OR al.subject_code ILIKE $${i})`
-      );
-      values.push(`%${subject}%`);
-      i++;
-    }
-    if (groupCode) {
-      conditions.push(`al.group_code ILIKE $${i++}`);
-      values.push(`%${groupCode}%`);
-    }
-    if (acaGroupId) {
-      conditions.push(`al.aca_group_id = $${i++}`);
-      values.push(acaGroupId);
-    }
-    if (block) {
-      conditions.push(`cg.block ILIKE $${i++}`);
-      values.push(`%${block}%`);
-    }
-    if (
-      studyLevel === "pregrado" ||
-      studyLevel === "especializacion" ||
-      studyLevel === "otro"
-    ) {
-      conditions.push(`(${SQL_STUDY_LEVEL}) = $${i++}`);
-      values.push(studyLevel);
-    }
-
-    const schoolScope = schoolScopeFromRequest(req);
-    if (schoolScope != null) {
-      conditions.push(`(p.school_id = $${i} OR pr.school_id = $${i})`);
-      values.push(schoolScope.schoolId);
-      i++;
-    } else if (schoolId != null) {
-      conditions.push(`p.school_id = $${i++}`);
-      values.push(schoolId);
-    }
-
-    if (areaId != null) {
-      conditions.push(
-        `COALESCE(p.area_id, sch.area_id) = $${i++}`
-      );
-      values.push(areaId);
-    }
-
-    // Carga académica: no exponer Área investigativa (Harvey / Jarvey).
-    conditions.push(sqlExcludeHarveyFromAcademicLoad("a"));
-
+    const { conditions, values, i: startI } = buildAcademicLoadFilters(req);
+    let i = startI;
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const query = `
       SELECT
         al.id,
+        al.person_id,
         p.document AS teacher_document,
         p.full_name AS teacher_name,
         COALESCE(al.program_name, pr.name) AS program,
         s.name AS subject_name,
         s.credits_quantity AS credits,
+        al.enrolled_quantity,
         cg.modality AS modality,
         cg.block AS block,
         al.period_code AS period,
@@ -295,6 +342,134 @@ router.get("/academic-load", async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/academic-load/teacher-summaries", async (req: Request, res: Response) => {
+  try {
+    const pageNum = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
+    const limitNum = Math.min(
+      500,
+      Math.max(1, parseInt(String(req.query.limit ?? "100"), 10) || 100)
+    );
+    const offset = (pageNum - 1) * limitNum;
+
+    const { conditions, values, i: startI } = buildAcademicLoadFilters(req, {
+      includeGroupModality: Boolean(qStr(req.query.modality)),
+    });
+    let i = startI;
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const teachingModalityFilter = parseTeachingModalityParam(
+      req.query.teaching_modality ?? req.query.teachingModality
+    );
+    const quotaStatusFilter = parseQuotaStatusParam(
+      req.query.quota_status ?? req.query.quotaStatus
+    );
+
+    const creditsPExpr = `COALESCE(SUM(CASE WHEN ${sqlGroupIsPresencial("cg")} THEN COALESCE(s.credits_quantity, 0) ELSE 0 END), 0)`;
+    const studentsVExpr = `COALESCE(SUM(CASE WHEN ${sqlGroupIsVirtual("cg")} THEN COALESCE(al.enrolled_quantity, 0) ELSE 0 END), 0)`;
+    const hasPExpr = `COALESCE(BOOL_OR(${sqlGroupIsPresencial("cg")}), false)`;
+    const hasVExpr = `COALESCE(BOOL_OR(${sqlGroupIsVirtual("cg")}), false)`;
+    const loadIndexExpr = sqlQuotaLoadIndexExpr({
+      contractHoursExpr: `(${CONTRACT_HOURS_SQL})`,
+      creditsPExpr,
+      studentsVExpr,
+      hasPExpr,
+      hasVExpr,
+    });
+
+    const having: string[] = [];
+    if (teachingModalityFilter === "presencial") {
+      having.push(`${hasPExpr} AND NOT ${hasVExpr}`);
+    } else if (teachingModalityFilter === "virtual") {
+      having.push(`${hasVExpr} AND NOT ${hasPExpr}`);
+    } else if (teachingModalityFilter === "mixto") {
+      having.push(`${hasPExpr} AND ${hasVExpr}`);
+    }
+    if (quotaStatusFilter != null) {
+      having.push(`(${sqlQuotaStatusExpr(loadIndexExpr)}) = $${i++}`);
+      values.push(quotaStatusFilter);
+    }
+    const havingSql = having.length ? `HAVING ${having.join(" AND ")}` : "";
+
+    const query = `
+      SELECT
+        p.id AS person_id,
+        p.document AS teacher_document,
+        p.full_name AS teacher_name,
+        a.name AS area,
+        sch.name AS school,
+        ct.name AS contract_type,
+        ct.work_schedule,
+        ${creditsPExpr} AS credits_p,
+        ${studentsVExpr} AS students_v,
+        ${hasPExpr} AS has_p,
+        ${hasVExpr} AS has_v,
+        COUNT(*)::int AS assignment_count,
+        COUNT(*) OVER() AS total_count
+      FROM academic_workload.academic_load al
+      INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
+      LEFT JOIN program pr ON pr.id = al.program_id
+      LEFT JOIN school sch ON sch.id = p.school_id
+      LEFT JOIN area a ON a.id = COALESCE(p.area_id, sch.area_id)
+      LEFT JOIN contract_type ct ON ct.id = p.contract_type_id
+      LEFT JOIN academic_workload.subject s ON s.subject_code = al.subject_code
+      LEFT JOIN academic_workload.class_group cg
+        ON cg.subject_code = al.subject_code
+       AND cg.group_code = al.group_code
+      ${where}
+      GROUP BY
+        p.id, p.document, p.full_name, a.name, sch.name,
+        ct.name, ct.work_schedule
+      ${havingSql}
+      ORDER BY p.full_name ASC NULLS LAST
+      LIMIT $${i++} OFFSET $${i++}
+    `;
+    values.push(limitNum, offset);
+
+    const result = await pool.query(query, values);
+    const total =
+      result.rows.length > 0 ? parseInt(String(result.rows[0].total_count), 10) : 0;
+
+    const data = result.rows.map((r) => {
+      const contractHours = weeklyContractHoursFromLabels(
+        r.work_schedule as string | null,
+        r.contract_type as string | null
+      );
+      const quota = evaluateWorkloadQuota({
+        contractHours,
+        creditsP: Number(r.credits_p) || 0,
+        studentsV: Number(r.students_v) || 0,
+        hasP: Boolean(r.has_p),
+        hasV: Boolean(r.has_v),
+      });
+      return {
+        personId: Number(r.person_id),
+        document: r.teacher_document != null ? String(r.teacher_document) : "",
+        name: r.teacher_name != null ? String(r.teacher_name) : "",
+        area: r.area != null ? String(r.area) : "",
+        school: r.school != null ? String(r.school) : "",
+        contractType: r.contract_type != null ? String(r.contract_type) : "",
+        workSchedule: r.work_schedule != null ? String(r.work_schedule) : "",
+        contractHoursWeekly: contractHours,
+        assignmentCount: Number(r.assignment_count) || 0,
+        ...quotaApiFields(quota),
+      };
+    });
+
+    res.json({
+      data,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: total > 0 ? Math.ceil(total / limitNum) : 0,
+      },
+    });
+  } catch (err) {
+    console.error("GET /academic-load/teacher-summaries", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -3,6 +3,7 @@ import {
   dateRangesOverlap,
   findHoursBalanceIssues,
   findOverCapacityIssues,
+  findQuotaIssues,
   findScheduleConflictIssues,
   parseTimeToMinutes,
   runImportValidations,
@@ -167,6 +168,104 @@ test("runImportValidations + summarize", () => {
   const issues = runImportValidations([], new Map());
   const summary = summarizeValidationIssues(issues);
   assert.equal(summary.total, 0);
+});
+
+test("quota_under presencial por periodo", () => {
+  const contexts = new Map([
+    [
+      1,
+      {
+        personId: 1,
+        preparationHours: 4,
+        substantiveAssigned: 0,
+        workSchedule: "Tiempo completo",
+        contractName: "Docente",
+      },
+    ],
+  ]);
+  const issues = findQuotaIssues(
+    [
+      {
+        index: 0,
+        personId: 1,
+        document: "1",
+        periodCode: "26C11",
+        subjectCode: "A",
+        groupCode: "01",
+        subjectHours: 4,
+        enrolledQuantity: 20,
+        capacity: 40,
+        startDate: null,
+        endDate: null,
+        startMinutes: null,
+        endMinutes: null,
+        block: null,
+        creditsQuantity: 14,
+        modality: "P",
+      },
+    ],
+    contexts
+  );
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].code, "quota_under");
+});
+
+test("quota_over mixto", () => {
+  const contexts = new Map([
+    [
+      2,
+      {
+        personId: 2,
+        preparationHours: 4,
+        substantiveAssigned: 0,
+        workSchedule: "Tiempo completo",
+        contractName: "Docente",
+      },
+    ],
+  ]);
+  const issues = findQuotaIssues(
+    [
+      {
+        index: 0,
+        personId: 2,
+        document: "2",
+        periodCode: "26C11",
+        subjectCode: "A",
+        groupCode: "01",
+        subjectHours: 4,
+        enrolledQuantity: 10,
+        capacity: 40,
+        startDate: null,
+        endDate: null,
+        startMinutes: null,
+        endMinutes: null,
+        block: null,
+        creditsQuantity: 28,
+        modality: "P",
+      },
+      {
+        index: 1,
+        personId: 2,
+        document: "2",
+        periodCode: "26C11",
+        subjectCode: "B",
+        groupCode: "05",
+        subjectHours: 4,
+        enrolledQuantity: 100,
+        capacity: 200,
+        startDate: null,
+        endDate: null,
+        startMinutes: null,
+        endMinutes: null,
+        block: null,
+        creditsQuantity: 3,
+        modality: "V",
+      },
+    ],
+    contexts
+  );
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].code, "quota_over");
 });
 
 console.log("academicLoadValidation tests passed");

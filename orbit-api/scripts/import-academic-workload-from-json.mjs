@@ -561,6 +561,11 @@ function buildNormalizedRows(assignments, personMaps) {
       startMinutes: parseTimeToMinutes(a.class_group?.start_time),
       endMinutes: parseTimeToMinutes(a.class_group?.end_time),
       block: a.class_group?.block ?? null,
+      creditsQuantity:
+        a.subject?.credits_quantity == null
+          ? null
+          : Number(a.subject.credits_quantity),
+      modality: resolveStoredModality(a),
       raw: a,
     });
   }

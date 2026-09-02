@@ -2,6 +2,10 @@ import {
   DEFAULT_CLASS_PREPARATION_HOURS,
   weeklyContractHoursFromLabels,
 } from "./substantiveHours";
+import {
+  classifyGroupModality,
+  evaluateWorkloadQuota,
+} from "./workloadQuota";
 
 export { DEFAULT_CLASS_PREPARATION_HOURS, weeklyContractHoursFromLabels };
 
@@ -10,7 +14,9 @@ export type ImportValidationCode =
   | "schedule_conflict"
   | "hours_overload"
   | "missing_contract_hours"
-  | "missing_subject_hours";
+  | "missing_subject_hours"
+  | "quota_under"
+  | "quota_over";
 
 export interface ImportValidationIssue {
   code: ImportValidationCode;
@@ -43,6 +49,8 @@ export interface NormalizedAssignmentForValidation {
   startMinutes: number | null;
   endMinutes: number | null;
   block: string | null;
+  creditsQuantity?: number | null;
+  modality?: string | null;
 }
 
 export interface PersonHoursContext {
@@ -322,6 +330,84 @@ export function summarizeValidationIssues(issues: ImportValidationIssue[]): {
   return { total: issues.length, by_code, warnings, errors };
 }
 
+export function findQuotaIssues(
+  rows: NormalizedAssignmentForValidation[],
+  contexts: Map<number, PersonHoursContext>
+): ImportValidationIssue[] {
+  const byPersonPeriod = new Map<string, NormalizedAssignmentForValidation[]>();
+  for (const r of rows) {
+    const key = `${r.personId}::${r.periodCode}`;
+    const list = byPersonPeriod.get(key) ?? [];
+    list.push(r);
+    byPersonPeriod.set(key, list);
+  }
+
+  const issues: ImportValidationIssue[] = [];
+  for (const group of byPersonPeriod.values()) {
+    const sample = group[0];
+    if (!sample) continue;
+    const ctx = contexts.get(sample.personId);
+    let creditsP = 0;
+    let studentsV = 0;
+    let hasP = false;
+    let hasV = false;
+    for (const r of group) {
+      const kind = classifyGroupModality(r.modality);
+      const credits = Number(r.creditsQuantity);
+      const enrolled = Number(r.enrolledQuantity);
+      if (kind === "P") {
+        hasP = true;
+        if (Number.isFinite(credits) && credits > 0) creditsP += credits;
+      } else if (kind === "V") {
+        hasV = true;
+        if (Number.isFinite(enrolled) && enrolled > 0) studentsV += enrolled;
+      }
+    }
+
+    const contractHours = weeklyContractHoursFromLabels(
+      ctx?.workSchedule,
+      ctx?.contractName
+    );
+    const quota = evaluateWorkloadQuota({
+      contractHours,
+      creditsP,
+      studentsV,
+      hasP,
+      hasV,
+    });
+    if (quota.status !== "under" && quota.status !== "over") continue;
+
+    const pct =
+      quota.fulfillmentPct != null ? `${quota.fulfillmentPct}%` : "—";
+    const modalityLabel = quota.modality ?? "sin modalidad";
+    issues.push({
+      code: quota.status === "under" ? "quota_under" : "quota_over",
+      severity: "warning",
+      personId: sample.personId,
+      document: sample.document ?? ctx?.document,
+      personName: sample.personName ?? ctx?.fullName ?? null,
+      periodCode: sample.periodCode,
+      message:
+        quota.status === "under"
+          ? `Cuota ${modalityLabel} incompleta (${pct}) en periodo ${sample.periodCode}`
+          : `Cuota ${modalityLabel} excedida (${pct}) en periodo ${sample.periodCode}`,
+      detail: {
+        modality: quota.modality,
+        periodCode: sample.periodCode,
+        creditsP: quota.creditsP,
+        studentsV: quota.studentsV,
+        creditTarget: quota.creditTarget,
+        studentTarget: quota.studentTarget,
+        loadIndex: quota.loadIndex,
+        fulfillmentPct: quota.fulfillmentPct,
+        creditsGap: quota.creditsGap,
+        studentsGap: quota.studentsGap,
+      },
+    });
+  }
+  return issues;
+}
+
 export function runImportValidations(
   rows: NormalizedAssignmentForValidation[],
   contexts: Map<number, PersonHoursContext>
@@ -330,5 +416,6 @@ export function runImportValidations(
     ...findOverCapacityIssues(rows),
     ...findScheduleConflictIssues(rows),
     ...findHoursBalanceIssues(rows, contexts),
+    ...findQuotaIssues(rows, contexts),
   ];
 }

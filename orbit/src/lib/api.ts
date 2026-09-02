@@ -1107,6 +1107,7 @@ export async function getAcademicLoadFilterOptions(): Promise<AcademicLoadFilter
 
 export async function getAcademicLoad(params?: {
   teacher_document?: string;
+  person_id?: number;
   period?: string;
   unit_name?: string;
   search?: string;
@@ -1126,6 +1127,8 @@ export async function getAcademicLoad(params?: {
   if (params?.teacher_document) {
     url.searchParams.set("teacher_document", params.teacher_document);
   }
+  if (params?.person_id != null)
+    url.searchParams.set("person_id", String(params.person_id));
   if (params?.period) url.searchParams.set("period", params.period);
   if (params?.unit_name) url.searchParams.set("unit_name", params.unit_name);
   if (params?.search) url.searchParams.set("search", params.search);
@@ -1140,6 +1143,66 @@ export async function getAcademicLoad(params?: {
   if (params?.group_code) url.searchParams.set("group_code", params.group_code);
   if (params?.block) url.searchParams.set("block", params.block);
   if (params?.study_level) url.searchParams.set("study_level", params.study_level);
+  if (params?.page != null) url.searchParams.set("page", String(params.page));
+  if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
+  return handleJson(response);
+}
+
+export type AcademicLoadTeacherSummary = {
+  personId: number;
+  document: string;
+  name: string;
+  area: string;
+  school: string;
+  contractType: string;
+  workSchedule: string;
+  contractHoursWeekly: number | null;
+  assignmentCount: number;
+  teachingModality: "presencial" | "virtual" | "mixto" | null;
+  creditsPresencial: number;
+  studentsVirtual: number;
+  creditTarget: number | null;
+  studentTarget: number | null;
+  loadIndex: number | null;
+  fulfillmentPct: number | null;
+  quotaStatus: "under" | "ok" | "over" | "unknown";
+  creditsGap: number | null;
+  studentsGap: number | null;
+};
+
+export async function getAcademicLoadTeacherSummaries(params?: {
+  search?: string;
+  period?: string;
+  modality?: string;
+  area_id?: number;
+  school_id?: number;
+  program?: string;
+  subject?: string;
+  group_code?: string;
+  block?: string;
+  study_level?: "pregrado" | "especializacion" | "otro" | string;
+  teaching_modality?: "presencial" | "virtual" | "mixto";
+  quota_status?: "under" | "ok" | "over" | "unknown";
+  page?: number;
+  limit?: number;
+}): Promise<PaginatedResponse<AcademicLoadTeacherSummary>> {
+  const url = new URL(`${BASE_URL}/academic-load/teacher-summaries`);
+  if (params?.search) url.searchParams.set("search", params.search);
+  if (params?.period) url.searchParams.set("period", params.period);
+  if (params?.modality) url.searchParams.set("modality", params.modality);
+  if (params?.area_id != null)
+    url.searchParams.set("area_id", String(params.area_id));
+  if (params?.school_id != null)
+    url.searchParams.set("school_id", String(params.school_id));
+  if (params?.program) url.searchParams.set("program", params.program);
+  if (params?.subject) url.searchParams.set("subject", params.subject);
+  if (params?.group_code) url.searchParams.set("group_code", params.group_code);
+  if (params?.block) url.searchParams.set("block", params.block);
+  if (params?.study_level) url.searchParams.set("study_level", params.study_level);
+  if (params?.teaching_modality)
+    url.searchParams.set("teaching_modality", params.teaching_modality);
+  if (params?.quota_status) url.searchParams.set("quota_status", params.quota_status);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });
@@ -1169,6 +1232,16 @@ export type SubstantiveHoursTeacher = {
   preparationHours: number;
   substantiveHoursAssigned: number;
   substantiveHoursRemaining: number | null;
+  teachingModality: "presencial" | "virtual" | "mixto" | null;
+  creditsPresencial: number;
+  studentsVirtual: number;
+  creditTarget: number | null;
+  studentTarget: number | null;
+  loadIndex: number | null;
+  fulfillmentPct: number | null;
+  quotaStatus: "under" | "ok" | "over" | "unknown";
+  creditsGap: number | null;
+  studentsGap: number | null;
 };
 
 export type SubstantiveHoursCategory = {
@@ -1204,6 +1277,8 @@ export async function getSubstantiveHoursTeachers(params?: {
   has_substantive?: boolean;
   without_edu_email?: boolean;
   role?: "docente" | "docente_pensionado" | "lite";
+  teaching_modality?: "presencial" | "virtual" | "mixto";
+  quota_status?: "under" | "ok" | "over" | "unknown";
   page?: number;
   limit?: number;
 }): Promise<PaginatedResponse<SubstantiveHoursTeacher>> {
@@ -1225,6 +1300,9 @@ export async function getSubstantiveHoursTeachers(params?: {
   if (params?.without_edu_email)
     url.searchParams.set("without_edu_email", "1");
   if (params?.role) url.searchParams.set("role", params.role);
+  if (params?.teaching_modality)
+    url.searchParams.set("teaching_modality", params.teaching_modality);
+  if (params?.quota_status) url.searchParams.set("quota_status", params.quota_status);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });

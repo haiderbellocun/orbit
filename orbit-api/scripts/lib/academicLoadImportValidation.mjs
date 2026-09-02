@@ -258,6 +258,107 @@ export function findHoursBalanceIssues(rows, contexts) {
   return issues;
 }
 
+export function findQuotaIssues(rows, contexts) {
+  const byPersonPeriod = new Map();
+  for (const r of rows) {
+    const key = `${r.personId}::${r.periodCode}`;
+    const list = byPersonPeriod.get(key) ?? [];
+    list.push(r);
+    byPersonPeriod.set(key, list);
+  }
+
+  const CREDIT_FULL = 28;
+  const CREDIT_HALF = 14;
+  const STUDENT_FULL = 500;
+  const STUDENT_HALF = 250;
+  const TOL = 0.02;
+
+  const classify = (raw) => {
+    const s = String(raw ?? "").trim();
+    if (!s) return null;
+    const ascii = s
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase();
+    if (ascii === "V" || ascii === "T" || ascii === "VIRTUAL" || ascii.startsWith("VIR")) {
+      return "V";
+    }
+    if (ascii === "P" || ascii === "PRESENCIAL" || ascii.startsWith("PRES")) {
+      return "P";
+    }
+    return null;
+  };
+
+  const issues = [];
+  for (const group of byPersonPeriod.values()) {
+    const sample = group[0];
+    if (!sample) continue;
+    const ctx = contexts.get(sample.personId);
+    let creditsP = 0;
+    let studentsV = 0;
+    let hasP = false;
+    let hasV = false;
+    for (const r of group) {
+      const kind = classify(r.modality);
+      const credits = Number(r.creditsQuantity);
+      const enrolled = Number(r.enrolledQuantity);
+      if (kind === "P") {
+        hasP = true;
+        if (Number.isFinite(credits) && credits > 0) creditsP += credits;
+      } else if (kind === "V") {
+        hasV = true;
+        if (Number.isFinite(enrolled) && enrolled > 0) studentsV += enrolled;
+      }
+    }
+    const contractHours = weeklyContractHoursFromLabels(
+      ctx?.workSchedule,
+      ctx?.contractName
+    );
+    const creditTarget =
+      contractHours === 42 ? CREDIT_FULL : contractHours === 21 ? CREDIT_HALF : null;
+    const studentTarget =
+      contractHours === 42 ? STUDENT_FULL : contractHours === 21 ? STUDENT_HALF : null;
+    const modality =
+      hasP && hasV ? "mixto" : hasP ? "presencial" : hasV ? "virtual" : null;
+    if (!modality || creditTarget == null || studentTarget == null) continue;
+
+    let loadIndex = 0;
+    if (modality === "presencial") loadIndex = creditsP / creditTarget;
+    else if (modality === "virtual") loadIndex = studentsV / studentTarget;
+    else loadIndex = creditsP / creditTarget + studentsV / studentTarget;
+
+    let status = "ok";
+    if (loadIndex < 1 - TOL) status = "under";
+    else if (loadIndex > 1 + TOL) status = "over";
+    if (status !== "under" && status !== "over") continue;
+
+    const fulfillmentPct = Math.round(loadIndex * 1000) / 10;
+    issues.push({
+      code: status === "under" ? "quota_under" : "quota_over",
+      severity: "warning",
+      personId: sample.personId,
+      document: sample.document ?? ctx?.document,
+      personName: sample.personName ?? ctx?.fullName ?? null,
+      periodCode: sample.periodCode,
+      message:
+        status === "under"
+          ? `Cuota ${modality} incompleta (${fulfillmentPct}%) en periodo ${sample.periodCode}`
+          : `Cuota ${modality} excedida (${fulfillmentPct}%) en periodo ${sample.periodCode}`,
+      detail: {
+        modality,
+        periodCode: sample.periodCode,
+        creditsP,
+        studentsV,
+        creditTarget,
+        studentTarget,
+        loadIndex,
+        fulfillmentPct,
+      },
+    });
+  }
+  return issues;
+}
+
 export function summarizeValidationIssues(issues) {
   const by_code = {};
   let warnings = 0;
@@ -275,5 +376,6 @@ export function runImportValidations(rows, contexts) {
     ...findOverCapacityIssues(rows),
     ...findScheduleConflictIssues(rows),
     ...findHoursBalanceIssues(rows, contexts),
+    ...findQuotaIssues(rows, contexts),
   ];
 }
