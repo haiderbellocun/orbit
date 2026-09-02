@@ -434,7 +434,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                       className="inline-flex items-center gap-1 text-xs font-bold text-orbit-primary hover:text-orbit-primary-hover"
                     >
                       <PlusIcon className="h-3.5 w-3.5" />
-                      Asignar colaborador
+                      Asignar colaboradores
                     </button>
                   )}
                 </div>

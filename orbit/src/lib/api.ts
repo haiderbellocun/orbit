@@ -985,6 +985,34 @@ export async function updatePlantaOrgParent(
   return handleJson(response);
 }
 
+export type BulkOrgParentResult = {
+  ok: boolean;
+  parent_person_id: number;
+  assigned_count: number;
+  failed_count: number;
+  assigned: number[];
+  failed: Array<{ person_id: number; error: string }>;
+};
+
+/** Asigna varias personas al mismo responsable en un solo request. */
+export async function bulkUpdatePlantaOrgParent(
+  parentPersonId: number,
+  childPersonIds: number[]
+): Promise<BulkOrgParentResult> {
+  const response = await authFetch(
+    `${BASE_URL}/planta-activa/org-parents/bulk`,
+    {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        parent_person_id: parentPersonId,
+        child_person_ids: childPersonIds,
+      }),
+    }
+  );
+  return handleJson(response);
+}
+
 // Reinstatements
 export async function getReinstatements(params?: {
   status?: string;

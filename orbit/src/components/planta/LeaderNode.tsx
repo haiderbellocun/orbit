@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ChevronDownIcon,
   PencilSquareIcon,
+  UserPlusIcon,
 } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
 import { personInitials } from '@/src/lib/roleHierarchy';
@@ -108,6 +109,17 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
               className="flex shrink-0 items-center gap-1"
               onClick={(e) => e.stopPropagation()}
             >
+              {canEdit && canMutate ? (
+                <button
+                  type="button"
+                  onClick={() => onAssign(person.id)}
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-bold text-orbit-primary hover:bg-orbit-primary/10"
+                  title="Asignar varios colaboradores de una vez"
+                >
+                  <UserPlusIcon className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Asignar</span>
+                </button>
+              ) : null}
               {canEdit ? (
                 <button
                   type="button"
@@ -149,7 +161,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
                       onClick={() => onAssign(person.id)}
                       className="mt-2 text-xs font-bold text-orbit-primary hover:text-orbit-primary-hover"
                     >
-                      Asignar colaborador
+                      Asignar colaboradores
                     </button>
                   )}
                 </div>

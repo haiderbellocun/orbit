@@ -22,6 +22,8 @@ type OrganizationHierarchyProps = {
   unassignedHeading?: string;
   unassignedHint?: string;
   unassignedTone?: 'warning' | 'muted';
+  canBulkAssignUnassigned?: boolean;
+  onBulkAssignUnassigned?: (personIds: string[]) => void;
 };
 
 function splitApex(forest: OrganizationForest): {
@@ -104,6 +106,8 @@ export const OrganizationHierarchy: React.FC<OrganizationHierarchyProps> = ({
   unassignedHeading,
   unassignedHint,
   unassignedTone,
+  canBulkAssignUnassigned = false,
+  onBulkAssignUnassigned,
 }) => {
   const { apex, areas } = splitApex(forest);
   const hasTree =
@@ -198,6 +202,8 @@ export const OrganizationHierarchy: React.FC<OrganizationHierarchyProps> = ({
         heading={unassignedHeading}
         hint={unassignedHint}
         tone={unassignedTone}
+        canBulkAssign={canBulkAssignUnassigned}
+        onBulkAssign={onBulkAssignUnassigned}
       />
     </div>
   );

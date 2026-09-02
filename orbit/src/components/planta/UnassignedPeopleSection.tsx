@@ -3,6 +3,7 @@ import {
   ArrowDownTrayIcon,
   ChevronDownIcon,
   ExclamationTriangleIcon,
+  UserPlusIcon,
 } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
 import type { PlantaPerson } from '@/src/types';
@@ -18,6 +19,8 @@ type UnassignedPeopleSectionProps = {
   heading?: string;
   hint?: string;
   tone?: 'warning' | 'muted';
+  canBulkAssign?: boolean;
+  onBulkAssign?: (personIds: string[]) => void;
 };
 
 const PAGE_SIZE = 40;
@@ -55,17 +58,21 @@ export const UnassignedPeopleSection: React.FC<
   heading = 'Sin responsable asignado',
   hint,
   tone = 'warning',
+  canBulkAssign = false,
+  onBulkAssign,
 }) => {
   const [open, setOpen] = useState(defaultOpen);
   const [exporting, setExporting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (defaultOpen) setOpen(true);
   }, [defaultOpen]);
-  const [page, setPage] = useState(1);
 
   useEffect(() => {
     setPage(1);
+    setSelected(new Set());
   }, [people]);
 
   const totalPages = Math.max(1, Math.ceil(people.length / PAGE_SIZE));
@@ -73,6 +80,13 @@ export const UnassignedPeopleSection: React.FC<
     const start = (page - 1) * PAGE_SIZE;
     return people.slice(start, start + PAGE_SIZE);
   }, [people, page]);
+
+  const pageIds = useMemo(
+    () => pagePeople.map((p) => p.id),
+    [pagePeople]
+  );
+  const allPageSelected =
+    pageIds.length > 0 && pageIds.every((id) => selected.has(id));
 
   if (people.length === 0) return null;
 
@@ -85,6 +99,35 @@ export const UnassignedPeopleSection: React.FC<
     } finally {
       setExporting(false);
     }
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function togglePage() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        for (const id of pageIds) next.delete(id);
+      } else {
+        for (const id of pageIds) next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelected(new Set(people.map((p) => p.id)));
+  }
+
+  function clearSelected() {
+    setSelected(new Set());
   }
 
   return (
@@ -140,8 +183,59 @@ export const UnassignedPeopleSection: React.FC<
         </button>
       </div>
       {open && (
-        <div className="border-t border-orbit-border px-4 pb-4 sm:px-5">
-          <CollaboratorTable nodes={toNodes(pagePeople)} onManage={onManage} />
+        <div className="border-t border-orbit-border px-4 pb-4 sm:px-5 space-y-3">
+          {canBulkAssign && onBulkAssign ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-2 text-xs font-bold text-orbit-text-secondary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    onChange={togglePage}
+                    className="rounded border-orbit-border text-orbit-primary focus:ring-violet-400"
+                  />
+                  Página
+                </label>
+                <button
+                  type="button"
+                  onClick={selectAll}
+                  className="text-xs font-bold text-orbit-primary hover:text-orbit-primary-hover"
+                >
+                  Todas ({people.length})
+                </button>
+                {selected.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearSelected}
+                    className="text-xs font-bold text-orbit-muted hover:text-orbit-text"
+                  >
+                    Limpiar
+                  </button>
+                )}
+                <span className="text-xs text-orbit-muted">
+                  {selected.size.toLocaleString('es-CO')} seleccionada
+                  {selected.size === 1 ? '' : 's'}
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={selected.size === 0}
+                onClick={() => onBulkAssign([...selected])}
+                className="glass-button-primary inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold disabled:opacity-40"
+              >
+                <UserPlusIcon className="h-4 w-4" />
+                Asignar a un líder
+              </button>
+            </div>
+          ) : null}
+
+          <CollaboratorTable
+            nodes={toNodes(pagePeople)}
+            onManage={onManage}
+            selectable={canBulkAssign}
+            selectedIds={selected}
+            onToggleSelect={canBulkAssign ? toggleOne : undefined}
+          />
           {totalPages > 1 && (
             <div className="mt-3 flex items-center justify-end gap-2">
               <button
@@ -152,7 +246,7 @@ export const UnassignedPeopleSection: React.FC<
               >
                 Anterior
               </button>
-              <span className="text-xs text-orbit-muted font-bold">
+              <span className="text-xs font-bold text-orbit-muted">
                 {page} / {totalPages}
               </span>
               <button

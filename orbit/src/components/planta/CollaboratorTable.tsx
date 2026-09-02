@@ -9,6 +9,9 @@ type CollaboratorTableProps = {
   onManage: (personId: string) => void;
   className?: string;
   parentAccent?: SchoolAccent | null;
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (personId: string) => void;
 };
 
 export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
@@ -16,6 +19,9 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
   onManage,
   className,
   parentAccent = null,
+  selectable = false,
+  selectedIds,
+  onToggleSelect,
 }) => {
   if (nodes.length === 0) return null;
 
@@ -24,6 +30,7 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
       <table className="w-full min-w-0 text-left text-sm">
         <thead className="hidden md:table-header-group">
           <tr className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+            {selectable ? <th className="py-2 pr-2 font-bold w-8" /> : null}
             <th className="py-2 pr-3 font-bold">Persona</th>
             <th className="py-2 pr-3 font-bold">Identificación</th>
             <th className="hidden py-2 pr-3 font-bold xl:table-cell">
@@ -41,6 +48,7 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
           {nodes.map((node) => {
             const person = node.person;
             const canEdit = person.can_edit !== false;
+            const isSelected = selectedIds?.has(person.id) === true;
             const tone = schoolAccent(
               {
                 schoolId: person.school_id,
@@ -55,8 +63,22 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
             return (
               <tr
                 key={node.nodeKey}
-                className="border-t border-orbit-border/80 align-top"
+                className={cn(
+                  'border-t border-orbit-border/80 align-top',
+                  isSelected && 'bg-orbit-primary/5'
+                )}
               >
+                {selectable ? (
+                  <td className="py-2.5 pr-2">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => onToggleSelect?.(person.id)}
+                      className="rounded border-orbit-border text-orbit-primary focus:ring-violet-400"
+                      aria-label={`Seleccionar ${person.name}`}
+                    />
+                  </td>
+                ) : null}
                 <td className="py-2.5 pr-3">
                   <p className="font-semibold text-orbit-text truncate max-w-[16rem]">
                     {person.name || '—'}

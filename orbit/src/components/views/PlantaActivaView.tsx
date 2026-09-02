@@ -7,6 +7,7 @@ import {
   XMarkIcon,
   ChevronDownIcon,
   PlusIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -17,6 +18,7 @@ import {
   createPlantaPerson,
   updatePlantaPerson,
   updatePlantaOrgParent,
+  bulkUpdatePlantaOrgParent,
   getCatalogAreas,
   getCatalogSchools,
   getCatalogPrograms,
@@ -51,7 +53,12 @@ import {
   type PlantaEditForm,
 } from '@/src/components/planta/PersonManagementDrawer';
 import { AssignCollaboratorModal } from '@/src/components/planta/AssignCollaboratorModal';
+import { BulkAssignPickLeaderModal } from '@/src/components/planta/BulkAssignPickLeaderModal';
 import { ChangeManagerModal } from '@/src/components/planta/ChangeManagerModal';
+import {
+  downloadMissingCunEmailExcel,
+  peopleWithoutCunEmail,
+} from '@/src/lib/exportUnassignedPeopleExcel';
 
 const EMPTY_EDIT_FORM: PlantaEditForm = {
   full_name: '',
@@ -165,6 +172,9 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   const [assignFor, setAssignFor] = useState<PlantaPerson | null>(null);
+  const [bulkAssignPeople, setBulkAssignPeople] = useState<PlantaPerson[] | null>(
+    null
+  );
   const [changeManagerFor, setChangeManagerFor] = useState<PlantaPerson | null>(
     null
   );
@@ -727,21 +737,63 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const handleAssign = async (personIds: string[]) => {
     if (!assignFor) return;
     const managerId = Number(assignFor.id);
+    const childIds = personIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (childIds.length === 0) return;
     setMutating(true);
+    setFormError(null);
     try {
-      for (const id of personIds) {
-        await updatePlantaOrgParent(Number(id), managerId);
-      }
+      const result = await bulkUpdatePlantaOrgParent(managerId, childIds);
       await loadList({ silent: true });
       setAssignFor(null);
+      if (result.failed_count > 0) {
+        setFormError(
+          `Se asignaron ${result.assigned_count}, pero ${result.failed_count} no pudieron asignarse.`
+        );
+      }
       setSaveNotice(
-        personIds.length === 1
+        result.assigned_count === 1
           ? 'Colaborador asignado en Planta Activa. El Organigrama no se modificó.'
-          : `${personIds.length} colaboradores asignados en Planta Activa. El Organigrama no se modificó.`
+          : `${result.assigned_count} colaboradores asignados en Planta Activa. El Organigrama no se modificó.`
       );
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : 'No se pudo asignar el colaborador'
+      );
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const handleBulkAssignToLeader = async (manager: PlantaPerson) => {
+    if (!bulkAssignPeople || bulkAssignPeople.length === 0) return;
+    const managerId = Number(manager.id);
+    const childIds = bulkAssignPeople
+      .map((p) => Number(p.id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (childIds.length === 0) return;
+    setMutating(true);
+    setFormError(null);
+    try {
+      const result = await bulkUpdatePlantaOrgParent(managerId, childIds);
+      await loadList({ silent: true });
+      setBulkAssignPeople(null);
+      if (result.failed_count > 0) {
+        setFormError(
+          `Se asignaron ${result.assigned_count} a ${manager.name}, pero ${result.failed_count} fallaron.`
+        );
+      }
+      setSaveNotice(
+        result.assigned_count === 1
+          ? `1 persona asignada a ${manager.name}. El Organigrama no se modificó.`
+          : `${result.assigned_count} personas asignadas a ${manager.name}. El Organigrama no se modificó.`
+      );
+    } catch (err) {
+      setFormError(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo completar el cargue masivo'
       );
     } finally {
       setMutating(false);
@@ -753,6 +805,33 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     const person = rows.find((p) => p.id === personId);
     if (!person || !resolveCanEdit(person)) return;
     setAssignFor(person);
+  };
+
+  const openBulkAssignFromUnassigned = (personIds: string[]) => {
+    if (!canMutateOrg || personIds.length === 0) return;
+    const selected = rows.filter(
+      (p) => personIds.includes(p.id) && resolveCanEdit(p)
+    );
+    if (selected.length === 0) {
+      setFormError('No tienes permiso para reasignar las personas seleccionadas.');
+      return;
+    }
+    setBulkAssignPeople(selected);
+  };
+
+  const missingCunEmailPeople = useMemo(
+    () => peopleWithoutCunEmail(rows),
+    [rows]
+  );
+
+  const handleExportMissingCunEmail = () => {
+    if (missingCunEmailPeople.length === 0) return;
+    downloadMissingCunEmailExcel(missingCunEmailPeople, {
+      title:
+        listStatus === 'inactive'
+          ? 'Sin correo CUN · inactivos'
+          : 'Sin correo CUN',
+    });
   };
 
   const personCanEditDrawer =
@@ -1076,6 +1155,19 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            onClick={handleExportMissingCunEmail}
+            disabled={loading || missingCunEmailPeople.length === 0}
+            className="glass-button-secondary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold disabled:opacity-40"
+            title="Exportar personas sin correo institucional CUN"
+          >
+            <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+            Sin correo CUN
+            {!loading && missingCunEmailPeople.length > 0
+              ? ` (${missingCunEmailPeople.length.toLocaleString('es-CO')})`
+              : ''}
+          </button>
+          <button
+            type="button"
             onClick={expandAll}
             disabled={loading}
             className="glass-button-secondary px-3 py-1.5 text-xs font-bold disabled:opacity-40"
@@ -1137,6 +1229,10 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
               : undefined
           }
           unassignedTone={listStatus === 'inactive' ? 'muted' : 'warning'}
+          canBulkAssignUnassigned={
+            listStatus === 'active' && canMutateOrg
+          }
+          onBulkAssignUnassigned={openBulkAssignFromUnassigned}
         />
       )}
 
@@ -1187,6 +1283,16 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                 loading={mutating}
                 onClose={() => setAssignFor(null)}
                 onAssign={handleAssign}
+              />
+            )}
+            {bulkAssignPeople && bulkAssignPeople.length > 0 && (
+              <BulkAssignPickLeaderModal
+                open
+                selectedPeople={bulkAssignPeople}
+                candidates={rows}
+                loading={mutating}
+                onClose={() => setBulkAssignPeople(null)}
+                onConfirm={handleBulkAssignToLeader}
               />
             )}
             {changeManagerFor && (

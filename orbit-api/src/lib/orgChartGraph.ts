@@ -263,6 +263,37 @@ export async function upsertPlantaOrgOverride(
   );
 }
 
+/** Asigna el mismo responsable a varias personas en una sola transacción. */
+export async function upsertPlantaOrgOverridesBulk(
+  childPersonIds: readonly number[],
+  parentPersonId: number | null
+): Promise<void> {
+  if (childPersonIds.length === 0) return;
+  const table = await plantaOverrideTable();
+  if (table == null) {
+    throw new Error("planta_org_override no está disponible");
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const childId of childPersonIds) {
+      await client.query(
+        `INSERT INTO ${table} (person_id, parent_person_id, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (person_id)
+         DO UPDATE SET parent_person_id = EXCLUDED.parent_person_id, updated_at = NOW()`,
+        [childId, parentPersonId]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 export async function deletePlantaOrgOverride(personId: number): Promise<void> {
   const table = await plantaOverrideTable();
   if (table == null) return;

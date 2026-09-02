@@ -12,8 +12,11 @@ const COLUMNS = [
   { key: 'school', label: 'Escuela', width: 120 },
   { key: 'program', label: 'Programa', width: 140 },
   { key: 'role_name', label: 'Cargo', width: 140 },
+  { key: 'manager_name', label: 'Responsable', width: 140 },
   { key: 'status', label: 'Estado', width: 70 },
 ] as const;
+
+type ColumnKey = (typeof COLUMNS)[number]['key'];
 
 function escapeXml(value: string): string {
   return value
@@ -24,7 +27,7 @@ function escapeXml(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
-function cellValue(person: PlantaPerson, key: (typeof COLUMNS)[number]['key']): string {
+function cellValue(person: PlantaPerson, key: ColumnKey): string {
   if (key === 'status') {
     return person.status === 'inactive' ? 'Inactivo' : 'Activo';
   }
@@ -32,7 +35,11 @@ function cellValue(person: PlantaPerson, key: (typeof COLUMNS)[number]['key']): 
     const edu = person.edu_email?.trim() ?? '';
     return edu || 'Sin correo CUN';
   }
-  const raw = person[key];
+  if (key === 'manager_name') {
+    const name = person.manager_name?.trim() ?? '';
+    return name || 'Sin responsable';
+  }
+  const raw = person[key as keyof PlantaPerson];
   return raw == null ? '' : String(raw).trim();
 }
 
@@ -40,26 +47,37 @@ function todayKeyBogota(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: BOGOTA_TZ });
 }
 
-export function unassignedPeopleExportFilename(
-  label = 'Sin_responsable_asignado'
-): string {
+export function plantaPeopleExportFilename(label: string): string {
   const safe = label
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9]+/g, '_')
     .replace(/^_|_$/g, '')
     .slice(0, 48);
-  return `${safe || 'Sin_responsable_asignado'}_${todayKeyBogota()}.xls`;
+  return `${safe || 'Planta_Activa'}_${todayKeyBogota()}.xls`;
 }
 
-/** Excel XML Spreadsheet (abre nativo en Excel) con la gente sin responsable. */
-export function downloadUnassignedPeopleExcel(
+export function unassignedPeopleExportFilename(
+  label = 'Sin_responsable_asignado'
+): string {
+  return plantaPeopleExportFilename(label);
+}
+
+type DownloadOpts = {
+  title?: string;
+  filename?: string;
+  sheetName?: string;
+};
+
+/** Excel XML Spreadsheet (abre nativo en Excel). */
+export function downloadPlantaPeopleExcel(
   people: readonly PlantaPerson[],
-  opts?: { title?: string; filename?: string }
+  opts?: DownloadOpts
 ): void {
-  const title = opts?.title?.trim() || 'Sin responsable asignado';
+  const title = opts?.title?.trim() || 'Planta Activa';
+  const sheetName = (opts?.sheetName?.trim() || 'Planta').slice(0, 31);
   const filename =
-    opts?.filename?.trim() || unassignedPeopleExportFilename(title);
+    opts?.filename?.trim() || plantaPeopleExportFilename(title);
   const generatedAt = new Date().toLocaleString('es-CO', {
     timeZone: BOGOTA_TZ,
   });
@@ -103,7 +121,7 @@ export function downloadUnassignedPeopleExcel(
    <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
   </Style>
  </Styles>
- <Worksheet ss:Name="Sin responsable">
+ <Worksheet ss:Name="${escapeXml(sheetName)}">
   <Table>
    ${columnDefs}
    <Row>
@@ -138,4 +156,41 @@ export function downloadUnassignedPeopleExcel(
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+export function downloadUnassignedPeopleExcel(
+  people: readonly PlantaPerson[],
+  opts?: { title?: string; filename?: string }
+): void {
+  downloadPlantaPeopleExcel(people, {
+    title: opts?.title?.trim() || 'Sin responsable asignado',
+    filename: opts?.filename,
+    sheetName: 'Sin responsable',
+  });
+}
+
+export function peopleWithoutCunEmail(
+  people: readonly PlantaPerson[]
+): PlantaPerson[] {
+  return people
+    .filter((p) => !p.edu_email?.trim())
+    .slice()
+    .sort((a, b) =>
+      a.name.localeCompare(b.name, 'es', { sensitivity: 'base' })
+    );
+}
+
+/** Excel de personas sin correo institucional CUN. */
+export function downloadMissingCunEmailExcel(
+  people: readonly PlantaPerson[],
+  opts?: { title?: string; filename?: string }
+): void {
+  const missing = peopleWithoutCunEmail(people);
+  downloadPlantaPeopleExcel(missing, {
+    title: opts?.title?.trim() || 'Sin correo CUN',
+    filename:
+      opts?.filename?.trim() ||
+      plantaPeopleExportFilename('Sin_correo_CUN'),
+    sheetName: 'Sin correo CUN',
+  });
 }

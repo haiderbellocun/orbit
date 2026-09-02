@@ -25,6 +25,7 @@ import {
   loadOrgChartGraph,
   serializeOrgChartGraph,
   upsertPlantaOrgOverride,
+  upsertPlantaOrgOverridesBulk,
 } from "../lib/orgChartGraph";
 import {
   applyPlantaOrgOverrides,
@@ -792,6 +793,189 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+/**
+ * POST /planta-activa/org-parents/bulk — asigna N personas a un mismo responsable.
+ * No escribe Organigrama. Overlay en `planta_org_override`.
+ */
+router.post(
+  "/planta-activa/org-parents/bulk",
+  async (req: Request, res: Response) => {
+    try {
+      const graph = await loadOrgChartGraph();
+      if (graph == null) {
+        res.status(503).json({ error: "Organigrama no está disponible" });
+        return;
+      }
+
+      const mode = await resolveCoreSchemaMode();
+      if (mode == null) {
+        res.status(503).json({ error: "CORE catalog is not available" });
+        return;
+      }
+      const prefix = mode === "core" ? "core." : "";
+      const plantaGrant = plantaGrantFromRequest(req);
+      const schoolScope = schoolScopeFromRequest(req);
+
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const parsedParent = parseManagerIdInput(
+        b.parent_person_id ?? b.parentPersonId
+      );
+      if (!parsedParent.ok || parsedParent.value == null) {
+        res.status(400).json({
+          error: "parent_person_id es obligatorio para el cargue masivo",
+        });
+        return;
+      }
+      const parentId = parsedParent.value;
+
+      const rawChildren = b.child_person_ids ?? b.childPersonIds;
+      if (!Array.isArray(rawChildren) || rawChildren.length === 0) {
+        res.status(400).json({
+          error: "child_person_ids debe ser un arreglo con al menos una persona",
+        });
+        return;
+      }
+      if (rawChildren.length > 200) {
+        res.status(400).json({
+          error: "Máximo 200 personas por cargue masivo",
+        });
+        return;
+      }
+
+      const childIds: number[] = [];
+      const seen = new Set<number>();
+      for (const raw of rawChildren) {
+        const id = parsePositiveInt(raw);
+        if (id == null) {
+          res.status(400).json({ error: "child_person_ids contiene un id inválido" });
+          return;
+        }
+        if (seen.has(id)) continue;
+        seen.add(id);
+        childIds.push(id);
+      }
+
+      const parentOk = await pool.query(
+        `SELECT id FROM ${prefix}person WHERE id = $1`,
+        [parentId]
+      );
+      if (parentOk.rows.length === 0) {
+        res.status(400).json({ error: "El responsable indicado no existe" });
+        return;
+      }
+
+      const { rows: childRows } = await pool.query(
+        `SELECT
+           p.id,
+           p.school_id,
+           p.role_id,
+           ${effectiveAreaSql()} AS effective_area_id,
+           COALESCE(r.name, '') AS role_name,
+           COALESCE(r.code, '') AS role_code
+         FROM ${prefix}person p
+         LEFT JOIN ${prefix}school s ON s.id = p.school_id
+         LEFT JOIN ${prefix}role r ON r.id = p.role_id
+         WHERE p.id = ANY($1::int[])`,
+        [childIds]
+      );
+      const byId = new Map(
+        childRows.map((row) => [Number((row as { id: number }).id), row])
+      );
+
+      const assigned: number[] = [];
+      const failed: Array<{ person_id: number; error: string }> = [];
+      let nextOverrides = [...graph.plantaOverrides];
+
+      for (const childId of childIds) {
+        if (childId === parentId) {
+          failed.push({
+            person_id: childId,
+            error: "Una persona no puede ser responsable de sí misma",
+          });
+          continue;
+        }
+        const current = byId.get(childId) as
+          | {
+              school_id: number | null;
+              role_id: number | null;
+              effective_area_id: number | null;
+              role_name: string;
+              role_code: string;
+            }
+          | undefined;
+        if (!current) {
+          failed.push({ person_id: childId, error: "Persona no encontrada" });
+          continue;
+        }
+        if (
+          schoolScope != null &&
+          (current.school_id == null ||
+            Number(current.school_id) !== schoolScope.schoolId)
+        ) {
+          failed.push({
+            person_id: childId,
+            error: "No tienes permiso para este recurso",
+          });
+          continue;
+        }
+        const currentArea =
+          current.effective_area_id != null
+            ? Number(current.effective_area_id)
+            : null;
+        if (
+          !canEditPlantaPerson(plantaGrant, currentArea, {
+            roleId: current.role_id,
+            roleName: current.role_name,
+            roleCode: current.role_code,
+          })
+        ) {
+          failed.push({
+            person_id: childId,
+            error: "No tienes permiso para editar la jerarquía de esta persona",
+          });
+          continue;
+        }
+
+        const tentative = [
+          ...nextOverrides.filter((o) => o.person_id !== childId),
+          { person_id: childId, parent_person_id: parentId },
+        ];
+        const effective = applyPlantaOrgOverrides(
+          graph.relations,
+          graph.positionChildren,
+          tentative
+        );
+        const parentByChild = parentByChildFromRelations(effective.relations);
+        if (assignmentCreatesOrgCycle(childId, parentId, parentByChild)) {
+          failed.push({
+            person_id: childId,
+            error: "La asignación crearía una relación jerárquica circular",
+          });
+          continue;
+        }
+        nextOverrides = tentative;
+        assigned.push(childId);
+      }
+
+      if (assigned.length > 0) {
+        await upsertPlantaOrgOverridesBulk(assigned, parentId);
+      }
+
+      res.json({
+        ok: failed.length === 0,
+        parent_person_id: parentId,
+        assigned_count: assigned.length,
+        failed_count: failed.length,
+        assigned,
+        failed,
+      });
+    } catch (e) {
+      console.error("POST /planta-activa/org-parents/bulk failed:", e);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 /**
  * PATCH /planta-activa/:id/org-parent — asigna/quita responsable en Planta Activa.
