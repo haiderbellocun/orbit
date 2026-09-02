@@ -1,4 +1,5 @@
 import type { PlantaPerson } from '@/src/types';
+import { isHarveyAreaName } from '@/src/lib/harveyArea';
 import {
   canHaveDirectReports,
   getRoleBand,
@@ -6,6 +7,11 @@ import {
   type RoleBand,
 } from '@/src/lib/roleHierarchy';
 import type { OrgChartGraphPayload } from '@/src/types';
+
+/** Área Harvey/investigación no entra al panel «Sin responsable asignado». */
+function isPlantaUnassignedCandidate(person: PlantaPerson): boolean {
+  return !isHarveyAreaName(person.area);
+}
 
 export type OrganizationNode = {
   person: PlantaPerson;
@@ -368,9 +374,11 @@ export function buildOrganizationHierarchy(
   };
 
   if (graph == null || graph.relations.length === 0) {
-    const unassigned = [...people].sort((a, b) =>
-      a.name.localeCompare(b.name, 'es', { sensitivity: 'base' })
-    );
+    const unassigned = people
+      .filter(isPlantaUnassignedCandidate)
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, 'es', { sensitivity: 'base' })
+      );
     return { areas: [], unassigned, counts: { ...emptyCounts, unassigned: unassigned.length } };
   }
 
@@ -471,7 +479,7 @@ export function buildOrganizationHierarchy(
   roots.sort(sortNodes);
   reached = collectReachableIds(roots);
   const unassigned = people
-    .filter((p) => !reached.has(p.id))
+    .filter((p) => !reached.has(p.id) && isPlantaUnassignedCandidate(p))
     .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
 
   return {
