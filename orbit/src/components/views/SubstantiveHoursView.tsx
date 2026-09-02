@@ -680,7 +680,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                 </label>
                 <label className="space-y-1">
                   <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
-                    Cuota académica
+                    Porcentaje de ocupación semanal
                   </span>
                   <select
                     className={selectClass}
@@ -692,11 +692,10 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       }))
                     }
                   >
-                    <option value="">Todas</option>
+                    <option value="">Todos</option>
                     <option value="under">Faltante</option>
-                    <option value="ok">Completa</option>
+                    <option value="ok">Completo</option>
                     <option value="over">Exceso</option>
-                    <option value="unknown">Sin cuota</option>
                   </select>
                 </label>
                 <label className="inline-flex items-center gap-2 text-sm text-orbit-text-secondary cursor-pointer sm:col-span-2 lg:col-span-3 pt-1">

@@ -850,6 +850,27 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
 
                   <label className="space-y-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                      Porcentaje de ocupación semanal
+                    </span>
+                    <select
+                      className={selectClass}
+                      value={filters.quotaStatus}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          quotaStatus: e.target.value as Filters['quotaStatus'],
+                        }))
+                      }
+                    >
+                      <option value="">Todos</option>
+                      <option value="under">Faltante</option>
+                      <option value="ok">Completo</option>
+                      <option value="over">Exceso</option>
+                    </select>
+                  </label>
+
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Área
                     </span>
                     <select
@@ -908,28 +929,6 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                       <option value="">Todas</option>
                       <option value="P">Presencial</option>
                       <option value="V">Virtual</option>
-                    </select>
-                  </label>
-
-                  <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Cuota académica
-                    </span>
-                    <select
-                      className={selectClass}
-                      value={filters.quotaStatus}
-                      onChange={(e) =>
-                        setFilters((f) => ({
-                          ...f,
-                          quotaStatus: e.target.value as Filters['quotaStatus'],
-                        }))
-                      }
-                    >
-                      <option value="">Todas</option>
-                      <option value="under">Faltante</option>
-                      <option value="ok">Completa</option>
-                      <option value="over">Exceso</option>
-                      <option value="unknown">Sin cuota</option>
                     </select>
                   </label>
 

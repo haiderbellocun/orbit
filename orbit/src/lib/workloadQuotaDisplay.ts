@@ -9,10 +9,17 @@ export const TEACHING_MODALITY_LABEL: Record<TeachingModality, string> = {
 
 export const QUOTA_STATUS_LABEL: Record<QuotaStatus, string> = {
   under: "Faltante",
-  ok: "Completa",
+  ok: "Completo",
   over: "Exceso",
-  unknown: "Sin cuota",
+  unknown: "Sin dato",
 };
+
+export const OCCUPANCY_STATUS_OPTIONS: { value: QuotaStatus; label: string }[] =
+  [
+    { value: "under", label: "Faltante" },
+    { value: "ok", label: "Completo" },
+    { value: "over", label: "Exceso" },
+  ];
 
 export function isTeachingModality(v: unknown): v is TeachingModality {
   return v === "presencial" || v === "virtual" || v === "mixto";
