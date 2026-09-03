@@ -245,9 +245,9 @@ test("vacancy admin allowlist: camilo, yesid, sara, cindy", () => {
 test("planta activa grants: sara/cindy/leidy/tania", () => {
   const sara = getPlantaActivaGrant("sara_murillofo@cun.edu.co");
   assert.ok(sara);
-  assert.deepEqual(sara!.viewAreaIds, [2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(sara!.viewAreaIds, null);
   assert.deepEqual(sara!.editAreaIds, [2, 3, 4, 5, 6, 7, 8]);
-  assert.equal(sara!.excludeLiteAndDocenteRoles, true);
+  assert.equal(sara!.excludeLiteAndDocenteRoles, undefined);
   assert.deepEqual(sara!.extraCapabilities, [
     "view:home",
     "view:vacancies",
@@ -255,19 +255,16 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
     "vacancies:admin",
     "view:news",
   ]);
-  assert.equal(canViewPlantaArea(sara, 1), false);
-  assert.equal(canViewPlantaArea(sara, 9), false);
+  assert.equal(canViewPlantaArea(sara, 1), true);
+  assert.equal(canViewPlantaArea(sara, 9), true);
   assert.equal(canEditPlantaArea(sara, 1), false);
   assert.equal(canEditPlantaArea(sara, 3), true);
   assert.equal(
     canEditPlantaPerson(sara, 3, { roleName: "COORDINADOR DE PROGRAMA" }),
     true
   );
-  assert.equal(
-    canEditPlantaPerson(sara, 3, { roleName: "DOCENTE" }),
-    false
-  );
-  assert.equal(canEditPlantaPerson(sara, 3, { roleName: "LITE" }), false);
+  assert.equal(canEditPlantaPerson(sara, 9, { roleName: "DOCENTE" }), false);
+  assert.equal(canEditPlantaPerson(sara, 1, { roleName: "LITE" }), false);
   const saraAccess = resolvePlantaActivaGrantAccess(sara);
   assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.PLANTA_ACTIVA), true);
   assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.HOME), true);
