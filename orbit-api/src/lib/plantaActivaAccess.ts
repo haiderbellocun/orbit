@@ -5,7 +5,7 @@
  *
  * - viewAreaIds `null` → puede ver toda la planta.
  * - editAreaIds → áreas cuyo personal puede gestionar (PATCH).
- * - excludeLiteAndDocenteRoles → oculta LITE/LIDER y DOCENTE/DOCENTES (Sara/Cindy).
+ * - excludeLiteAndDocenteRoles → oculta LITE/LIDER y DOCENTE/DOCENTES.
  */
 
 import { isLiteOrDocenteRole } from "./orbitRoles";
@@ -36,9 +36,10 @@ const SARA_LEVEL_EXTRAS = [
   "view:news",
 ] as const;
 
-/** Áreas operativas (excluye LITES=1 y DOCENTES=9, gestionadas por Leidy/Tania). */
-const SARA_LEVEL_VIEW_AREA_IDS = [2, 3, 4, 5, 6, 7, 8];
-const SARA_LEVEL_EDIT_AREA_IDS = SARA_LEVEL_VIEW_AREA_IDS;
+/** Ven toda la planta activa (todas las áreas, todos los roles). */
+const SARA_LEVEL_VIEW_AREA_IDS = null;
+/** Gestionan solo áreas operativas (LITES=1 y DOCENTES=9 son de Leidy/Tania). */
+const SARA_LEVEL_EDIT_AREA_IDS = [2, 3, 4, 5, 6, 7, 8];
 
 /** OPERACION ACADEMICA (1) + ESPECIALIZACIONES (9). Sin recorte de LITE/DOCENTE. */
 const RAUL_ANALYST_AREA_IDS = [1, 9];
@@ -54,14 +55,12 @@ const GRANTS: readonly PlantaActivaGrant[] = [
     email: "sara_murillofo@cun.edu.co",
     viewAreaIds: SARA_LEVEL_VIEW_AREA_IDS,
     editAreaIds: SARA_LEVEL_EDIT_AREA_IDS,
-    excludeLiteAndDocenteRoles: true,
     extraCapabilities: SARA_LEVEL_EXTRAS,
   },
   {
     email: "cindy_russi@cun.edu.co",
     viewAreaIds: SARA_LEVEL_VIEW_AREA_IDS,
     editAreaIds: SARA_LEVEL_EDIT_AREA_IDS,
-    excludeLiteAndDocenteRoles: true,
     extraCapabilities: SARA_LEVEL_EXTRAS,
   },
   {

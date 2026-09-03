@@ -9,15 +9,14 @@ export type PlantaActivaAccess = {
   viewAreaIds: number[] | null;
   /** `null` = editar cualquier área (admin). Array = solo esas áreas. */
   editAreaIds: number[] | null;
-  /** Oculta LITE/LIDER y DOCENTE/DOCENTES en listados (Sara/Cindy). */
+  /** Oculta LITE/LIDER y DOCENTE/DOCENTES en listados. */
   excludeLiteAndDocenteRoles?: boolean;
 };
 
-/** Áreas operativas (excluye LITES=1 y DOCENTES=9). */
+/** Ven toda la planta activa; editan solo áreas operativas (no LITES=1 ni DOCENTES=9). */
 const SARA_LEVEL_ACCESS: PlantaActivaAccess = {
-  viewAreaIds: [2, 3, 4, 5, 6, 7, 8],
+  viewAreaIds: null,
   editAreaIds: [2, 3, 4, 5, 6, 7, 8],
-  excludeLiteAndDocenteRoles: true,
 };
 
 /** OPERACION ACADEMICA (1) + ESPECIALIZACIONES (9). Sin recorte de LITE/DOCENTE. */
