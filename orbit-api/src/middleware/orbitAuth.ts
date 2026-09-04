@@ -14,6 +14,7 @@ import {
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
 import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
+import { isOrbitSessionActive } from "../lib/sessionPolicy";
 export {
   schoolScopeFromRequest,
   vacancyAllowedForSchoolScope,
@@ -103,6 +104,11 @@ export function orbitAuthMiddleware(
       schoolId?: unknown;
       programIds?: unknown;
     };
+
+    if (!isOrbitSessionActive(decoded)) {
+      res.status(401).json({ error: "La sesión expiró. Inicia sesión nuevamente" });
+      return;
+    }
 
     if (
       decoded.orbitAccess !== "lite" &&

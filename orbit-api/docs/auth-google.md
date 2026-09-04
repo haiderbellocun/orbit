@@ -35,7 +35,7 @@ Respuesta:
 
 - `GOOGLE_CLIENT_ID`: el Client ID de tu app en Google.
 - `JWT_SECRET`: secreto para firmar JWT.
-- `JWT_EXPIRES_IN` (opcional): por defecto `7d`.
+- La sesión JWT expira siempre a las **2 horas**; no se permite ampliar esta duración por variable de entorno.
 - `ORBIT_LITE_ROLE_ID` (opcional): id del rol LITE en `role`; por defecto `9`.
 - `ORBIT_ACCESS_ALLOWLIST` (reborn): correos con acceso; por defecto `camilo_quintero@cun.edu.co`.
 - `ORBIT_FULL_ACCESS_ROLE_IDS` (opcional, en pausa): ids con acceso total separados por coma; por defecto `1,13,19,43,44,45,46`.

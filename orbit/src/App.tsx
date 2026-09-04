@@ -24,6 +24,7 @@ import {
   clearOrbitSession,
   getStoredCapabilities,
   getStoredOrbitAccess,
+  getStoredSessionExpiresAt,
   getVacancy,
   isStoredJwtValid,
   type GoogleAuthResponse,
@@ -249,7 +250,26 @@ export default function App() {
     setOrbitAccess(null);
     setCapabilities([]);
     setSelectedVacancy(null);
+    setView("login");
   }, []);
+
+  useEffect(() => {
+    if (view === "login") return;
+    const expiresAt = getStoredSessionExpiresAt();
+    if (expiresAt == null) {
+      handleLogout();
+      return;
+    }
+
+    const remainingMs = expiresAt - Date.now();
+    if (remainingMs <= 0) {
+      handleLogout();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(handleLogout, remainingMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [view, handleLogout]);
 
   const handleLogin = (auth: GoogleAuthResponse) => {
     const access: OrbitAccess = auth.user.orbitAccess ?? "full";

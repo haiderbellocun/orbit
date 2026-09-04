@@ -15,6 +15,7 @@ import {
 } from "../lib/orbitCapabilities";
 import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
 import { recordAppLoginAsync } from "../lib/loginAppsLog";
+import { ORBIT_JWT_EXPIRES_IN } from "../lib/sessionPolicy";
 
 const router = Router();
 
@@ -419,9 +420,9 @@ async function buildTokenResponse(params: {
   userId: number;
 }): Promise<AuthSuccessBody> {
   const jwtSecret = getRequiredEnv("JWT_SECRET");
-  const jwtExpiresIn = (process.env.JWT_EXPIRES_IN ?? "7d").trim() || "7d";
   const signOptions: SignOptions = {
-    expiresIn: jwtExpiresIn as SignOptions["expiresIn"],
+    // Política de seguridad Orbit: toda sesión expira exactamente a las 2 horas.
+    expiresIn: ORBIT_JWT_EXPIRES_IN,
   };
   const {
     person,

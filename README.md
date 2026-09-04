@@ -450,7 +450,7 @@ Puede entrar quien esté en:
 
 ### 7.3 JWT
 
-🎫 Firmado con `JWT_SECRET` · expira `JWT_EXPIRES_IN` (default `7d`) · middleware **recalcula** capabilities por email.
+🎫 Firmado con `JWT_SECRET` · expira a las **2 horas** · middleware **recalcula** capabilities por email.
 
 ---
 

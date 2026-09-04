@@ -55,6 +55,7 @@ export type OrbitAccess = "lite" | "full" | "school";
 
 export const ORBIT_JWT_STORAGE_KEY = "orbit_jwt";
 export const ORBIT_USER_STORAGE_KEY = "orbit_user";
+const ORBIT_SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 
 function getStoredJwt(): string | null {
   if (typeof localStorage === "undefined") return null;
@@ -83,6 +84,7 @@ function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
 
 function parseJwtPayload(token: string): {
   exp: number;
+  iat: number;
   orbitAccess?: string;
   capabilities?: string[];
 } | null {
@@ -93,14 +95,20 @@ function parseJwtPayload(token: string): {
     const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
     const payload = JSON.parse(atob(b64 + pad)) as {
       exp?: number;
+      iat?: number;
       orbitAccess?: string;
       capabilities?: unknown;
     };
-    if (typeof payload.exp !== "number") return null;
+    if (typeof payload.exp !== "number" || typeof payload.iat !== "number") return null;
     const capabilities = Array.isArray(payload.capabilities)
       ? payload.capabilities.filter((c): c is string => typeof c === "string")
       : undefined;
-    return { exp: payload.exp, orbitAccess: payload.orbitAccess, capabilities };
+    return {
+      exp: payload.exp,
+      iat: payload.iat,
+      orbitAccess: payload.orbitAccess,
+      capabilities,
+    };
   } catch {
     return null;
   }
@@ -138,7 +146,23 @@ export function isStoredJwtValid(): boolean {
       ? p.capabilities
       : parseStoredUserCapabilities()) ?? [];
   if (caps.length === 0) return false;
-  return p.exp * 1000 > Date.now() + 30_000;
+  const nowWithSafetyMargin = Date.now() + 30_000;
+  const sessionMaxExpiry = p.iat * 1000 + ORBIT_SESSION_TTL_MS;
+  return (
+    p.exp * 1000 > nowWithSafetyMargin &&
+    sessionMaxExpiry > nowWithSafetyMargin
+  );
+}
+
+/** Instante efectivo de expiración, limitado a dos horas desde la emisión. */
+export function getStoredSessionExpiresAt(): number | null {
+  const token = getStoredJwt();
+  const payload = token ? parseJwtPayload(token) : null;
+  if (!payload) return null;
+  return Math.min(
+    payload.exp * 1000,
+    payload.iat * 1000 + ORBIT_SESSION_TTL_MS
+  );
 }
 
 export function getStoredCapabilities(): string[] {
