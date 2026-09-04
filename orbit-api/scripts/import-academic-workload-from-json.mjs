@@ -4,14 +4,19 @@
  * Flujo:
  *   1) Resuelve personas existentes (NO crea docentes)
  *   2) Valida: cupo, cruces de horario, tope vs balance de horas
- *   3) DELETE academic_workload.academic_load (carga actual)
- *   4) Limpia class_group / subject huerfanos
- *   5) Por cada assignment: subject (con hours_quantity) -> class_group -> academic_load
- *   6) Excel + correo de data no congruente (docentes sin match en core.person)
+ *   3) Registra import_run + circuit breaker de volumen
+ *   4) Upsert subject/class_group; carga academic_load_stg
+ *   5) TX: snapshot → DELETE/INSERT academic_load → cierra import_run
+ *   6) Limpia class_group / subject huerfanos
+ *   7) Excel + correo de data no congruente
  *
  * Uso (desde orbit-api):
  *   node scripts/import-academic-workload-from-json.mjs
  *   node scripts/import-academic-workload-from-json.mjs --source "C:/ruta/carga.json"
+ *   node scripts/import-academic-workload-from-json.mjs --official
+ *   node scripts/import-academic-workload-from-json.mjs --snapshot-type adhoc
+ *   node scripts/import-academic-workload-from-json.mjs --imported-by scheduler
+ *   node scripts/import-academic-workload-from-json.mjs --force
  *   node scripts/import-academic-workload-from-json.mjs --dry-run
  *   node scripts/import-academic-workload-from-json.mjs --validate-only
  *   node scripts/import-academic-workload-from-json.mjs --fail-on-validation
@@ -36,6 +41,19 @@ import {
   sendIncongruentReportEmail,
   writeIncongruentExcel,
 } from "./lib/incongruentWorkloadReport.mjs";
+import {
+  HISTORY_APP_VERSION,
+  checkCircuitBreaker,
+  commitStagingSwap,
+  computeContentHashFromFile,
+  computeDeltaMetrics,
+  enrichStagingNames,
+  failImportRun,
+  getLastOkRun,
+  insertImportRun,
+  insertStagingRows,
+  truncateStaging,
+} from "./lib/academicLoadHistory.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../.env"), override: true });
@@ -54,6 +72,10 @@ const DRY_RUN = args.includes("--dry-run");
 const VALIDATE_ONLY = args.includes("--validate-only");
 const FAIL_ON_VALIDATION = args.includes("--fail-on-validation");
 const NO_EMAIL = args.includes("--no-email");
+const FORCE = args.includes("--force");
+const OFFICIAL = args.includes("--official");
+const SNAPSHOT_TYPE_ARG = argValue("--snapshot-type");
+const IMPORTED_BY = argValue("--imported-by") || process.env.IMPORT_IMPORTED_BY || null;
 const SOURCE = argValue("--source") || DEFAULT_SOURCE;
 const PROGRESS_PATH =
   argValue("--progress") ||
@@ -61,6 +83,20 @@ const PROGRESS_PATH =
     path.dirname(SOURCE),
     `import_carga_academica__progress__${stamp()}.json`
   );
+
+function resolveSnapshotMeta() {
+  if (OFFICIAL) {
+    return { snapshotType: "daily_1700", isOfficial: true };
+  }
+  const t = SNAPSHOT_TYPE_ARG || "adhoc";
+  if (!["daily_1700", "adhoc", "recovery"].includes(t)) {
+    throw new Error(`--snapshot-type inválido: ${t}`);
+  }
+  return {
+    snapshotType: t,
+    isOfficial: t === "daily_1700",
+  };
+}
 
 function stamp() {
   const d = new Date();
@@ -272,83 +308,6 @@ async function upsertClassGroup(client, input) {
       block,
       scheduleTime,
       modality,
-    ]
-  );
-  return { id: inserted.rows[0]?.id ?? null, isNew: true };
-}
-
-async function upsertAcademicLoad(client, input) {
-  const periodCode = truncateUtf(input.periodCode, VW50) ?? "";
-  const semester =
-    input.semester == null || input.semester === ""
-      ? null
-      : truncateUtf(String(input.semester), VW50);
-  const subjectCode = truncateUtf(input.subjectCode, VW50) ?? "";
-  const groupCode = truncateUtf(input.groupCode, VW50) ?? "";
-  const acaGroupId = truncateUtf(input.acaGroupId, VW50) || null;
-  const programName = truncateUtf(input.programName, VW250);
-  const enrolled = input.enrolledQuantity ?? 0;
-  const substantiveHours = input.substantiveHoursQuantity ?? 0;
-
-  const found = await client.query(
-    `SELECT id FROM academic_workload.academic_load
-     WHERE person_id = $1
-       AND subject_code = $2
-       AND group_code = $3
-       AND COALESCE(period_code, '') = COALESCE($4, '')
-       AND (
-         $5::varchar IS NULL
-         OR aca_group_id = $5
-         OR aca_group_id IS NULL
-       )
-     ORDER BY CASE WHEN aca_group_id = $5 THEN 0 ELSE 1 END
-     LIMIT 1`,
-    [input.personId, subjectCode, groupCode, periodCode, acaGroupId]
-  );
-
-  if (found.rows.length) {
-    const id = found.rows[0].id;
-    await client.query(
-      `UPDATE academic_workload.academic_load SET
-         semester = COALESCE($1, semester),
-         program_name = COALESCE($2, program_name),
-         enrolled_quantity = COALESCE($3, enrolled_quantity),
-         substantive_hours_quantity = $4,
-         aca_group_id = COALESCE($5, aca_group_id),
-         updated_at = NOW()
-       WHERE id = $6`,
-      [
-        semester,
-        programName,
-        input.enrolledQuantity,
-        substantiveHours,
-        acaGroupId,
-        id,
-      ]
-    );
-    return { id, isNew: false };
-  }
-
-  const inserted = await client.query(
-    `INSERT INTO academic_workload.academic_load (
-      person_id, period_code, semester, program_id, program_name, subject_code,
-      group_code, aca_group_id, enrolled_quantity, region_id, city_id, campus_id,
-      substantive_category_id, substantive_hours_quantity, class_preparation_id
-    ) VALUES (
-      $1,$2,$3,NULL,$4,$5,
-      $6,$7,$8,NULL,NULL,NULL,
-      NULL,$9,NULL
-    ) RETURNING id`,
-    [
-      input.personId,
-      periodCode,
-      semester,
-      programName,
-      subjectCode,
-      groupCode,
-      acaGroupId,
-      enrolled,
-      substantiveHours,
     ]
   );
   return { id: inserted.rows[0]?.id ?? null, isNew: true };
@@ -665,6 +624,8 @@ async function main() {
   console.log(`Dry-run: ${DRY_RUN}`);
   console.log(`Validate-only: ${VALIDATE_ONLY}`);
   console.log(`Fail-on-validation: ${FAIL_ON_VALIDATION}`);
+  console.log(`Official: ${OFFICIAL}`);
+  console.log(`Force: ${FORCE}`);
   console.log(`Create teachers: false`);
   console.log(`Email report: ${NO_EMAIL ? "off" : "on"}`);
 
@@ -807,42 +768,87 @@ async function main() {
       return;
     }
 
+    const snapshotMeta = resolveSnapshotMeta();
+    const startedMs = Date.now();
+    const contentHash = computeContentHashFromFile(SOURCE);
+    const sourceStat = fs.statSync(SOURCE);
+    const periodCodes = [
+      ...new Set(rows.map((r) => r.periodCode).filter(Boolean)),
+    ];
+
+    progress.history = {
+      snapshot_type: snapshotMeta.snapshotType,
+      is_official: snapshotMeta.isOfficial,
+      content_hash: contentHash,
+      force: FORCE,
+      app_version: HISTORY_APP_VERSION,
+    };
+    writeProgress(progress);
+
+    console.log(
+      `Snapshot: type=${snapshotMeta.snapshotType} official=${snapshotMeta.isOfficial} force=${FORCE}`
+    );
+
+    let runId = null;
     if (!DRY_RUN) {
-      console.log("Borrando academic_load actual...");
-      const delLoad = await client.query(
-        `DELETE FROM academic_workload.academic_load`
-      );
-      progress.deleted.academic_load = delLoad.rowCount ?? 0;
-
-      const delGroups = await client.query(`
-        DELETE FROM academic_workload.class_group cg
-        WHERE NOT EXISTS (
-          SELECT 1 FROM academic_workload.academic_load al
-          WHERE al.subject_code = cg.subject_code AND al.group_code = cg.group_code
-        )
-      `);
-      progress.deleted.class_group_orphans = delGroups.rowCount ?? 0;
-
-      const delSubjects = await client.query(`
-        DELETE FROM academic_workload.subject s
-        WHERE NOT EXISTS (
-          SELECT 1 FROM academic_workload.class_group cg
-          WHERE cg.subject_code = s.subject_code
-        )
-      `);
-      progress.deleted.subject_orphans = delSubjects.rowCount ?? 0;
+      const run = await insertImportRun(client, {
+        snapshotType: snapshotMeta.snapshotType,
+        isOfficial: snapshotMeta.isOfficial,
+        sourceFile: SOURCE,
+        sourceFileSize: sourceStat.size,
+        contentHash,
+        periodCodes,
+        status: "running",
+        importedBy: IMPORTED_BY,
+      });
+      runId = run.id;
+      progress.history.import_run_id = runId;
+      progress.history.fecha_carga = run.fecha_carga;
       writeProgress(progress);
-      console.log("Deleted:", progress.deleted);
-    }
+      console.log(`import_run id=${runId} fecha_carga=${run.fecha_carga}`);
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const a = row.raw;
-      progress.totals.processed = i + 1;
-      progress.by_period[row.periodCode] ??= { ok: 0, skipped: 0, errors: 0 };
+      const lastOk = await getLastOkRun(client);
+      const baselineCount =
+        lastOk?.row_count != null
+          ? Number(lastOk.row_count)
+          : Number(progress.counts_before.academic_load) || null;
+      const breaker = checkCircuitBreaker(rows.length, baselineCount);
+      progress.history.circuit_breaker = breaker;
+      if (!breaker.ok && !FORCE) {
+        const msg = `Circuit breaker: nuevas=${breaker.newCount} último_ok=${breaker.lastOkCount} delta=${(breaker.ratio * 100).toFixed(1)}% > ${(breaker.threshold * 100).toFixed(0)}%`;
+        await failImportRun(client, runId, msg, Date.now() - startedMs);
+        progress.finished_at = new Date().toISOString();
+        progress.history.status = "failed";
+        progress.history.error = msg;
+        await emitIncongruentArtifacts();
+        console.error(msg);
+        process.exitCode = 3;
+        return;
+      }
+      if (!breaker.ok && FORCE) {
+        console.warn(
+          `Circuit breaker ignorado por --force (delta=${(breaker.ratio * 100).toFixed(1)}%)`
+        );
+      }
 
-      try {
-        if (!DRY_RUN) {
+      const lastHash = lastOk?.content_hash ?? null;
+      progress.history.has_changes_vs_last =
+        lastHash == null ? true : lastHash !== contentHash;
+
+      console.log("Upsert subject/class_group + staging...");
+      await truncateStaging(client);
+
+      /** Dedup por clave de negocio (+ aca_group_id); gana la última fila. */
+      const stagingByKey = new Map();
+      const stagingRows = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const a = row.raw;
+        progress.totals.processed = i + 1;
+        progress.by_period[row.periodCode] ??= { ok: 0, skipped: 0, errors: 0 };
+
+        try {
           const s = await upsertSubject(client, {
             subjectCode: row.subjectCode,
             name: a.subject?.name || row.subjectCode,
@@ -871,42 +877,151 @@ async function main() {
           if (g.isNew) progress.upserts.class_group_new += 1;
           else progress.upserts.class_group_existing += 1;
 
-          const al = await upsertAcademicLoad(client, {
+          const acaGroupId = truncateUtf(a.meta?.id_grupo ?? null, VW50) || null;
+          const semester =
+            a.academic_load?.semester == null || a.academic_load?.semester === ""
+              ? null
+              : truncateUtf(String(a.academic_load.semester), VW50);
+          const programName = truncateUtf(
+            a.academic_load?.program_name ?? null,
+            VW250
+          );
+          const bizKey = [
+            row.periodCode,
+            row.subjectCode,
+            row.groupCode,
+            row.personId,
+            acaGroupId ?? "",
+          ].join("|");
+
+          const stgRow = {
             personId: row.personId,
-            periodCode: row.periodCode,
-            semester: a.academic_load?.semester ?? null,
-            programName: a.academic_load?.program_name ?? null,
-            subjectCode: row.subjectCode,
-            groupCode: row.groupCode,
-            acaGroupId: a.meta?.id_grupo ?? null,
-            enrolledQuantity: row.enrolledQuantity,
-            substantiveHoursQuantity: row.subjectHours,
+            periodCode: truncateUtf(row.periodCode, VW50),
+            semester,
+            programId: null,
+            programName,
+            subjectCode: truncateUtf(row.subjectCode, VW50),
+            groupCode: truncateUtf(row.groupCode, VW50),
+            acaGroupId,
+            enrolledQuantity: row.enrolledQuantity ?? 0,
+            regionId: null,
+            cityId: null,
+            campusId: null,
+            substantiveCategoryId: null,
+            substantiveHoursQuantity: row.subjectHours ?? 0,
+            classPreparationId: null,
+            teacherFullName: row.personName ?? null,
+            subjectName: a.subject?.name || row.subjectCode,
+            regionName: null,
+            cityName: null,
+            campusName: null,
+          };
+          stagingByKey.set(bizKey, stgRow);
+
+          progress.totals.ok += 1;
+          progress.by_period[row.periodCode].ok += 1;
+        } catch (err) {
+          progress.totals.errors += 1;
+          progress.by_period[row.periodCode].errors += 1;
+          progress.errors.push({
+            index: row.index,
+            document: row.document,
+            period: row.periodCode,
+            subject: row.subjectCode,
+            group: row.groupCode,
+            error: String(err?.message || err),
           });
-          if (al.isNew) progress.upserts.academic_load_new += 1;
-          else progress.upserts.academic_load_existing += 1;
         }
 
-        progress.totals.ok += 1;
-        progress.by_period[row.periodCode].ok += 1;
-      } catch (err) {
-        progress.totals.errors += 1;
-        progress.by_period[row.periodCode].errors += 1;
-        progress.errors.push({
-          index: row.index,
-          document: row.document,
-          period: row.periodCode,
-          subject: row.subjectCode,
-          group: row.groupCode,
-          error: String(err?.message || err),
-        });
+        if ((i + 1) % 100 === 0 || i === rows.length - 1) {
+          writeProgress(progress);
+          console.log(
+            `Progreso ${i + 1}/${rows.length} | ok=${progress.totals.ok} skip=${progress.totals.skipped_missing_person} err=${progress.totals.errors}`
+          );
+        }
       }
 
-      if ((i + 1) % 100 === 0 || i === rows.length - 1) {
-        writeProgress(progress);
-        console.log(
-          `Progreso ${i + 1}/${rows.length} | ok=${progress.totals.ok} skip=${progress.totals.skipped_missing_person} err=${progress.totals.errors} warn=${progress.validation.summary.total}`
-        );
+      for (const stgRow of stagingByKey.values()) {
+        stagingRows.push(stgRow);
       }
+      progress.upserts.academic_load_new = stagingRows.length;
+      progress.upserts.academic_load_existing = 0;
+
+      await insertStagingRows(client, stagingRows);
+      await enrichStagingNames(client, personTable);
+      const delta = await computeDeltaMetrics(client);
+      const hasChanges =
+        progress.history.has_changes_vs_last ||
+        delta.added > 0 ||
+        delta.removed > 0 ||
+        delta.changed > 0;
+      progress.history.delta = delta;
+      progress.history.has_changes = hasChanges;
+      writeProgress(progress);
+      console.log("Delta:", delta, "has_changes=", hasChanges);
+
+      const fechaCarga = progress.history.fecha_carga;
+      try {
+        const swap = await commitStagingSwap(client, {
+          runId,
+          fechaCarga,
+          metrics: {
+            hasChanges,
+            rowCount: stagingRows.length,
+            added: delta.added,
+            removed: delta.removed,
+            changed: delta.changed,
+          },
+          durationMs: Date.now() - startedMs,
+        });
+        progress.deleted.academic_load = swap.deleted;
+        progress.history.status = "ok";
+        console.log(
+          `Swap OK: deleted=${swap.deleted} inserted=${stagingRows.length} run=${runId}`
+        );
+      } catch (err) {
+        const msg = String(err?.message || err);
+        await failImportRun(client, runId, msg, Date.now() - startedMs);
+        progress.history.status = "failed";
+        progress.history.error = msg;
+        progress.finished_at = new Date().toISOString();
+        writeProgress(progress);
+        await emitIncongruentArtifacts();
+        throw err;
+      }
+
+      const delGroups = await client.query(`
+        DELETE FROM academic_workload.class_group cg
+        WHERE NOT EXISTS (
+          SELECT 1 FROM academic_workload.academic_load al
+          WHERE al.subject_code = cg.subject_code AND al.group_code = cg.group_code
+        )
+      `);
+      progress.deleted.class_group_orphans = delGroups.rowCount ?? 0;
+
+      const delSubjects = await client.query(`
+        DELETE FROM academic_workload.subject s
+        WHERE NOT EXISTS (
+          SELECT 1 FROM academic_workload.class_group cg
+          WHERE cg.subject_code = s.subject_code
+        )
+      `);
+      progress.deleted.subject_orphans = delSubjects.rowCount ?? 0;
+      writeProgress(progress);
+      console.log("Deleted orphans:", {
+        class_group: progress.deleted.class_group_orphans,
+        subject: progress.deleted.subject_orphans,
+      });
+    } else {
+      // dry-run: simula conteos sin tocar DB
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        progress.totals.processed = i + 1;
+        progress.totals.ok += 1;
+        progress.by_period[row.periodCode] ??= { ok: 0, skipped: 0, errors: 0 };
+        progress.by_period[row.periodCode].ok += 1;
+      }
+      progress.history.status = "dry_run";
     }
 
     // Contabilizar skips por periodo (solo resumen)
@@ -931,6 +1046,7 @@ async function main() {
     console.log("Deleted:", progress.deleted);
     console.log("Totals:", progress.totals);
     console.log("Upserts:", progress.upserts);
+    console.log("History:", progress.history);
     console.log("Validation:", progress.validation.summary);
     console.log("Counts after:", progress.counts_after);
     console.log("Progress JSON:", PROGRESS_PATH);

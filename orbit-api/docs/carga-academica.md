@@ -4,6 +4,8 @@ Documento de referencia para diseñar **tableros informativos** (BI / dashboards
 
 Incluye: definición del dominio, modelo en base de datos, reglas de negocio, calidad de datos, joins recomendados, métricas y estructuras listas para consumir.
 
+> **Histórico:** ver [historico-carga-academica.md](./historico-carga-academica.md) y [historico-carga-academica-spec.md](./historico-carga-academica-spec.md).
+
 ---
 
 ## 1. Qué es la carga académica

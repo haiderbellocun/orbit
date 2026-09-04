@@ -39,6 +39,10 @@ export const QuotaSummary: React.FC<{
   const status = (quota.quotaStatus ?? "unknown") as QuotaStatus;
   const showCredits = modality === "presencial" || modality === "mixto";
   const showStudents = modality === "virtual" || modality === "mixto";
+  const displayedPercentage =
+    quota.fulfillmentPct != null && status === "under"
+      ? Math.max(0, Math.round((100 - quota.fulfillmentPct) * 10) / 10)
+      : quota.fulfillmentPct;
   const hint = formatQuotaActionHint({
     teachingModality: modality,
     quotaStatus: status,
@@ -54,8 +58,8 @@ export const QuotaSummary: React.FC<{
           {modality ? TEACHING_MODALITY_LABEL[modality] : "Sin carga"}
         </Badge>
         <Badge className={quotaStatusBadgeClass(status)}>
-          {quota.fulfillmentPct != null
-            ? `${quota.fulfillmentPct}% · ${QUOTA_STATUS_LABEL[status]}`
+          {displayedPercentage != null
+            ? `${displayedPercentage}% · ${QUOTA_STATUS_LABEL[status]}`
             : QUOTA_STATUS_LABEL[status]}
         </Badge>
       </div>
