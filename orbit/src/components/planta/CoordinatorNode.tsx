@@ -1,3 +1,4 @@
+import { UnitEmblem } from './UnitEmblem';
 import { SecondInCommandBadges } from './SecondInCommandBadges';
 import React from 'react';
 import {
@@ -62,7 +63,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
     return (
       <article
         className={cn(
-          'overflow-hidden rounded-2xl border',
+          'unit-card overflow-hidden rounded-2xl border',
           isApex ? 'p-1' : 'bg-orbit-surface'
         )}
         style={{
@@ -74,13 +75,20 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
       >
         <div
           className={cn(
-            'flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:gap-4 sm:p-5',
+            'unit-card-header flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:gap-4 sm:p-5',
             isApex && 'rounded-xl bg-orbit-surface m-3 mb-0',
             canExpand && !isApex && 'cursor-pointer',
             node.isContextOnly && 'opacity-80'
           )}
           onClick={isApex ? undefined : () => onToggle(node.nodeKey)}
           role={isApex ? undefined : 'button'}
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (!isApex && event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault();
+              onToggle(node.nodeKey);
+            }
+          }}
           aria-expanded={isApex ? undefined : expanded}
         >
           <div
@@ -145,6 +153,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
               </span>
             </div>
           </div>
+          <UnitEmblem subject={person} />
           <div
             className="flex shrink-0 items-center gap-2 self-end sm:self-start"
             onClick={(e) => e.stopPropagation()}

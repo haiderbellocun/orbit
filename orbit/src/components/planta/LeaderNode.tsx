@@ -1,3 +1,4 @@
+import { UnitEmblem } from './UnitEmblem';
 import { SecondInCommandBadges } from './SecondInCommandBadges';
 import React from 'react';
 import {
@@ -51,7 +52,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
       <div className="relative">
         <div
           className={cn(
-            'rounded-xl border bg-orbit-surface',
+            'unit-card rounded-xl border bg-orbit-surface',
             node.isContextOnly && 'opacity-80'
           )}
           style={{
@@ -62,13 +63,20 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
         >
           <div
             className={cn(
-              'flex items-start gap-3 p-3 sm:p-4',
+              'unit-card-header flex items-start gap-3 p-3 sm:p-4',
               canExpand && 'cursor-pointer'
             )}
             onClick={() => {
               if (canExpand) onToggle(node.nodeKey);
             }}
             role={canExpand ? 'button' : undefined}
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                onToggle(node.nodeKey);
+              }
+            }}
             aria-expanded={canExpand ? expanded : undefined}
           >
             <div
@@ -107,6 +115,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
                 {node.totalReportsCount === 1 ? '' : 'es'}
               </p>
             </div>
+            <UnitEmblem subject={person} />
             <div
               className="flex shrink-0 items-center gap-1"
               onClick={(e) => e.stopPropagation()}

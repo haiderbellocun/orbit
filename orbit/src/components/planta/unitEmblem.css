@@ -1,0 +1,28 @@
+.unit-card { container: unit-card / inline-size; }
+.unit-emblem { display: none; pointer-events: none; align-self: center; }
+@container unit-card (min-width: 760px) {
+  .unit-emblem {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 clamp(120px, 22cqw, 320px);
+  }
+  .unit-emblem img {
+    width: 112px;
+    height: 112px;
+    object-fit: contain;
+    border-radius: 18px;
+    background: white;
+    padding: 6px;
+    opacity: 0;
+    transform: translateY(6px) scale(.94);
+    transition: opacity 220ms ease, transform 220ms ease;
+  }
+  .unit-card-header:hover > .unit-emblem img,
+  .unit-card-header:focus-within > .unit-emblem img {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  @media (hover: none) { .unit-emblem img { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .unit-emblem img { transition: none; transform: none; } }
+}
