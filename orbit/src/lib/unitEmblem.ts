@@ -1,4 +1,4 @@
-export type UnitSubject = { area?: string; school?: string; program?: string; role_name?: string };
+export type UnitSubject = { document?: string; area?: string; school?: string; program?: string; role_name?: string };
 
 const fold = (value = '') => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
 const units: [RegExp, string][] = [
@@ -23,6 +23,10 @@ export function unitEmblem(subject: UnitSubject): string | null {
   if (/DIRECTOR (?:DE )?OPERACIONES/.test(role)) return 'DirectorOp.png';
   if (/COORDINA(?:CION|DOR|DORA) GENERAL/.test(role)) return 'CoordinacionGeneral.png';
   const area = fold(subject.area);
+  // Sara Juliana: identidad de Contenidos, aunque su escuela figure como Desarrollo.
+  if (subject.document?.trim() === '1019117022' && /FABRICA/.test(area)) {
+    return 'fabrica/FOCA_GIF.png';
+  }
   const specifics = [fold(subject.school), fold(subject.program), role];
   for (const value of specifics) {
     const unit = units.find(([pattern]) => pattern.test(value));
