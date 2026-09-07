@@ -14,6 +14,7 @@ export type View =
   | 'planta-activa';
 
 export interface PlantaPerson {
+  second_in_command_scopes?: string[];
   id: string;
   document: string;
   type_document?: string;

@@ -1,3 +1,4 @@
+import { SecondInCommandBadges } from './SecondInCommandBadges';
 import React from 'react';
 import { PencilSquareIcon } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
@@ -18,7 +19,6 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
   nodes,
   onManage,
   className,
-  parentAccent = null,
   selectable = false,
   selectedIds,
   onToggleSelect,
@@ -49,17 +49,12 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
             const person = node.person;
             const canEdit = person.can_edit !== false;
             const isSelected = selectedIds?.has(person.id) === true;
-            const tone = schoolAccent(
-              {
-                schoolId: person.school_id,
-                schoolName: person.school,
-                programName: person.program,
-                areaName: person.area,
-                roleName: person.role_name,
-                personName: person.name,
-              },
-              parentAccent
-            );
+            // The label identifies the school, so its color must not vary by person or leader.
+            const tone = schoolAccent({
+              schoolId: person.school_id,
+              schoolName: person.school,
+              areaName: person.area,
+            });
             return (
               <tr
                 key={node.nodeKey}
@@ -83,6 +78,7 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
                   <p className="font-semibold text-orbit-text truncate max-w-[16rem]">
                     {person.name || '—'}
                   </p>
+                  <SecondInCommandBadges person={person} />
                   {person.school ? (
                     <p
                       className="mt-0.5 flex items-center gap-1.5 text-[11px] font-semibold truncate max-w-[16rem]"

@@ -1,3 +1,4 @@
+import { SecondInCommandBadges } from './SecondInCommandBadges';
 import React from 'react';
 import {
   ChevronDownIcon,
@@ -95,6 +96,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
             <h3 className="font-display text-lg font-semibold tracking-tight text-orbit-text">
               {person.name}
             </h3>
+            <SecondInCommandBadges person={person} />
             {node.assignmentLabel ? (
               <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-orbit-warning">
                 {node.assignmentLabel}

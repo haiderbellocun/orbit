@@ -44,6 +44,8 @@ import {
   sqlPersonStatusText,
 } from "../sql/personActive";
 
+import { normalizeSecondInCommandScopes } from "../lib/secondInCommand";
+
 const router = Router();
 
 function parsePositiveInt(raw: unknown): number | null {
@@ -83,6 +85,7 @@ const PLANTA_PERSON_SELECT = `
          p.id,
          p.document,
          p.type_document,
+         p.second_in_command_scopes,
          p.full_name AS name,
          NULLIF(TRIM(p.email), '') AS email,
          NULLIF(TRIM(p.edu_email), '') AS edu_email,
@@ -357,6 +360,7 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
          p.id,
          p.document,
          p.type_document,
+         p.second_in_command_scopes,
          p.full_name AS name,
          NULLIF(TRIM(p.email), '') AS email,
          NULLIF(TRIM(p.edu_email), '') AS edu_email,
@@ -544,6 +548,11 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
     const schoolScope = schoolScopeFromRequest(req);
     const plantaGrant = plantaGrantFromRequest(req);
     const b = (req.body ?? {}) as Record<string, unknown>;
+    let secondScopes: string[] | undefined;
+    if ('second_in_command_scopes' in b) {
+      try { secondScopes = normalizeSecondInCommandScopes(b.second_in_command_scopes); }
+      catch (error) { res.status(400).json({ error: (error as Error).message }); return; }
+    }
 
     const fullNameRaw =
       typeof b.full_name === "string"
@@ -737,12 +746,12 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
          full_name, document, type_document,
          email, edu_email, phone, address,
          area_id, school_id, program_id, role_id,
-         is_active, created_at, updated_at
+         is_active, second_in_command_scopes, created_at, updated_at
        ) VALUES (
          $1, $2, $3,
          $4, $5, $6, $7,
          $8, $9, $10, $11,
-         $12, NOW(), NOW()
+         $12, $13::text[], NOW(), NOW()
        )
        RETURNING id`,
       [
@@ -758,6 +767,7 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
         programId,
         roleId,
         isActive,
+        secondScopes ?? [],
       ]
     );
 
@@ -1206,9 +1216,19 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
     }
 
     const b = (req.body ?? {}) as Record<string, unknown>;
+    let secondScopes: string[] | undefined;
+    if ('second_in_command_scopes' in b) {
+      try { secondScopes = normalizeSecondInCommandScopes(b.second_in_command_scopes); }
+      catch (error) { res.status(400).json({ error: (error as Error).message }); return; }
+    }
     const sets: string[] = [];
     const values: unknown[] = [];
     let i = 1;
+    if (secondScopes !== undefined) {
+      sets.push(`second_in_command_scopes = $${i}::text[]`);
+      values.push(secondScopes);
+      i++;
+    }
 
     const fullName =
       typeof b.full_name === "string"

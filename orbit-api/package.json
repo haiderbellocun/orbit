@@ -32,10 +32,13 @@
     "seed:v3": "ts-node src/db/seed_v3.ts",
     "seed:v4": "ts-node src/db/seed_v4.ts",
     "schema:apply:gcp": "node scripts/apply-gcp-schema.mjs",
-    "test": "ts-node --transpile-only src/lib/sessionPolicy.test.ts && ts-node --transpile-only src/lib/orbitCapabilities.test.ts && ts-node --transpile-only src/lib/academicLoadValidation.test.ts && ts-node --transpile-only src/lib/workloadQuota.test.ts && ts-node --transpile-only src/lib/roleHierarchy.test.ts && ts-node --transpile-only src/lib/orgChartTreeEngine.test.ts && ts-node --transpile-only src/lib/orbitRoles.test.ts && node scripts/lib/academicLoadHistory.test.mjs",
+    "test": "ts-node --transpile-only src/lib/sessionPolicy.test.ts && ts-node --transpile-only src/lib/orbitCapabilities.test.ts && ts-node --transpile-only src/lib/academicLoadValidation.test.ts && ts-node --transpile-only src/lib/workloadQuota.test.ts && ts-node --transpile-only src/lib/roleHierarchy.test.ts && ts-node --transpile-only src/lib/orgChartTreeEngine.test.ts && ts-node --transpile-only src/lib/orbitRoles.test.ts && node scripts/lib/academicLoadHistory.test.mjs && npm run test:second-in-command",
     "test:academic-load-history": "node scripts/lib/academicLoadHistory.test.mjs && node scripts/test-academic-load-history-acceptance.mjs",
     "test:smtp": "node scripts/test-smtp.mjs",
-    "template:person": "node scripts/generate-person-load-template.mjs"
+    "template:person": "node scripts/generate-person-load-template.mjs",
+    "migrate:second-in-command": "ts-node src/db/migrate_second_in_command.ts",
+    "import:second-in-command": "ts-node src/db/import_second_in_command.ts",
+    "test:second-in-command": "ts-node --transpile-only src/lib/secondInCommand.test.ts"
   },
   "keywords": [],
   "license": "ISC",

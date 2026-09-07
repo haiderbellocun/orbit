@@ -1,10 +1,12 @@
 import { pool } from "./connection";
+import { ensureSecondInCommandScopes } from './secondInCommandSchema';
 
 /**
  * Parches idempotentes al arrancar (p. ej. Cloud Run tras deploy).
  * Evita errores 22001 cuando la columna quedó en VARCHAR(20) en bases antiguas.
  */
 export async function runStartupSchemaPatches(): Promise<void> {
+  await ensureSecondInCommandScopes();
   const { rows } = await pool.query<{ max_len: number | null }>(`
     SELECT character_maximum_length AS max_len
     FROM information_schema.columns
