@@ -17,6 +17,7 @@ export const ORBIT_CAPABILITY = {
   VACANCIES_INFORMATIVE_PANEL: "vacancies:informative_panel",
   /** Administración de vacantes: eliminar y cambio de estado forzado (rol 38). */
   VACANCIES_ADMIN: "vacancies:admin",
+  ROLES_MANAGE: "roles:manage",
   PLANTA_ACTIVA: "view:planta_activa",
   NEWS: "view:news",
 } as const;
@@ -42,6 +43,7 @@ export const SUPER_ADMIN_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.VACANCIES_ADMIN,
   ORBIT_CAPABILITY.PLANTA_ACTIVA,
   ORBIT_CAPABILITY.NEWS,
+  ORBIT_CAPABILITY.ROLES_MANAGE,
 ];
 
 /**
@@ -64,6 +66,14 @@ const DEFAULT_ACCESS_ALLOWLIST = [
 const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
   "camilo_quintero@cun.edu.co",
   "yesid_rocha@cun.edu.co",
+  "sara_murillofo@cun.edu.co",
+  "cindy_russi@cun.edu.co",
+] as const;
+
+const DEFAULT_ROLE_MANAGEMENT_ALLOWLIST = [
+  "camilo_quintero@cun.edu.co",
+  "haider_bello@cun.edu.co",
+  "zuany_acuna@cun.edu.co",
   "sara_murillofo@cun.edu.co",
   "cindy_russi@cun.edu.co",
 ] as const;
@@ -102,6 +112,25 @@ export function isEmailVacancyAdmin(
   const norm = (email ?? "").trim().toLowerCase();
   if (!norm) return false;
   return getVacancyAdminAllowlist().includes(norm);
+}
+
+export function getRoleManagementAllowlist(): string[] {
+  const raw = (process.env.ORBIT_ROLE_MANAGEMENT_ALLOWLIST ?? "").trim();
+  if (!raw) return [...DEFAULT_ROLE_MANAGEMENT_ALLOWLIST];
+  const emails = raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0);
+  return emails.length > 0
+    ? [...new Set(emails)]
+    : [...DEFAULT_ROLE_MANAGEMENT_ALLOWLIST];
+}
+
+export function isEmailRoleManagementAdmin(
+  email: string | null | undefined
+): boolean {
+  const norm = (email ?? "").trim().toLowerCase();
+  return Boolean(norm) && getRoleManagementAllowlist().includes(norm);
 }
 
 /**
@@ -326,14 +355,24 @@ export function ensureVacancyAdminCapabilities(
   capabilities: readonly OrbitCapability[],
   email: string | null | undefined
 ): OrbitCapability[] {
-  if (!isEmailVacancyAdmin(email)) return [...capabilities];
-  return [
+  const next = isEmailVacancyAdmin(email)
+    ? [
     ...new Set([
       ...capabilities,
       ORBIT_CAPABILITY.VACANCIES,
       ORBIT_CAPABILITY.VACANCIES_ADMIN,
     ]),
-  ];
+      ]
+    : [...capabilities];
+  return ensureRoleManagementCapabilities(next, email);
+}
+
+export function ensureRoleManagementCapabilities(
+  capabilities: readonly OrbitCapability[],
+  email: string | null | undefined
+): OrbitCapability[] {
+  if (!isEmailRoleManagementAdmin(email)) return [...capabilities];
+  return [...new Set([...capabilities, ORBIT_CAPABILITY.ROLES_MANAGE])];
 }
 
 export function canAccessVacancyInformativePanel(

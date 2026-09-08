@@ -180,6 +180,9 @@ export function getStoredCapabilities(): string[] {
   if (isStoredEmailOnOrbitAllowlist()) {
     return [...new Set([...ORBIT_ALLOWLIST_ADMIN_CAPABILITIES, ...base])];
   }
+  if (isStoredEmailRoleManagementAdmin()) {
+    return [...new Set([...base, "roles:manage"] )];
+  }
   // Admin de vacantes (eliminar / estado forzado).
   if (isStoredEmailVacancyAdmin()) {
     return [
@@ -239,6 +242,14 @@ const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
   "cindy_russi@cun.edu.co",
 ] as const;
 
+const DEFAULT_ROLE_MANAGEMENT_ALLOWLIST = [
+  "camilo_quintero@cun.edu.co",
+  "haider_bello@cun.edu.co",
+  "zuany_acuna@cun.edu.co",
+  "sara_murillofo@cun.edu.co",
+  "cindy_russi@cun.edu.co",
+] as const;
+
 /** Misma allowlist de reborn que el API. Override: VITE_ORBIT_ACCESS_ALLOWLIST */
 function getOrbitAccessAllowlist(): string[] {
   const raw = (
@@ -279,6 +290,16 @@ function isStoredEmailVacancyAdmin(): boolean {
   const email = getStoredUserEmail();
   if (!email) return false;
   return getVacancyAdminAllowlist().includes(email);
+}
+
+function isStoredEmailRoleManagementAdmin(): boolean {
+  const email = getStoredUserEmail();
+  if (!email) return false;
+  const raw = (import.meta.env.VITE_ORBIT_ROLE_MANAGEMENT_ALLOWLIST as string | undefined)?.trim();
+  const allowlist = raw
+    ? raw.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean)
+    : [...DEFAULT_ROLE_MANAGEMENT_ALLOWLIST];
+  return allowlist.includes(email);
 }
 
 /** Capabilities de bootstrap admin (alineadas con SUPER_ADMIN del API). */
@@ -1071,6 +1092,50 @@ export type CatalogArea = { id: number; name: string };
 export type CatalogSchool = { id: number; name: string; area_id: number | null };
 export type CatalogProgram = { id: number; name: string; school_id: number | null };
 export type CatalogRole = { id: number; name: string };
+export type ManagedRole = {
+  id: number;
+  code: string | null;
+  name: string;
+  description: string | null;
+  category: string | null;
+  is_active: boolean;
+  assigned_count: number;
+};
+
+export async function getManagedRoles(): Promise<ManagedRole[]> {
+  const response = await authFetch(`${BASE_URL}/roles`, { headers: jsonHeaders });
+  return handleJson(response);
+}
+
+export async function createManagedRole(name: string, code: string): Promise<ManagedRole> {
+  const response = await authFetch(`${BASE_URL}/roles`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ name, code }),
+  });
+  return handleJson(response);
+}
+
+export async function updateManagedRole(id: number, name: string, code: string): Promise<ManagedRole> {
+  const response = await authFetch(`${BASE_URL}/roles/${id}`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ name, code }),
+  });
+  return handleJson(response);
+}
+
+export async function updateManagedRoleStatus(
+  id: number,
+  isActive: boolean
+): Promise<ManagedRole> {
+  const response = await authFetch(`${BASE_URL}/roles/${id}/status`, {
+    method: "PATCH",
+    headers: jsonHeaders,
+    body: JSON.stringify({ is_active: isActive }),
+  });
+  return handleJson(response);
+}
 
 export async function getCatalogAreas(): Promise<CatalogArea[]> {
   const response = await authFetch(`${BASE_URL}/catalog/areas`, {

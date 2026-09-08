@@ -11,7 +11,8 @@ export type View =
   | 'audit' 
   | 'export'
   | 'programs'
-  | 'planta-activa';
+  | 'planta-activa'
+  | 'roles';
 
 export interface PlantaPerson {
   second_in_command_scopes?: string[];
@@ -299,6 +300,7 @@ export const NAV_ITEMS = [
     iconKey: 'audit',
   },
   { id: 'news', label: 'Novedades', iconKey: 'news' },
+  { id: 'roles', label: 'Gestión de roles', iconKey: 'roles' },
 ] as const;
 
 export type NavItem = (typeof NAV_ITEMS)[number];
