@@ -6,28 +6,33 @@
 
 $ErrorActionPreference = "Stop"
 
-$PROJECT = "it-fab-contenido-edu-6"
-$REGION = "us-central1"
-$SERVICE = "orbit-frontend"
-$VITE_API_URL = "https://orbit-backend-526995286786.us-central1.run.app/api"
-$VITE_GOOGLE_CLIENT_ID = "526995286786-c292djsqta9pgassddcrlecocpf2rgfo.apps.googleusercontent.com"
-$VITE_ALLOW_LOCAL_EMAIL_LOGIN = "true"
-# Usar ; (no ,): --set-build-env-vars separa variables por coma.
-$VITE_ORBIT_ACCESS_ALLOWLIST = "camilo_quintero@cun.edu.co;haider_bello@cun.edu.co;raul_valencia@cun.edu.co;zuany_acuna@cun.edu.co"
+$GcpDir = $PSScriptRoot
+$RepoRoot = Split-Path -Parent $GcpDir
+. (Join-Path $GcpDir "deploy-common.ps1")
+$Config = Get-OrbitDeployConfig
+Assert-OrbitDeployPrerequisites $Config
 
-$RepoRoot = Split-Path -Parent $PSScriptRoot
-Set-Location (Join-Path $RepoRoot "orbit")
+$buildVars = @(
+  "VITE_API_URL=$($Config.BackendUrl.TrimEnd('/'))/api"
+  "VITE_GOOGLE_CLIENT_ID=$($Config.GoogleClientId)"
+  "VITE_ALLOW_LOCAL_EMAIL_LOGIN=$($Config.AllowLocalEmailLogin)"
+  "VITE_ORBIT_ACCESS_ALLOWLIST=$($Config.OrbitAccessAllowlist -join ';')"
+  "VITE_ORBIT_VACANCY_ADMIN_ALLOWLIST=$($Config.OrbitVacancyAdminAllowlist -join ';')"
+  "VITE_ORBIT_ROLE_MANAGEMENT_ALLOWLIST=$($Config.OrbitRoleManagementAllowlist -join ';')"
+) -join ','
 
-gcloud config set project $PROJECT
-
-gcloud run deploy $SERVICE `
-  --source . `
-  --project $PROJECT `
-  --region $REGION `
-  --platform managed `
-  --allow-unauthenticated `
-  --port 8080 `
-  --set-build-env-vars "VITE_API_URL=$VITE_API_URL,VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID,VITE_ALLOW_LOCAL_EMAIL_LOGIN=$VITE_ALLOW_LOCAL_EMAIL_LOGIN,VITE_ORBIT_ACCESS_ALLOWLIST=$VITE_ORBIT_ACCESS_ALLOWLIST"
+Push-Location (Join-Path $RepoRoot "orbit")
+try {
+  & gcloud run deploy $Config.FrontendService `
+    --source . `
+    --project $Config.Project `
+    --region $Config.Region `
+    --platform managed `
+    --allow-unauthenticated `
+    --port 8080 `
+    --set-build-env-vars $buildVars
+  if ($LASTEXITCODE -ne 0) { throw "Falló el despliegue del frontend ($LASTEXITCODE)." }
+} finally { Pop-Location }
 
 Write-Host ""
-Write-Host "Frontend: https://orbit-frontend-526995286786.us-central1.run.app"
+Write-Host "Frontend: $($Config.FrontendUrl)"
