@@ -13,10 +13,10 @@ export type PlantaActivaAccess = {
   excludeLiteAndDocenteRoles?: boolean;
 };
 
-/** Ven toda la planta activa; editan solo áreas operativas (no LITES=1 ni DOCENTES=9). */
+/** Ven y editan toda la planta activa, incluidas áreas LITE/DOCENTE. */
 const SARA_LEVEL_ACCESS: PlantaActivaAccess = {
   viewAreaIds: null,
-  editAreaIds: [2, 3, 4, 5, 6, 7, 8],
+  editAreaIds: [1, 2, 3, 4, 5, 6, 7, 8, 9],
 };
 
 /** OPERACION ACADEMICA (1) + ESPECIALIZACIONES (9). Sin recorte de LITE/DOCENTE. */

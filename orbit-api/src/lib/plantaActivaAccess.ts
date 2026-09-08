@@ -38,8 +38,8 @@ const SARA_LEVEL_EXTRAS = [
 
 /** Ven toda la planta activa (todas las áreas, todos los roles). */
 const SARA_LEVEL_VIEW_AREA_IDS = null;
-/** Gestionan solo áreas operativas (LITES=1 y DOCENTES=9 son de Leidy/Tania). */
-const SARA_LEVEL_EDIT_AREA_IDS = [2, 3, 4, 5, 6, 7, 8];
+/** Gestionan todas las áreas académicas y operativas, incluidos LITE/DOCENTE. */
+const SARA_LEVEL_EDIT_AREA_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 /** OPERACION ACADEMICA (1) + ESPECIALIZACIONES (9). Sin recorte de LITE/DOCENTE. */
 const RAUL_ANALYST_AREA_IDS = [1, 9];
