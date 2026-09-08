@@ -360,6 +360,10 @@ export function getStoredPlantaActivaAccess(): {
             editAreaIds?: number[] | null;
           };
         };
+        const currentEmail =
+          typeof u.email === "string" ? u.email : getStoredUserEmail();
+        const currentGrant = getPlantaActivaGrantByEmail(currentEmail);
+        if (currentGrant) return currentGrant;
         if (u.plantaActivaAccess) {
           return {
             viewAreaIds: u.plantaActivaAccess.viewAreaIds ?? null,
@@ -367,10 +371,6 @@ export function getStoredPlantaActivaAccess(): {
           };
         }
         // Fallback por email (misma tabla que el API) si el JWT es anterior.
-        const grant = getPlantaActivaGrantByEmail(
-          typeof u.email === "string" ? u.email : getStoredUserEmail()
-        );
-        if (grant) return grant;
       }
     } catch {
       /* ignore */

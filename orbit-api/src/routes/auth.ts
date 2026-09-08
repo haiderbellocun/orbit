@@ -245,7 +245,7 @@ async function gateOrbitRoleAndLite(
       areaId: null,
       programIds: [],
       plantaViewAreaIds: grant.viewAreaIds ?? null,
-      plantaEditAreaIds: grant.editAreaIds ?? [],
+      plantaEditAreaIds: grant.editAreaIds,
     };
   }
 

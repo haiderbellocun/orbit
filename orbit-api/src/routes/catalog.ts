@@ -10,12 +10,27 @@ const router = Router();
 
 router.get("/catalog/areas", async (_req, res) => {
   try {
-    const coreMode = await resolveCoreSchemaMode();
-    if (coreMode == null) {
+    const result = await pool.query(
+      `SELECT to_regclass('public.area') AS area_public,
+              to_regclass('core.area') AS area_core`
+    );
+    const available = result.rows[0] as {
+      area_public?: string | null;
+      area_core?: string | null;
+    } | undefined;
+    const preferred = (process.env.DB_SCHEMA ?? "").trim().toLowerCase();
+    const table =
+      preferred === "core" && available?.area_core
+        ? "core.area"
+        : available?.area_public
+          ? "public.area"
+          : available?.area_core
+            ? "core.area"
+            : null;
+    if (!table) {
       res.json([]);
       return;
     }
-    const table = qualifiedCoreTable(coreMode, "area");
     const { rows } = await pool.query(
       `SELECT id, name
        FROM ${table}

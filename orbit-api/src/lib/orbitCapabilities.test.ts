@@ -246,7 +246,7 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
   const sara = getPlantaActivaGrant("sara_murillofo@cun.edu.co");
   assert.ok(sara);
   assert.equal(sara!.viewAreaIds, null);
-  assert.deepEqual(sara!.editAreaIds, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.equal(sara!.editAreaIds, null);
   assert.equal(sara!.excludeLiteAndDocenteRoles, undefined);
   assert.deepEqual(sara!.extraCapabilities, [
     "view:home",
@@ -254,12 +254,14 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
     "vacancies:informative_panel",
     "vacancies:admin",
     "view:news",
+    "roles:manage",
   ]);
   assert.equal(canViewPlantaArea(sara, 1), true);
   assert.equal(canViewPlantaArea(sara, 9), true);
   assert.equal(canEditPlantaArea(sara, 1), true);
   assert.equal(canEditPlantaArea(sara, 3), true);
   assert.equal(canEditPlantaArea(sara, 9), true);
+  assert.equal(canEditPlantaArea(sara, 999), true);
   assert.equal(
     canEditPlantaPerson(sara, 3, { roleName: "COORDINADOR DE PROGRAMA" }),
     true
@@ -279,6 +281,7 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
     saraAccess.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN),
     true
   );
+  assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.ROLES_MANAGE), true);
 
   const cindy = getPlantaActivaGrant("cindy_russi@cun.edu.co");
   assert.ok(cindy);

@@ -141,7 +141,8 @@ export function orbitAuthMiddleware(
       if (grant) {
         capabilities = resolvePlantaActivaGrantAccess(grant).capabilities;
         plantaViewAreaIds = grant.viewAreaIds;
-        plantaEditAreaIds = [...grant.editAreaIds];
+        plantaEditAreaIds =
+          grant.editAreaIds == null ? null : [...grant.editAreaIds];
       } else if (isEmailVacancyAdmin(email)) {
         capabilities = [...VACANCIES_ADMIN_CAPABILITIES];
       } else {

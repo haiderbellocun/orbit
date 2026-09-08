@@ -639,7 +639,7 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
     // Grants con alcance: área obligatoria y editable.
     if (plantaGrant != null) {
       if (areaId == null) {
-        if (plantaGrant.editAreaIds.length === 1) {
+        if (plantaGrant.editAreaIds?.length === 1) {
           areaId = plantaGrant.editAreaIds[0];
         } else {
           res.status(400).json({

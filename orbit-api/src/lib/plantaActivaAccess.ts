@@ -14,8 +14,8 @@ export type PlantaActivaGrant = {
   email: string;
   /** `null` = ver todas las áreas. */
   viewAreaIds: number[] | null;
-  /** Áreas que puede editar. */
-  editAreaIds: number[];
+  /** Áreas que puede editar. `null` = todas (mismo alcance que admin). */
+  editAreaIds: number[] | null;
   /**
    * Si true, no listan ni gestionan personas con rol LITE/LIDER o DOCENTE/DOCENTES.
    * Coordinadores y demás roles sí aparecen.
@@ -34,12 +34,13 @@ const SARA_LEVEL_EXTRAS = [
   "vacancies:informative_panel",
   "vacancies:admin",
   "view:news",
+  "roles:manage",
 ] as const;
 
 /** Ven toda la planta activa (todas las áreas, todos los roles). */
 const SARA_LEVEL_VIEW_AREA_IDS = null;
-/** Gestionan todas las áreas académicas y operativas, incluidos LITE/DOCENTE. */
-const SARA_LEVEL_EDIT_AREA_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+/** Gestionan cualquier área, incluidas las nuevas y las de personal LITE/DOCENTE. */
+const SARA_LEVEL_EDIT_AREA_IDS = null;
 
 /** OPERACION ACADEMICA (1) + ESPECIALIZACIONES (9). Sin recorte de LITE/DOCENTE. */
 const RAUL_ANALYST_AREA_IDS = [1, 9];
@@ -132,6 +133,7 @@ export function canEditPlantaArea(
   areaId: number | null
 ): boolean {
   if (grant == null) return true;
+  if (grant.editAreaIds == null) return true;
   if (areaId == null || !Number.isFinite(areaId)) return false;
   return grant.editAreaIds.includes(areaId);
 }

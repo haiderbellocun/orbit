@@ -4,6 +4,7 @@
   CORS_ORIGIN: https://orbit-frontend-526995286786.us-central1.run.app
   ALLOW_LOCAL_EMAIL_AUTH: "1"
   ORBIT_FRONTEND_URL: https://orbit-frontend-526995286786.us-central1.run.app
+  DB_SCHEMA: core
   ORBIT_ACCESS_ALLOWLIST: "camilo_quintero@cun.edu.co,haider_bello@cun.edu.co,raul_valencia@cun.edu.co,zuany_acuna@cun.edu.co"
   SMTP_SERVICE: gmail
   SMTP_HOST: smtp.gmail.com
