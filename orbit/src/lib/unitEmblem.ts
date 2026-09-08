@@ -6,16 +6,16 @@ const units: [RegExp, string][] = [
   [/COORDINA(?:CION|DOR|DORA) GENERAL/, 'CoordinacionGeneral.png'],
   [/DESARROLLO PROFESIONAL/, 'Desarrollo profesional.png'],
   [/ESPECIALIZACION/, 'Especializaciones.png'],
-  [/INGENIER/, 'Ingenierías.png'],
+  [/INGENIER/, 'Ingenierias.png'],
   [/TRANSVERSAL/, 'Transversales.png'],
-  [/TRANSFORMACION EMPRESARIAL/, 'Transformación Empresarial.png'],
+  [/TRANSFORMACION EMPRESARIAL/, 'Transformacion Empresarial.png'],
   [/NEGOCIO/, 'Negocios.png'],
   [/BELLAS ARTES?/, 'Bellas Artes.png'],
-  [/PROYECCION SOCIAL/, 'proyección social.png'],
+  [/PROYECCION SOCIAL/, 'proyeccion social.png'],
   [/SABER|PRUEBAS SABER/, 'Saber Pro .png'],
   [/SERVICIO/, 'Servicio.png'],
   [/\bB2B\b/, 'B2B.png'],
-  [/OPERACION(?:ES)? ACADEMICA/, 'Operación Académica.png'],
+  [/OPERACION(?:ES)? ACADEMICA/, 'Operacion Academica.png'],
 ];
 
 export function unitEmblem(subject: UnitSubject): string | null {
