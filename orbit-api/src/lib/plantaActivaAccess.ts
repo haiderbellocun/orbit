@@ -70,6 +70,12 @@ const GRANTS: readonly PlantaActivaGrant[] = [
     extraCapabilities: ["view:academic_load", "view:news"],
   },
   {
+    email: "carlos_rodriguezs@cun.edu.co",
+    viewAreaIds: [1],
+    editAreaIds: [1],
+    extraCapabilities: ["view:academic_load", "view:news"],
+  },
+  {
     email: "tania_rocha@cun.edu.co",
     viewAreaIds: [9],
     editAreaIds: [9],

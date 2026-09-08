@@ -32,6 +32,10 @@ const GRANTS: Readonly<Record<string, PlantaActivaAccess>> = {
     viewAreaIds: [1],
     editAreaIds: [1],
   },
+  "carlos_rodriguezs@cun.edu.co": {
+    viewAreaIds: [1],
+    editAreaIds: [1],
+  },
   "tania_rocha@cun.edu.co": {
     viewAreaIds: [9],
     editAreaIds: [9],

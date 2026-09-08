@@ -311,6 +311,13 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
     true
   );
 
+  const carlos = getPlantaActivaGrant("carlos_rodriguezs@cun.edu.co");
+  assert.ok(carlos);
+  assert.deepEqual(
+    { viewAreaIds: carlos!.viewAreaIds, editAreaIds: carlos!.editAreaIds, extraCapabilities: carlos!.extraCapabilities },
+    { viewAreaIds: leidy!.viewAreaIds, editAreaIds: leidy!.editAreaIds, extraCapabilities: leidy!.extraCapabilities }
+  );
+
   const tania = getPlantaActivaGrant("tania_rocha@cun.edu.co");
   assert.ok(tania);
   assert.deepEqual(tania!.viewAreaIds, [9]);
