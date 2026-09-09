@@ -29,7 +29,7 @@ export const WeeklyHoursBadge: React.FC<{
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md border border-sky-200 bg-sky-50 font-bold text-sky-900 tabular-nums",
+        "inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-500/28 bg-sky-50 dark:bg-sky-500/12 font-bold text-sky-900 dark:text-sky-100 tabular-nums",
         size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs",
         className
       )}
@@ -39,13 +39,13 @@ export const WeeklyHoursBadge: React.FC<{
           : `Jornada: ${schedule}`
       }
     >
-      <span className="uppercase tracking-wide text-sky-700/80 font-semibold text-[9px]">
+      <span className="uppercase tracking-wide text-sky-700/80 dark:text-sky-300/80 font-semibold text-[9px]">
         Semanal
       </span>
       {hasHours ? (
         <span>
           {hours}
-          <span className="font-semibold text-sky-800/80"> h</span>
+          <span className="font-semibold text-sky-800/80 dark:text-sky-200/80"> h</span>
         </span>
       ) : (
         <span className="max-w-[9rem] truncate font-semibold">{schedule}</span>

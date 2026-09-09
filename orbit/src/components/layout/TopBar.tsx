@@ -6,6 +6,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { NotificationBell } from "@/src/components/layout/NotificationBell";
 import { CommandPalette } from "@/src/components/layout/CommandPalette";
+import { ThemeToggle } from "@/src/components/layout/ThemeToggle";
 import { cn } from "@/src/lib/utils";
 import { View, type NavItem } from "@/src/types";
 
@@ -161,6 +162,8 @@ export const TopBar: React.FC<TopBarProps> = ({
           >
             <QuestionMarkCircleIcon className="h-5 w-5" />
           </button>
+
+          <ThemeToggle />
 
           <div data-tutorial="header-notifications">
             <NotificationBell onOpenVacancy={onOpenVacancyFromNotification} />

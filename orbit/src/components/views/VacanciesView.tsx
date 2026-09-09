@@ -701,7 +701,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 <col className="w-[13%]" />
               </colgroup>
               <thead>
-                <tr className="border-b border-orbit-border/80 bg-orbit-bg-secondary/80 text-xs uppercase tracking-widest text-orbit-muted">
+                <tr className="border-b border-orbit-border/80 bg-orbit-bg-secondary/80 dark:bg-orbit-elevated/80 text-xs uppercase tracking-widest text-orbit-muted">
                   <th className="py-3 px-3 font-bold whitespace-nowrap text-left">
                     # Requisición
                   </th>
@@ -809,9 +809,9 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                           className={cn(
                             'inline-flex px-2 py-0.5 rounded-md text-xs font-bold border',
                             v.operationStatus === 'open' &&
-                              'bg-orbit-info/10 text-blue-700 border-blue-100',
+                              'bg-orbit-info/10 text-blue-700 dark:text-blue-300 border-blue-100 dark:border-blue-500/25',
                             v.operationStatus === 'selected' &&
-                              'bg-orbit-warning/10 text-amber-800 border-orbit-warning/30',
+                              'bg-orbit-warning/10 text-amber-800 dark:text-amber-200 border-orbit-warning/30',
                             v.operationStatus === 'requisition_sent' &&
                               'bg-orbit-primary/10 text-orbit-primary-hover border-orbit-primary/25',
                             v.operationStatus === 'internal_movement' &&
@@ -866,7 +866,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                               type="button"
                               title="Eliminar vacante y requisición"
                               onClick={() => setDeleteTarget(v)}
-                              className="p-1.5 rounded-lg bg-orbit-elevated border border-red-200 text-red-600 hover:bg-red-50"
+                              className="p-1.5 rounded-lg bg-orbit-elevated border border-red-200 dark:border-red-500/28 text-red-600 dark:text-red-300 hover:bg-red-50 dark:bg-red-500/12"
                             >
                               <TrashIcon className="h-4 w-4" />
                             </button>

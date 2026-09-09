@@ -217,7 +217,7 @@ export const RolesManagementView: React.FC = () => {
           role="presentation"
           onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}
         >
-          <div className="w-full max-w-lg rounded-2xl border border-orbit-border bg-orbit-bg-secondary p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="role-modal-title">
+          <div className="w-full max-w-lg rounded-2xl border border-orbit-border bg-orbit-bg-secondary dark:bg-orbit-surface p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="role-modal-title">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 id="role-modal-title" className="font-display text-xl font-semibold text-orbit-text">

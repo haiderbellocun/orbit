@@ -266,13 +266,13 @@ function ClassDetailModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="class-detail-title"
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-orbit-border bg-orbit-bg shadow-2xl"
+        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-orbit-border bg-orbit-bg dark:bg-orbit-surface shadow-2xl"
         initial={{ opacity: 0, y: 12, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 8, scale: 0.98 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-orbit-border/70 bg-orbit-bg/95 px-5 py-4 backdrop-blur">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-orbit-border/70 bg-orbit-bg/95 dark:bg-orbit-surface/95 px-5 py-4 backdrop-blur">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
               Detalle de clase
@@ -288,9 +288,9 @@ function ClassDetailModal({
                 className={cn(
                   'inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold',
                   row.modality === 'P' &&
-                    'border-sky-200 bg-sky-50 text-sky-800',
+                    'border-sky-200 dark:border-sky-500/28 bg-sky-50 dark:bg-sky-500/12 text-sky-800 dark:text-sky-200',
                   row.modality === 'V' &&
-                    'border-violet-200 bg-violet-50 text-violet-800',
+                    'border-violet-200 dark:border-violet-500/28 bg-violet-50 dark:bg-violet-500/12 text-violet-800 dark:text-violet-200',
                   row.modality !== 'P' &&
                     row.modality !== 'V' &&
                     'border-orbit-border bg-orbit-interactive text-orbit-muted'
@@ -302,9 +302,9 @@ function ClassDetailModal({
                 className={cn(
                   'inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold',
                   row.studyLevel === 'especializacion' &&
-                    'border-violet-200 bg-violet-50 text-violet-700',
+                    'border-violet-200 dark:border-violet-500/28 bg-violet-50 dark:bg-violet-500/12 text-violet-700 dark:text-violet-300',
                   row.studyLevel === 'pregrado' &&
-                    'border-sky-200 bg-sky-50 text-sky-700',
+                    'border-sky-200 dark:border-sky-500/28 bg-sky-50 dark:bg-sky-500/12 text-sky-700 dark:text-sky-300',
                   row.studyLevel === 'otro' &&
                     'border-orbit-border bg-orbit-interactive text-orbit-muted'
                 )}
@@ -463,9 +463,9 @@ function AssignmentBreakdownTable({
                   className={cn(
                     'inline-flex rounded-md border px-2 py-0.5 text-[11px] font-semibold',
                     r.studyLevel === 'especializacion' &&
-                      'border-violet-200 bg-violet-50 text-violet-700',
+                      'border-violet-200 dark:border-violet-500/28 bg-violet-50 dark:bg-violet-500/12 text-violet-700 dark:text-violet-300',
                     r.studyLevel === 'pregrado' &&
-                      'border-sky-200 bg-sky-50 text-sky-700',
+                      'border-sky-200 dark:border-sky-500/28 bg-sky-50 dark:bg-sky-500/12 text-sky-700 dark:text-sky-300',
                     r.studyLevel === 'otro' &&
                       'border-orbit-border bg-orbit-interactive text-orbit-muted'
                   )}
@@ -779,7 +779,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
 
   return (
     <div className="space-y-8 relative">
-      <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 dark:bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <Header
         title="Carga Académica"

@@ -29,14 +29,111 @@ type FoldedCtx = {
   hay: string;
 };
 
-const NEUTRAL: SchoolAccent = {
-  accent: '#8B8B9A',
-  soft: '#F1F1F5',
-  border: 'rgba(139, 139, 154, 0.35)',
-};
+/**
+ * Both themes are baked into a single `color-mix()` and CSS picks the winner
+ * via `--orbit-accent-light-weight` (100% en Orbit Day, 0% en Orbit Night).
+ * Al resolverse en CSS y no en JS, los colores institucionales cambian de tema
+ * sin depender de un re-render de React (CoordinatorNode y LeaderNode están
+ * memoizados y no se volverían a renderizar al cambiar el tema).
+ */
+function themed(dayValue: string, nightValue: string): string {
+  return `color-mix(in srgb, ${dayValue} var(--orbit-accent-light-weight, 100%), ${nightValue})`;
+}
 
+/**
+ * Orbit Day conserva exactamente el color institucional y su pastel original.
+ * Orbit Night mantiene el MISMO matiz: sólo eleva la luminosidad al mínimo
+ * legible sobre fondo oscuro, y cambia el pastel claro por el propio color
+ * institucional a baja opacidad.
+ */
 function tone(accent: string, soft: string): SchoolAccent {
-  return { accent, soft, border: hexToRgba(accent, 0.38) };
+  const night = liftForDark(accent);
+  return {
+    accent: themed(accent, night),
+    soft: themed(soft, hexToRgba(night, 0.14)),
+    border: themed(hexToRgba(accent, 0.38), hexToRgba(night, 0.36)),
+  };
+}
+
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  const n = hex.replace('#', '');
+  const r = Number.parseInt(n.slice(0, 2), 16) / 255;
+  const g = Number.parseInt(n.slice(2, 4), 16) / 255;
+  const b = Number.parseInt(n.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d === 0) return { h: 0, s: 0, l };
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h: number;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return { h, s, l };
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const f = (n: number) => {
+    const k = (n + h * 12) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const v = l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)));
+    return Math.round(v * 255)
+      .toString(16)
+      .padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+/** Superficie de tarjeta en modo oscuro (--orbit-surface). */
+const NIGHT_SURFACE_LUMINANCE = relativeLuminance('#1A1E26');
+
+/** Contraste mínimo del acento sobre la tarjeta oscura (WCAG AA texto normal). */
+const MIN_CONTRAST = 4.5;
+
+function relativeLuminance(hex: string): number {
+  const n = hex.replace('#', '');
+  const channel = (value: number): number => {
+    const v = value / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const r = channel(Number.parseInt(n.slice(0, 2), 16));
+  const g = channel(Number.parseInt(n.slice(2, 4), 16));
+  const b = channel(Number.parseInt(n.slice(4, 6), 16));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastOnNightSurface(hex: string): number {
+  const a = relativeLuminance(hex);
+  const b = NIGHT_SURFACE_LUMINANCE;
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+/**
+ * Sube la luminosidad hasta que el color institucional sea legible sobre la
+ * tarjeta oscura, conservando el matiz (y una saturación mínima).
+ *
+ * No basta con un piso de luminosidad HSL: la luminancia percibida depende del
+ * matiz (el azul aporta 0.0722 y el verde 0.7152), así que un índigo como
+ * #4F46E5 sigue siendo ilegible aunque su L en HSL ya sea alta. Por eso se
+ * busca la luminosidad mínima que alcanza el contraste objetivo, en vez de
+ * aplicar el mismo piso a todos los matices.
+ */
+function liftForDark(hex: string): string {
+  const { h, s, l } = hexToHsl(hex);
+  const saturation = s === 0 ? s : Math.max(Math.min(s, 0.9), 0.45);
+
+  let lightness = Math.max(l, 0.62);
+  let candidate = hslToHex(h, saturation, lightness);
+
+  // Sube en pasos pequeños hasta alcanzar el contraste objetivo (o el techo,
+  // para no lavar el color por completo).
+  while (lightness < 0.9 && contrastOnNightSurface(candidate) < MIN_CONTRAST) {
+    lightness = Math.min(0.9, lightness + 0.02);
+    candidate = hslToHex(h, saturation, lightness);
+  }
+
+  return candidate;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -76,6 +173,9 @@ function row(
   return { ...tone(accent, soft), match };
 }
 
+/** Sin identidad reconocible: gris neutro. */
+const NEUTRAL: SchoolAccent = tone('#8B8B9A', '#F1F1F5');
+
 /** Identidad de la persona (escuela / programa / cargo), no el área del jefe. */
 const BY_UNIT: CatalogRow[] = [
   row('#F472B6', '#FCE7F3', (c) => inUnit(c, 'DESARROLLO PROFESIONAL')),
@@ -94,11 +194,11 @@ const BY_UNIT: CatalogRow[] = [
         'PRESENTADORAS'
       )
   ),
-  row('#2563EB', '#DBEAFE', (c) => {
+  row('#4F46E5', '#E0E7FF', (c) => {
     if (inUnit(c, 'DESARROLLO PROFESIONAL')) return false;
     return inUnit(c, 'DESARROLLO') && !inUnit(c, 'FABRICA Y DESARROLLO');
   }),
-  row('#AE00EB', '#F3E8FF', (c) => inUnit(c, 'MARKETING')),
+  row('#F97316', '#FFEDD5', (c) => inUnit(c, 'MARKETING')),
   row(
     '#AE00EB',
     '#F3E8FF',
@@ -118,8 +218,8 @@ const BY_UNIT: CatalogRow[] = [
 
 const BY_PERSON: CatalogRow[] = [
   row(
-    '#5A8C74',
-    '#F4F7F5',
+    '#10B981',
+    '#D1FAE5',
     (c) =>
       has(c.role, 'DIRECTOR DE OPERACIONES', 'DIRECTOR OPERACIONES') ||
       has(c.hay, 'IRON')
@@ -143,6 +243,11 @@ const BY_AREA: CatalogRow[] = [
   row('#F43F94', '#FCE7F3', (c) => has(c.area, 'SERVICIO')),
   row('#EF4444', '#FECACA', (c) => has(c.area, 'B2B')),
 ];
+
+/** Compara identidad por el hex institucional, no por el color-mix resultante. */
+function sameAccent(a: SchoolAccent, b: SchoolAccent): boolean {
+  return a.accent.toLowerCase() === b.accent.toLowerCase();
+}
 
 const NESTED_ALTERNATES: SchoolAccent[] = [
   tone('#BC4C00', '#FFDCBE'),
@@ -197,14 +302,14 @@ function distinctFromParent(
   seed: string,
   siblingIndex?: number
 ): SchoolAccent {
-  if (!parentAccent || accent.accent.toLowerCase() !== parentAccent.accent.toLowerCase()) {
+  if (!parentAccent || !sameAccent(accent, parentAccent)) {
     return accent;
   }
   const start =
     (siblingIndex ?? hashSeed(seed)) % NESTED_ALTERNATES.length;
   for (let i = 0; i < NESTED_ALTERNATES.length; i += 1) {
     const candidate = NESTED_ALTERNATES[(start + i) % NESTED_ALTERNATES.length];
-    if (candidate.accent.toLowerCase() !== parentAccent.accent.toLowerCase()) {
+    if (!sameAccent(candidate, parentAccent)) {
       return candidate;
     }
   }

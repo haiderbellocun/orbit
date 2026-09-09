@@ -57,7 +57,7 @@ export function workforceStatusBadgeClass(status: WorkforceEventStatus): string 
       return "bg-orbit-warning/10 text-orbit-warning border-orbit-warning/30";
     case "REJECTED":
     case "CANCELLED":
-      return "bg-red-50 text-red-600 border-red-100";
+      return "bg-red-50 dark:bg-red-500/12 text-red-600 dark:text-red-300 border-red-100 dark:border-red-500/25";
     default:
       return "bg-orbit-bg-secondary text-orbit-text-secondary border-orbit-border";
   }

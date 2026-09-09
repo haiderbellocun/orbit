@@ -152,7 +152,7 @@ export const ReinstatementsView: React.FC<ReinstatementsViewProps> = ({
   return (
     <div className="space-y-8 relative">
       {/* Decorative background elements */}
-      <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 dark:bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <Header 
         title="Gestión de Reintegros" 
@@ -223,7 +223,7 @@ export const ReinstatementsView: React.FC<ReinstatementsViewProps> = ({
               >
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-orbit-muted group-hover:text-orbit-primary transition-colors shadow-inner">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 dark:from-orbit-elevated dark:to-orbit-surface flex items-center justify-center text-orbit-muted group-hover:text-orbit-primary transition-colors shadow-inner">
                       <UsersIcon className="h-6 w-6" />
                     </div>
                     <div>
@@ -242,7 +242,7 @@ export const ReinstatementsView: React.FC<ReinstatementsViewProps> = ({
                       <span className={cn(
                         "text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-lg border",
                         r.status === 'approved' ? "bg-orbit-success/10 text-orbit-success border-orbit-success/25" : 
-                        r.status === 'pending' ? "bg-orbit-warning/10 text-orbit-warning border-orbit-warning/30" : "bg-red-50 text-red-600 border-red-100"
+                        r.status === 'pending' ? "bg-orbit-warning/10 text-orbit-warning border-orbit-warning/30" : "bg-red-50 dark:bg-red-500/12 text-red-600 dark:text-red-300 border-red-100 dark:border-red-500/25"
                       )}>
                         {r.status === 'approved' ? 'Aprobado' : r.status === 'pending' ? 'Pendiente' : 'Rechazado'}
                       </span>

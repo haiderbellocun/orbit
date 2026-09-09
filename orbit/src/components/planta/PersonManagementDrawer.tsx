@@ -182,7 +182,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                     className={cn(PLANTA_SELECT_CLASS, 'w-full')}
                   />
                   {scopeMenuOpen && filteredScopeOptions.length > 0 && (
-                    <div className="absolute left-0 right-0 top-full z-230 mt-1 max-h-56 overflow-y-auto rounded-xl border border-orbit-border bg-orbit-surface p-1 shadow-2xl">
+                    <div className="absolute left-0 right-0 top-full z-230 mt-1 max-h-56 overflow-y-auto rounded-xl border border-orbit-border bg-orbit-surface dark:bg-orbit-elevated p-1 shadow-2xl">
                       {filteredScopeOptions.map(scope => (
                         <button
                           key={scope}

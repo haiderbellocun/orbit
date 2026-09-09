@@ -91,7 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
           aria-label="Volver al Command Center"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-orbit-border bg-orbit-elevated">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-orbit-border bg-[var(--orbit-logo-plate)]">
             <Logo className="h-5 w-5" />
           </span>
           <span

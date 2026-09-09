@@ -31,21 +31,21 @@ export function isQuotaStatus(v: unknown): v is QuotaStatus {
 
 export function teachingModalityBadgeClass(modality: TeachingModality | null): string {
   if (modality === "presencial") {
-    return "border-sky-200 bg-sky-50 text-sky-800";
+    return "border-sky-200 dark:border-sky-500/28 bg-sky-50 dark:bg-sky-500/12 text-sky-800 dark:text-sky-200";
   }
   if (modality === "virtual") {
-    return "border-violet-200 bg-violet-50 text-violet-800";
+    return "border-violet-200 dark:border-violet-500/28 bg-violet-50 dark:bg-violet-500/12 text-violet-800 dark:text-violet-200";
   }
   if (modality === "mixto") {
-    return "border-amber-200 bg-amber-50 text-amber-800";
+    return "border-amber-200 dark:border-amber-500/28 bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-200";
   }
   return "border-orbit-border bg-orbit-interactive text-orbit-muted";
 }
 
 export function quotaStatusBadgeClass(status: QuotaStatus): string {
-  if (status === "ok") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (status === "under") return "border-amber-200 bg-amber-50 text-amber-800";
-  if (status === "over") return "border-red-200 bg-red-50 text-red-800";
+  if (status === "ok") return "border-emerald-200 dark:border-emerald-500/28 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-800 dark:text-emerald-200";
+  if (status === "under") return "border-amber-200 dark:border-amber-500/28 bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-200";
+  if (status === "over") return "border-red-200 dark:border-red-500/28 bg-red-50 dark:bg-red-500/12 text-red-800 dark:text-red-200";
   return "border-orbit-border bg-orbit-interactive text-orbit-muted";
 }
 

@@ -383,7 +383,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
 
   return (
     <div className="space-y-8 relative">
-      <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 dark:bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <Header
         title="Balance carga"
@@ -759,7 +759,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   key={row.id}
                   className={cn(
                     'border-b border-orbit-border/80 hover:bg-orbit-interactive/30 transition-colors',
-                    row.isLite && 'bg-amber-50/70 hover:bg-amber-50'
+                    row.isLite && 'bg-amber-50/70 dark:bg-amber-500/10 hover:bg-amber-50 dark:bg-amber-500/12'
                   )}
                 >
                   <td className="px-5 py-4">
@@ -767,7 +767,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       <span className="font-semibold text-orbit-text">{row.name}</span>
                       {row.isLite && (
                         <span
-                          className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800"
+                          className="inline-flex items-center rounded-md border border-amber-200 dark:border-amber-500/28 bg-amber-50 dark:bg-amber-500/12 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200"
                           title="Rol actual LITE: tiene cátedra, no es docente de planta"
                         >
                           LITE
@@ -779,7 +779,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       />
                     </div>
                     {row.isLite && (
-                      <div className="text-[11px] font-medium text-amber-800/80 mt-0.5">
+                      <div className="text-[11px] font-medium text-amber-800/80 dark:text-amber-200/80 mt-0.5">
                         Tiene cátedra · rol actual LITE
                       </div>
                     )}
@@ -789,7 +789,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       {row.email?.trim() ? (
                         row.email.trim()
                       ) : (
-                        <span className="text-red-600 font-semibold">
+                        <span className="text-red-600 dark:text-red-300 font-semibold">
                           sin correo CUN
                         </span>
                       )}
@@ -812,7 +812,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   <td className="px-5 py-4 text-right text-orbit-text-secondary">
                     <div className="inline-flex flex-col items-end gap-1 text-xs tabular-nums">
                       {row.contractHoursWeekly != null && (
-                        <div className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 font-bold text-sky-900">
+                        <div className="rounded-md border border-sky-200 dark:border-sky-500/28 bg-sky-50 dark:bg-sky-500/12 px-2 py-0.5 font-bold text-sky-900 dark:text-sky-100">
                           Jornada {row.contractHoursWeekly} h/sem
                         </div>
                       )}
@@ -946,7 +946,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   <h2 className="text-lg font-bold text-orbit-text flex items-center gap-2 flex-wrap">
                     {modalTeacher.name}
                     {modalTeacher.isLite && (
-                      <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                      <span className="inline-flex items-center rounded-md border border-amber-200 dark:border-amber-500/28 bg-amber-50 dark:bg-amber-500/12 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">
                         LITE
                       </span>
                     )}
@@ -960,7 +960,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                     {modalTeacher.document || 'Sin documento'}
                   </p>
                   {modalTeacher.isLite && (
-                    <p className="text-[11px] font-medium text-amber-800 mt-1">
+                    <p className="text-[11px] font-medium text-amber-800 dark:text-amber-200 mt-1">
                       Es LITE y tiene carga académica. El balance incluye su cátedra para que no quede por fuera.
                     </p>
                   )}
@@ -977,10 +977,10 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
 
               {modalKind === 'preparation' ? (
                 <>
-                  <div className="rounded-xl border border-sky-200 bg-sky-50/80 p-3 text-xs text-orbit-text-secondary space-y-1 tabular-nums">
+                  <div className="rounded-xl border border-sky-200 dark:border-sky-500/28 bg-sky-50/80 dark:bg-sky-500/12 p-3 text-xs text-orbit-text-secondary space-y-1 tabular-nums">
                     <div className="flex justify-between gap-3">
-                      <span className="font-semibold text-sky-900">Jornada semanal</span>
-                      <span className="font-bold text-sky-950 text-sm">
+                      <span className="font-semibold text-sky-900 dark:text-sky-100">Jornada semanal</span>
+                      <span className="font-bold text-sky-950 dark:text-sky-100 text-sm">
                         {modalTeacher.contractHoursWeekly != null
                           ? `${modalTeacher.contractHoursWeekly} h`
                           : '—'}

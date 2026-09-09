@@ -251,11 +251,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     >
       <button
         type="button"
-        className="absolute inset-0 bg-slate-900/40"
+        className="absolute inset-0 bg-slate-900/40 dark:bg-black/65"
         aria-label="Cerrar búsqueda"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-xl overflow-hidden rounded-[14px] border border-orbit-border bg-orbit-elevated shadow-2xl shadow-slate-200/80">
+      <div className="relative w-full max-w-xl overflow-hidden rounded-[14px] border border-orbit-border bg-orbit-elevated shadow-2xl shadow-slate-200/80 dark:shadow-black/40">
         <div className="flex items-center gap-3 border-b border-orbit-border px-4 py-3">
           <MagnifyingGlassIcon className="h-5 w-5 shrink-0 text-orbit-muted" />
           <input

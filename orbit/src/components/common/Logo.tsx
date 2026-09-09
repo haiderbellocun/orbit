@@ -20,9 +20,9 @@ export const Logo: React.FC<LogoProps> = ({ className, variant = 'menu' }) => {
 
   if (logo.type === 'png') {
     return (
-      <img 
-        src={logo.content as string} 
-        alt={BRAND_CONFIG.name} 
+      <img
+        src={logo.content as string}
+        alt={BRAND_CONFIG.name}
         className={className}
         referrerPolicy="no-referrer"
       />

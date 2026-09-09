@@ -45,7 +45,7 @@ export const AuditView: React.FC<AuditViewProps> = ({
   return (
     <div className="space-y-8 relative">
       {/* Decorative background elements */}
-      <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/2 -left-20 w-64 h-64 bg-cyan-200/20 dark:bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <Header 
         title="Trazabilidad y Auditoría" 
@@ -69,9 +69,9 @@ export const AuditView: React.FC<AuditViewProps> = ({
       </div>
 
       <div className="glass-panel overflow-hidden relative z-10">
-        <div className="p-6 border-b border-white/20 bg-white/30 backdrop-blur-md flex flex-wrap gap-4 items-center justify-between">
+        <div className="p-6 border-b border-white/20 bg-white/30 dark:border-orbit-border dark:bg-orbit-elevated backdrop-blur-md flex flex-wrap gap-4 items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-orbit-interactive border border-white/20 rounded-lg text-[10px] font-bold text-orbit-text-secondary uppercase tracking-widest shadow-sm">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-orbit-interactive border border-white/20 dark:border-orbit-border rounded-lg text-[10px] font-bold text-orbit-text-secondary uppercase tracking-widest shadow-sm">
               <span className="w-2 h-2 rounded-full bg-orbit-success/100 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span>
               <span>Sistemas OK</span>
             </div>
@@ -94,7 +94,7 @@ export const AuditView: React.FC<AuditViewProps> = ({
           </div>
         </div>
         
-        <div className="divide-y divide-white/10">
+        <div className="divide-y divide-white/10 dark:divide-orbit-divider">
           {filteredAudit.length === 0 ? (
             <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
               <div className="w-16 h-16 rounded-full bg-orbit-bg-secondary flex items-center justify-center text-orbit-muted border border-orbit-border shadow-inner">
@@ -111,7 +111,7 @@ export const AuditView: React.FC<AuditViewProps> = ({
             filteredAudit.map((event) => (
               <div key={event.id} className="p-6 hover:bg-orbit-interactive transition-all flex flex-col md:flex-row md:items-center gap-6 group">
                 <div className="flex items-center gap-4 md:w-64 shrink-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-50 to-fuchsia-50 flex items-center justify-center text-orbit-primary group-hover:scale-110 transition-transform shadow-sm">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-violet-500/20 dark:to-fuchsia-500/20 flex items-center justify-center text-orbit-primary group-hover:scale-110 transition-transform shadow-sm">
                     <UserCircleIcon className="h-5 w-5" />
                   </div>
                   <div>
@@ -122,7 +122,7 @@ export const AuditView: React.FC<AuditViewProps> = ({
                 
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="px-2 py-0.5 bg-orbit-interactive border border-white/20 text-orbit-muted text-[9px] font-bold rounded uppercase tracking-[0.15em] shadow-sm">
+                    <span className="px-2 py-0.5 bg-orbit-interactive border border-white/20 dark:border-orbit-border text-orbit-muted text-[9px] font-bold rounded uppercase tracking-[0.15em] shadow-sm">
                       {event.module}
                     </span>
                     <h4 className="text-sm font-bold text-orbit-text">{event.action}</h4>
@@ -140,7 +140,7 @@ export const AuditView: React.FC<AuditViewProps> = ({
           )}
         </div>
         
-        <div className="p-6 bg-white/20 backdrop-blur-sm border-t border-white/10 flex items-center justify-center">
+        <div className="p-6 bg-white/20 border-t border-white/10 dark:bg-orbit-bg-secondary dark:border-orbit-border backdrop-blur-sm flex items-center justify-center">
           <button className="text-xs font-bold text-orbit-primary hover:text-orbit-primary uppercase tracking-widest transition-colors">
             Cargar más eventos
           </button>

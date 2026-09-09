@@ -17,7 +17,7 @@ const STATUS_ORDER: VacancyOperationStatus[] = [
   "cancelled_by_capital",
 ];
 
-/** Colores sólidos y contrastados sobre fondo blanco. */
+/** Colores sólidos y contrastados, tanto sobre fondo blanco como oscuro. */
 const STATUS_BAR: Record<
   VacancyOperationStatus,
   { bar: string; qty: string; track: string; dot: string }
@@ -25,49 +25,49 @@ const STATUS_BAR: Record<
   open: {
     bar: "bg-sky-500",
     qty: "bg-sky-200",
-    track: "bg-sky-100",
+    track: "bg-sky-100 dark:bg-sky-500/15",
     dot: "bg-sky-500",
   },
   selected: {
     bar: "bg-amber-500",
     qty: "bg-amber-200",
-    track: "bg-amber-100",
+    track: "bg-amber-100 dark:bg-amber-500/15",
     dot: "bg-amber-500",
   },
   requisition_sent: {
     bar: "bg-violet-600",
     qty: "bg-violet-300",
-    track: "bg-violet-100",
+    track: "bg-violet-100 dark:bg-violet-500/15",
     dot: "bg-violet-600",
   },
   internal_movement: {
     bar: "bg-cyan-600",
     qty: "bg-cyan-200",
-    track: "bg-cyan-100",
+    track: "bg-cyan-100 dark:bg-cyan-500/15",
     dot: "bg-cyan-600",
   },
   hired: {
     bar: "bg-emerald-600",
     qty: "bg-emerald-300",
-    track: "bg-emerald-100",
+    track: "bg-emerald-100 dark:bg-emerald-500/15",
     dot: "bg-emerald-600",
   },
   closed: {
     bar: "bg-slate-500",
     qty: "bg-slate-300",
-    track: "bg-slate-100",
+    track: "bg-slate-100 dark:bg-slate-500/15",
     dot: "bg-slate-500",
   },
   cancelled: {
     bar: "bg-zinc-500",
     qty: "bg-zinc-300",
-    track: "bg-zinc-100",
+    track: "bg-zinc-100 dark:bg-zinc-500/15",
     dot: "bg-zinc-500",
   },
   cancelled_by_capital: {
     bar: "bg-rose-500",
     qty: "bg-rose-200",
-    track: "bg-rose-100",
+    track: "bg-rose-100 dark:bg-rose-500/15",
     dot: "bg-rose-500",
   },
 };
@@ -148,7 +148,7 @@ export const VacancyStatusChart: React.FC<VacancyStatusChartProps> = ({
         )}
       >
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-violet-200 bg-violet-50 text-violet-600">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-violet-200 bg-violet-50 text-violet-600 dark:border-violet-500/28 dark:bg-violet-500/12 dark:text-violet-300">
             <ChartBarIcon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
@@ -200,7 +200,7 @@ export const VacancyStatusChart: React.FC<VacancyStatusChartProps> = ({
           <button
             type="button"
             onClick={toggleExpanded}
-            className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-orbit-border bg-orbit-bg px-3 text-xs font-semibold text-orbit-text-secondary transition-colors hover:bg-orbit-interactive hover:text-orbit-text"
+            className="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-orbit-border bg-orbit-bg dark:bg-orbit-elevated px-3 text-xs font-semibold text-orbit-text-secondary transition-colors hover:bg-orbit-interactive hover:text-orbit-text"
             aria-expanded={expanded}
             aria-controls="vacancy-status-chart-body"
           >
@@ -251,10 +251,10 @@ export const VacancyStatusChart: React.FC<VacancyStatusChartProps> = ({
                       }
                       className={cn(
                         "w-full rounded-[10px] px-3 py-2.5 text-left transition-colors",
-                        isActive && "bg-violet-50 ring-2 ring-violet-400/70",
+                        isActive && "bg-violet-50 dark:bg-violet-500/12 ring-2 ring-violet-400/70",
                         !disabled &&
                           !isActive &&
-                          "hover:bg-orbit-bg-secondary",
+                          "hover:bg-orbit-bg-secondary dark:hover:bg-orbit-interactive/40",
                         disabled && "cursor-default opacity-45"
                       )}
                       title={
@@ -310,7 +310,7 @@ export const VacancyStatusChart: React.FC<VacancyStatusChartProps> = ({
                         </div>
                         <div
                           className={cn(
-                            "h-3 overflow-hidden rounded-md border border-black/5",
+                            "h-3 overflow-hidden rounded-md border border-[var(--orbit-hairline)]",
                             colors.track
                           )}
                           aria-hidden={!row.quantity}

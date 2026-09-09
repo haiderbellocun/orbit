@@ -6,13 +6,42 @@
     align-items: center;
     justify-content: center;
     flex: 0 0 clamp(120px, 22cqw, 320px);
+    position: relative;
   }
+
+  /* Iluminacion ambiental: capa propia detras del emblema, no un fondo del
+     logo. Queda concentrada y se apaga antes del borde de la tarjeta, asi
+     ilumina el area sin tenir la superficie de verde.
+     `position: absolute` la saca del flujo flex para que no desplace al logo. */
+  .unit-emblem::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    /* Centrado explicito: la posicion estatica de un abspos dentro de un flex
+       container depende del navegador, y el emblema puede medir hasta 320px. */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 148px;
+    height: 148px;
+    border-radius: 50%;
+    background: var(--orbit-emblem-ambient, none);
+    opacity: 0;
+    transition: opacity 220ms ease;
+    pointer-events: none;
+  }
+
   .unit-emblem img {
+    position: relative;
+    z-index: 1;
     width: 112px;
     height: 112px;
     object-fit: contain;
     border-radius: 18px;
-    background: white;
+    background: var(--orbit-emblem-plate, #FFFFFF);
+    /* Sin placa en modo oscuro, drop-shadow sigue la silueta del logo y no su
+       caja: el verde queda pegado al trazo y el halo neutro se difumina. */
+    filter: var(--orbit-emblem-glow, none);
     padding: 6px;
     opacity: 0;
     transform: translateY(6px) scale(.94);
@@ -23,6 +52,16 @@
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-  @media (hover: none) { .unit-emblem img { opacity: 1; transform: none; } }
-  @media (prefers-reduced-motion: reduce) { .unit-emblem img { transition: none; transform: none; } }
+  .unit-card-header:hover > .unit-emblem::before,
+  .unit-card-header:focus-within > .unit-emblem::before {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .unit-emblem img { opacity: 1; transform: none; }
+    .unit-emblem::before { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .unit-emblem img { transition: none; transform: none; }
+    .unit-emblem::before { transition: none; }
+  }
 }

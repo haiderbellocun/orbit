@@ -433,7 +433,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
                   >
                     <div
                       className={cn(
-                        'absolute -left-[9px] top-0 w-4 h-4 rounded-full border-4 border-white shadow-sm',
+                        'absolute -left-[9px] top-0 w-4 h-4 rounded-full border-4 border-white dark:border-orbit-surface shadow-sm',
                         news.status === 'NOT_TAKEN' || news.status === 'PENDING'
                           ? 'bg-orbit-warning/100'
                           : news.status === 'TAKEN' || news.status === 'APPROVED'

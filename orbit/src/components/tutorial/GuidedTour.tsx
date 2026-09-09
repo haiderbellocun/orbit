@@ -168,7 +168,7 @@ export const GuidedTour: React.FC = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.2 }}
             className={cn(
-              "absolute rounded-[12px] border border-orbit-border bg-orbit-elevated p-5 shadow-2xl shadow-slate-200/80",
+              "absolute rounded-[12px] border border-orbit-border bg-orbit-elevated p-5 shadow-2xl shadow-slate-200/80 dark:shadow-black/40",
               "pointer-events-auto"
             )}
             style={{

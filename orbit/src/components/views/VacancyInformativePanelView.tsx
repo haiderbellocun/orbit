@@ -213,7 +213,7 @@ export const VacancyInformativePanelView: React.FC = () => {
       <div className="glass-panel p-0 overflow-x-auto rounded-2xl">
         <table className="w-full min-w-[900px] text-left text-sm">
           <thead>
-            <tr className="border-b border-orbit-border/80 bg-orbit-bg-secondary/80 text-xs uppercase tracking-widest text-orbit-muted">
+            <tr className="border-b border-orbit-border/80 bg-orbit-bg-secondary/80 dark:bg-orbit-elevated/80 text-xs uppercase tracking-widest text-orbit-muted">
               <th className="py-3 px-4 font-bold">Fecha</th>
               <th className="py-3 px-4 font-bold">Vacante</th>
               <th className="py-3 px-4 font-bold">Acción</th>
@@ -247,7 +247,7 @@ export const VacancyInformativePanelView: React.FC = () => {
                     <p className="font-medium text-orbit-text">
                       {row.positionName || '—'}
                       {row.vacancyDeleted && (
-                        <span className="ml-1 text-[10px] uppercase text-red-600 font-bold">
+                        <span className="ml-1 text-[10px] uppercase text-red-600 dark:text-red-300 font-bold">
                           (eliminada)
                         </span>
                       )}

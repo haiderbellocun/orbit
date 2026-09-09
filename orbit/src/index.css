@@ -1,20 +1,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  /* Orbit Day — semantic tokens (white canvas) */
+  /* Orbit Day — semantic tokens (white canvas). Orbit Night overrides these
+     from [data-theme="dark"] in the base layer below. */
   --color-orbit-bg: #FFFFFF;
   --color-orbit-bg-secondary: #F7F7FA;
   --color-orbit-surface: #FFFFFF;
   --color-orbit-elevated: #FFFFFF;
   --color-orbit-interactive: #F1F1F5;
   --color-orbit-border: #E4E4EB;
+  --color-orbit-divider: #EDEDF2;
+  --color-orbit-input: #FFFFFF;
   --color-orbit-text: #111118;
   --color-orbit-text-secondary: #5C5C6B;
   --color-orbit-muted: #8B8B9A;
+  --color-orbit-disabled: #A5A5B4;
   --color-orbit-primary: #A855F7;
   --color-orbit-primary-hover: #9333EA;
   --color-orbit-accent: #7C3AED;
@@ -39,9 +45,12 @@
     --orbit-elevated: #FFFFFF;
     --orbit-interactive: #F1F1F5;
     --orbit-border: #E4E4EB;
+    --orbit-divider: #EDEDF2;
+    --orbit-input: #FFFFFF;
     --orbit-text: #111118;
     --orbit-text-secondary: #5C5C6B;
     --orbit-muted: #8B8B9A;
+    --orbit-disabled: #A5A5B4;
     --orbit-primary: #A855F7;
     --orbit-primary-hover: #9333EA;
     --orbit-accent: #7C3AED;
@@ -49,10 +58,117 @@
     --orbit-warning: #D97706;
     --orbit-danger: #E11D48;
     --orbit-info: #0284C7;
+
+    /* Values that differ per theme but are consumed by one shared rule. */
+    --orbit-control-bg: var(--orbit-bg);
+    --orbit-card-hover: var(--orbit-bg-secondary);
+    --orbit-table-header: #F7F7FA;
+    --orbit-hairline: rgba(0, 0, 0, 0.05);
+    --orbit-scrim: rgba(15, 23, 42, 0.4);
+    --orbit-emblem-plate: #FFFFFF;
+    --orbit-emblem-glow: none;
+    --orbit-emblem-ambient: none;
+    --orbit-logo-plate: var(--orbit-elevated);
+    --orbit-scrollbar: #D4D4DE;
+    --orbit-scrollbar-hover: #C0C0CC;
+    --orbit-shadow-panel: 0 1px 2px rgba(17, 17, 24, 0.04);
+    --orbit-shadow-card-hover: 0 2px 8px rgba(17, 17, 24, 0.06);
+    --orbit-selection-strength: 28%;
+    /* schoolAccent() bakes both themes into one color-mix(); this picks which
+       side wins, so institutional colours flip with no React re-render. */
+    --orbit-accent-light-weight: 100%;
+    /* Login canvas: same brand backdrop image, veiled per theme. */
+    --orbit-login-bg: #F8FAFC;
+    --orbit-login-veil: rgba(248, 250, 252, 0.85);
     --orbit-rail-collapsed: 76px;
     --orbit-rail-expanded: 232px;
     --orbit-topbar: 64px;
     color-scheme: light;
+  }
+
+  /* Orbit Night */
+  :root[data-theme="dark"] {
+    --color-orbit-bg: #0F1115;
+    --color-orbit-bg-secondary: #15181E;
+    --color-orbit-surface: #1A1E26;
+    --color-orbit-elevated: #20252E;
+    --color-orbit-interactive: #262C36;
+    --color-orbit-border: #2A303A;
+    --color-orbit-divider: #252A33;
+    --color-orbit-input: #151920;
+    --color-orbit-text: #F3F4F6;
+    --color-orbit-text-secondary: #C7CBD1;
+    --color-orbit-muted: #9299A3;
+    --color-orbit-disabled: #626A75;
+    --color-orbit-primary: #A855F7;
+    --color-orbit-primary-hover: #BC7DF9;
+    --color-orbit-accent: #9F67F5;
+    --color-orbit-success: #34D07A;
+    --color-orbit-warning: #F0A73B;
+    --color-orbit-danger: #F4667F;
+    --color-orbit-info: #45B6F2;
+
+    --color-glass-bg: #1A1E26;
+    --color-glass-border: #2A303A;
+    --color-accent-blue: #45B6F2;
+    --color-accent-cyan: #45B6F2;
+
+    --orbit-bg: #0F1115;
+    --orbit-bg-secondary: #15181E;
+    --orbit-surface: #1A1E26;
+    --orbit-elevated: #20252E;
+    --orbit-interactive: #262C36;
+    --orbit-border: #2A303A;
+    --orbit-divider: #252A33;
+    --orbit-input: #151920;
+    --orbit-text: #F3F4F6;
+    --orbit-text-secondary: #C7CBD1;
+    --orbit-muted: #9299A3;
+    --orbit-disabled: #626A75;
+    --orbit-primary-hover: #BC7DF9;
+    --orbit-accent: #9F67F5;
+    --orbit-success: #34D07A;
+    --orbit-warning: #F0A73B;
+    --orbit-danger: #F4667F;
+    --orbit-info: #45B6F2;
+
+    /* Controls step up off the surface they sit on, rather than down. */
+    --orbit-control-bg: var(--orbit-elevated);
+    --orbit-card-hover: var(--orbit-interactive);
+    --orbit-table-header: #20252E;
+    --orbit-hairline: rgba(255, 255, 255, 0.10);
+    --orbit-scrim: rgba(0, 0, 0, 0.65);
+    /* Emblema: sin placa. El logo conserva su color (p. ej. el verde oscuro
+       #006B3F) y se ilumina por capas, no se recolorea.
+       El glow va en capas de drop-shadow sobre la silueta: las internas llevan
+       el verde del propio logo y pegan al trazo; las externas son gris azulado
+       neutro y de baja intensidad, para que el halo se difumine sin teñir el
+       fondo. Radios cortos y alfas bajas: iluminado, no neón. */
+    --orbit-emblem-plate: transparent;
+    --orbit-emblem-glow:
+      drop-shadow(0 0 2px rgba(0, 143, 84, 0.55))
+      drop-shadow(0 0 6px rgba(0, 120, 71, 0.34))
+      drop-shadow(0 0 14px rgba(148, 161, 178, 0.18))
+      drop-shadow(0 0 28px rgba(126, 141, 161, 0.09));
+    /* Luz ambiental detrás del logo: núcleo con un toque del verde propio y
+       caída a gris azulado hasta desaparecer al 76%, sin borde visible. */
+    --orbit-emblem-ambient: radial-gradient(
+      circle,
+      rgba(0, 107, 63, 0.18) 0%,
+      rgba(124, 139, 158, 0.11) 36%,
+      rgba(124, 139, 158, 0.04) 58%,
+      rgba(124, 139, 158, 0) 76%
+    );
+    --orbit-logo-plate: #F3F4F6;
+    --orbit-scrollbar: #3A424E;
+    --orbit-scrollbar-hover: #4A5462;
+    --orbit-shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.28);
+    --orbit-shadow-card-hover: 0 2px 10px rgba(0, 0, 0, 0.34);
+    --orbit-selection-strength: 38%;
+    --orbit-accent-light-weight: 0%;
+    --orbit-login-bg: #0F1115;
+    --orbit-login-veil: rgba(15, 17, 21, 0.86);
+    color-scheme: dark;
   }
 
   * {
@@ -71,13 +187,13 @@
   }
 
   ::selection {
-    background: color-mix(in srgb, var(--orbit-primary) 28%, transparent);
+    background: color-mix(in srgb, var(--orbit-primary) var(--orbit-selection-strength), transparent);
     color: var(--orbit-text);
   }
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: #D4D4DE transparent;
+    scrollbar-color: var(--orbit-scrollbar) transparent;
   }
 
   *::-webkit-scrollbar {
@@ -89,15 +205,19 @@
     background: transparent;
   }
 
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--orbit-scrollbar-hover);
+  }
+
   *::-webkit-scrollbar-thumb {
-    background: #D4D4DE;
+    background: var(--orbit-scrollbar);
     border-radius: 999px;
   }
 
   input:not([type="checkbox"]):not([type="radio"]),
   select,
   textarea {
-    color-scheme: light;
+    color-scheme: inherit;
   }
 }
 
@@ -118,7 +238,7 @@
     background: var(--orbit-surface);
     border: 1px solid var(--orbit-border);
     border-radius: 12px;
-    box-shadow: 0 1px 2px rgba(17, 17, 24, 0.04);
+    box-shadow: var(--orbit-shadow-panel);
     position: relative;
     overflow: hidden;
   }
@@ -133,9 +253,9 @@
   }
 
   .glass-card:hover {
-    background: var(--orbit-bg-secondary);
+    background: var(--orbit-card-hover);
     border-color: color-mix(in srgb, var(--orbit-primary) 28%, var(--orbit-border));
-    box-shadow: 0 2px 8px rgba(17, 17, 24, 0.06);
+    box-shadow: var(--orbit-shadow-card-hover);
   }
 
   .glass-card::after {
@@ -164,7 +284,7 @@
 
   .glass-button-secondary {
     @apply relative overflow-hidden px-4 py-2 rounded-[10px] font-medium flex items-center justify-center gap-2;
-    background: var(--orbit-bg);
+    background: var(--orbit-control-bg);
     border: 1px solid var(--orbit-border);
     color: var(--orbit-text-secondary);
     transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
@@ -178,7 +298,7 @@
 
   .glass-input {
     @apply w-full px-3.5 py-2.5 rounded-[10px] text-sm focus:outline-none;
-    background: var(--orbit-bg);
+    background: var(--orbit-input);
     border: 1px solid var(--orbit-border);
     color: var(--orbit-text);
     transition: border-color 160ms ease, box-shadow 160ms ease;
@@ -253,6 +373,11 @@
     border: 1px solid var(--orbit-border);
     border-radius: 12px;
     overflow: hidden;
+  }
+
+  .glass-input:disabled {
+    background: var(--orbit-bg-secondary);
+    color: var(--orbit-disabled);
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -88,7 +88,7 @@ export const QuotaSummary: React.FC<{
           <div
             className={cn(
               "font-semibold pt-0.5",
-              status === "over" ? "text-red-700" : "text-amber-800"
+              status === "over" ? "text-red-700 dark:text-red-300" : "text-amber-800 dark:text-amber-200"
             )}
           >
             {hint}

@@ -80,7 +80,7 @@ export const WorkforceEventStatusHistory: React.FC<
           {loading ? (
             <p className="text-xs text-orbit-muted">Cargando…</p>
           ) : error ? (
-            <p className="text-xs text-red-600">{error}</p>
+            <p className="text-xs text-red-600 dark:text-red-300">{error}</p>
           ) : logs.length === 0 ? (
             <p className="text-xs text-orbit-muted">Sin cambios registrados.</p>
           ) : (

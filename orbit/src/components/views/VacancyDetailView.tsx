@@ -147,7 +147,7 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
               <span
                 className={cn(
                   'w-fit px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border shadow-sm',
-                  v.operationStatus === 'open' && 'bg-orbit-info/10 text-blue-600 border-blue-100',
+                  v.operationStatus === 'open' && 'bg-orbit-info/10 text-blue-600 dark:text-blue-300 border-blue-100 dark:border-blue-500/25',
                   v.operationStatus === 'selected' && 'bg-orbit-warning/10 text-orbit-warning border-orbit-warning/30',
                   v.operationStatus === 'requisition_sent' &&
                     'bg-orbit-primary/10 text-orbit-primary border-orbit-primary/25',
@@ -189,7 +189,7 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
             <button
               type="button"
               onClick={() => setDeleteOpen(true)}
-              className="py-2.5 px-4 text-xs font-bold uppercase tracking-widest rounded-xl border border-red-200 text-red-600 hover:bg-red-50"
+              className="py-2.5 px-4 text-xs font-bold uppercase tracking-widest rounded-xl border border-red-200 dark:border-red-500/28 text-red-600 dark:text-red-300 hover:bg-red-50 dark:bg-red-500/12"
             >
               Eliminar
             </button>

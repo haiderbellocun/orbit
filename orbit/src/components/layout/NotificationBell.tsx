@@ -121,14 +121,14 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
       >
         <BellIcon className="h-4 w-4" />
         {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orbit-danger px-1 text-[9px] font-bold text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orbit-danger px-1 text-[9px] font-bold text-white dark:text-orbit-bg">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-[12px] border border-orbit-border bg-orbit-elevated shadow-2xl shadow-slate-200/80 sm:w-96">
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-[12px] border border-orbit-border bg-orbit-elevated shadow-2xl shadow-slate-200/80 dark:shadow-black/40 sm:w-96">
           <div className="flex items-center justify-between border-b border-orbit-border px-4 py-3">
             <p className="orbit-label">Notificaciones</p>
             {unread > 0 && (
