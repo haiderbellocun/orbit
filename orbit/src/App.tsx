@@ -173,13 +173,13 @@ function AppShell({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={() => setIsSidebarOpen(false)}
-            className="fixed inset-0 z-[90] bg-black/60 md:hidden"
+            className="fixed inset-0 z-90 bg-black/60 md:hidden"
           />
         )}
       </AnimatePresence>
 
       <div
-        className="flex min-h-screen min-w-0 flex-1 flex-col transition-[margin] duration-200 ease-out md:ml-[var(--orbit-rail-current,76px)]"
+        className="flex min-h-screen min-w-0 flex-1 flex-col transition-[margin] duration-200 ease-out md:ml-(--orbit-rail-current,76px)"
       >
         <TopBar
           navItems={sidebarNavItems}
