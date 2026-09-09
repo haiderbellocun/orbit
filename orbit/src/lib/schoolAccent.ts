@@ -2,6 +2,8 @@ export type SchoolAccent = {
   accent: string;
   soft: string;
   border: string;
+  /** Hex institucional sin adaptar: la identidad del área (logoColor). */
+  identity: string;
 };
 
 export type AccentSubject = {
@@ -17,6 +19,7 @@ type CatalogRow = {
   accent: string;
   soft: string;
   border: string;
+  identity: string;
   match: (ctx: FoldedCtx) => boolean;
 };
 
@@ -52,6 +55,7 @@ function tone(accent: string, soft: string): SchoolAccent {
     accent: themed(accent, night),
     soft: themed(soft, hexToRgba(night, 0.14)),
     border: themed(hexToRgba(accent, 0.38), hexToRgba(night, 0.36)),
+    identity: accent.toUpperCase(),
   };
 }
 
@@ -221,7 +225,13 @@ const BY_PERSON: CatalogRow[] = [
     '#10B981',
     '#D1FAE5',
     (c) =>
-      has(c.role, 'DIRECTOR DE OPERACIONES', 'DIRECTOR OPERACIONES') ||
+      has(
+        c.role,
+        'DIRECTOR DE OPERACIONES',
+        'DIRECTOR OPERACIONES',
+        'DIRECCION GENERAL DE OPERACIONES',
+        'DIRECCION DE OPERACIONES'
+      ) ||
       has(c.hay, 'IRON')
   ),
   row(
@@ -265,7 +275,12 @@ const NESTED_ALTERNATES: SchoolAccent[] = [
 function pick(rows: CatalogRow[], ctx: FoldedCtx): SchoolAccent | null {
   const hit = rows.find((r) => r.match(ctx));
   if (!hit) return null;
-  return { accent: hit.accent, soft: hit.soft, border: hit.border };
+  return {
+    accent: hit.accent,
+    soft: hit.soft,
+    border: hit.border,
+    identity: hit.identity,
+  };
 }
 
 function resolveAccent(subject: AccentSubject): SchoolAccent {

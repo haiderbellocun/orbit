@@ -9,23 +9,22 @@
     position: relative;
   }
 
-  /* Iluminacion ambiental: capa propia detras del emblema, no un fondo del
-     logo. Queda concentrada y se apaga antes del borde de la tarjeta, asi
-     ilumina el area sin tenir la superficie de verde.
-     `position: absolute` la saca del flujo flex para que no desplace al logo. */
+  /* Luz ambiental: capa propia DETRAS del logo, nunca un efecto sobre la
+     imagen. La imagen principal no lleva blur ni drop-shadow, de modo que los
+     trazos internos conservan su definicion.
+     `position: absolute` la saca del flujo flex para que no desplace al logo;
+     el centrado es explicito porque la posicion estatica de un abspos dentro
+     de un flex container depende del navegador. */
   .unit-emblem::before {
     content: "";
     position: absolute;
     z-index: 0;
-    /* Centrado explicito: la posicion estatica de un abspos dentro de un flex
-       container depende del navegador, y el emblema puede medir hasta 320px. */
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 148px;
-    height: 148px;
+    width: 132px;
+    height: 132px;
     border-radius: 50%;
-    background: var(--orbit-emblem-ambient, none);
     opacity: 0;
     transition: opacity 220ms ease;
     pointer-events: none;
@@ -39,14 +38,33 @@
     object-fit: contain;
     border-radius: 18px;
     background: var(--orbit-emblem-plate, #FFFFFF);
-    /* Sin placa en modo oscuro, drop-shadow sigue la silueta del logo y no su
-       caja: el verde queda pegado al trazo y el halo neutro se difumina. */
-    filter: var(--orbit-emblem-glow, none);
     padding: 6px;
     opacity: 0;
     transform: translateY(6px) scale(.94);
     transition: opacity 220ms ease, transform 220ms ease;
   }
+
+  /* Arte propio por tema: solo se muestra el del tema activo. */
+  .unit-emblem .emblem-night { display: none; }
+  :root[data-theme="dark"] .unit-emblem .emblem-day { display: none; }
+  :root[data-theme="dark"] .unit-emblem .emblem-night { display: block; }
+
+  /* La luz ambiental y el realce solo existen sobre el fondo carbon. */
+  :root[data-theme="dark"] .unit-emblem::before {
+    background: radial-gradient(
+      circle,
+      rgba(var(--emblem-glow-rgb, 138, 151, 171), var(--emblem-glow-strength, 0.16)) 0%,
+      rgba(var(--emblem-glow-rgb, 138, 151, 171), calc(var(--emblem-glow-strength, 0.16) * 0.45)) 42%,
+      rgba(var(--emblem-glow-rgb, 138, 151, 171), 0) 72%
+    );
+  }
+
+  /* Realce leve, proporcional a lo oscuro que sea el logo. Sin blur: solo
+     contraste y brillo, para que no se vuelva neon ni pierda nitidez. */
+  :root[data-theme="dark"] .unit-emblem img {
+    filter: contrast(var(--emblem-contrast, 1)) brightness(var(--emblem-brightness, 1));
+  }
+
   .unit-card-header:hover > .unit-emblem img,
   .unit-card-header:focus-within > .unit-emblem img {
     opacity: 1;

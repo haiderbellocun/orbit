@@ -1,8 +1,11 @@
 export type UnitSubject = { document?: string; area?: string; school?: string; program?: string; role_name?: string };
 
 const fold = (value = '') => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+/** Cubre "DIRECTOR DE OPERACIONES" y "DIRECCION (GENERAL) DE OPERACIONES". */
+const DIRECCION_OPERACIONES = /(?:DIRECTOR|DIRECCION)(?: GENERAL)?(?: DE)? OPERACIONES/;
+
 const units: [RegExp, string][] = [
-  [/DIRECTOR (?:DE )?OPERACIONES/, 'DirectorOp.png'],
+  [DIRECCION_OPERACIONES, 'DirectorOp.png'],
   [/COORDINA(?:CION|DOR|DORA) GENERAL/, 'CoordinacionGeneral.png'],
   [/DESARROLLO PROFESIONAL/, 'Desarrollo profesional.png'],
   [/ESPECIALIZACION/, 'Especializaciones.png'],
@@ -18,9 +21,65 @@ const units: [RegExp, string][] = [
   [/OPERACION(?:ES)? ACADEMICA/, 'Operacion Academica.png'],
 ];
 
+type DarkVariant = {
+  asset: string;
+  /**
+   * Color dominante del arte oscuro. La luz ambiental solo se dibuja en modo
+   * oscuro, asi que debe salir del arte que realmente se ve: si no, queda un
+   * glow de un color detras de un logo de otro.
+   */
+  glow: string;
+};
+
+/**
+ * Emblemas con arte propio para modo oscuro. La clave es el asset de modo
+ * claro; si una unidad no aparece aqui, usa el mismo en ambos temas.
+ */
+const DARK_VARIANTS: Record<string, DarkVariant> = {
+  // IRON en rojo para Direccion General de Operaciones.
+  'DirectorOp.png': { asset: 'darkmode/IRON ROJO.svg', glow: '#C64A4A' },
+  // Fabrica - Desarrollo.
+  'fabrica/FOCA_DESARROLLO.png': { asset: 'darkmode/DESARROLLO.svg', glow: '#2535CE' },
+  // Operacion Academica.
+  'Operacion Academica.png': { asset: 'darkmode/OPERACION ACADEMICA.svg', glow: '#5765AA' },
+  // Transformacion Empresarial. El nombre del archivo trae el typo "TRNASFOR".
+  'Transformacion Empresarial.png': {
+    asset: 'darkmode/TRNASFOR EMPRESARIAL.svg',
+    glow: '#7A00BA',
+  },
+};
+
+export type UnitEmblemAssets = {
+  /** Arte para Orbit Day. */
+  day: string;
+  /** Arte para Orbit Night, o null si se reutiliza el de Day. */
+  night: string | null;
+  /**
+   * Color del que derivar la luz ambiental en modo oscuro, cuando el arte
+   * oscuro no comparte el color del area. null = usar el color del area.
+   */
+  nightGlow: string | null;
+};
+
+/**
+ * Devuelve el arte por tema. Se resuelven los dos a la vez (y CSS elige cual
+ * se muestra) para que el emblema siga al tema sin depender de un re-render:
+ * CoordinatorNode y LeaderNode estan memoizados.
+ */
+export function unitEmblemAssets(subject: UnitSubject): UnitEmblemAssets | null {
+  const day = unitEmblem(subject);
+  if (!day) return null;
+  const variant = DARK_VARIANTS[day];
+  return {
+    day,
+    night: variant?.asset ?? null,
+    nightGlow: variant?.glow ?? null,
+  };
+}
+
 export function unitEmblem(subject: UnitSubject): string | null {
   const role = fold(subject.role_name);
-  if (/DIRECTOR (?:DE )?OPERACIONES/.test(role)) return 'DirectorOp.png';
+  if (DIRECCION_OPERACIONES.test(role)) return 'DirectorOp.png';
   if (/COORDINA(?:CION|DOR|DORA) GENERAL/.test(role)) return 'CoordinacionGeneral.png';
   const area = fold(subject.area);
   // Sara Juliana: identidad de Contenidos, aunque su escuela figure como Desarrollo.

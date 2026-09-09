@@ -66,8 +66,6 @@
     --orbit-hairline: rgba(0, 0, 0, 0.05);
     --orbit-scrim: rgba(15, 23, 42, 0.4);
     --orbit-emblem-plate: #FFFFFF;
-    --orbit-emblem-glow: none;
-    --orbit-emblem-ambient: none;
     --orbit-logo-plate: var(--orbit-elevated);
     --orbit-scrollbar: #D4D4DE;
     --orbit-scrollbar-hover: #C0C0CC;
@@ -138,27 +136,10 @@
     --orbit-table-header: #20252E;
     --orbit-hairline: rgba(255, 255, 255, 0.10);
     --orbit-scrim: rgba(0, 0, 0, 0.65);
-    /* Emblema: sin placa. El logo conserva su color (p. ej. el verde oscuro
-       #006B3F) y se ilumina por capas, no se recolorea.
-       El glow va en capas de drop-shadow sobre la silueta: las internas llevan
-       el verde del propio logo y pegan al trazo; las externas son gris azulado
-       neutro y de baja intensidad, para que el halo se difumine sin teñir el
-       fondo. Radios cortos y alfas bajas: iluminado, no neón. */
+    /* Emblema: sin placa. El logo conserva su color y sus trazos; la luz va
+       detras, en una capa aparte, con color e intensidad propios por emblema
+       (ver src/lib/emblemGlow.ts y unitEmblem.css). */
     --orbit-emblem-plate: transparent;
-    --orbit-emblem-glow:
-      drop-shadow(0 0 2px rgba(0, 143, 84, 0.55))
-      drop-shadow(0 0 6px rgba(0, 120, 71, 0.34))
-      drop-shadow(0 0 14px rgba(148, 161, 178, 0.18))
-      drop-shadow(0 0 28px rgba(126, 141, 161, 0.09));
-    /* Luz ambiental detrás del logo: núcleo con un toque del verde propio y
-       caída a gris azulado hasta desaparecer al 76%, sin borde visible. */
-    --orbit-emblem-ambient: radial-gradient(
-      circle,
-      rgba(0, 107, 63, 0.18) 0%,
-      rgba(124, 139, 158, 0.11) 36%,
-      rgba(124, 139, 158, 0.04) 58%,
-      rgba(124, 139, 158, 0) 76%
-    );
     --orbit-logo-plate: #F3F4F6;
     --orbit-scrollbar: #3A424E;
     --orbit-scrollbar-hover: #4A5462;
