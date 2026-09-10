@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { XMarkIcon, PlusIcon } from '@heroicons/react/24/solid';
+import { LockClosedIcon, XMarkIcon, PlusIcon } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
 import type { OrgChartGraphPayload, PlantaPerson } from '@/src/types';
 import type {
@@ -52,6 +52,7 @@ type PersonManagementDrawerProps = {
   onManageReport: (personId: string) => void;
   onRemoveReport: (person: PlantaPerson) => void;
   canEditPerson: boolean;
+  personalDataOnly: boolean;
   graph: OrgChartGraphPayload | null;
   canMutateOrg: boolean;
 };
@@ -77,6 +78,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
   onManageReport,
   onRemoveReport,
   canEditPerson,
+  personalDataOnly,
   graph,
   canMutateOrg,
 }) => {
@@ -149,7 +151,17 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
 
         <form onSubmit={onSave} className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
-            <section className="space-y-3">
+            {personalDataOnly && (
+              <div className="flex items-start gap-3 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-orbit-text">
+                <LockClosedIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                <p>
+                  Como LITE, solo puedes modificar los datos personales de tus
+                  docentes. Área, escuela, programa, rol, estado y jerarquía
+                  están protegidos.
+                </p>
+              </div>
+            )}
+            {!personalDataOnly && <section className="space-y-3">
               <h4 className="text-sm font-semibold text-orbit-text">Segundo al mando</h4>
               <p className="text-xs text-orbit-muted">Asigna las áreas o escuelas que representa. Cada área puede tener varias personas. Quita una asignación para dejar de ser segundo al mando de esa área.</p>
               <div className="flex flex-wrap gap-2">
@@ -203,7 +215,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                 <button type="button" onClick={addScope} disabled={!canEditPerson || saving || !scopeInput.trim()} className="rounded-xl bg-orbit-primary px-3 text-sm text-white disabled:opacity-50">Añadir</button>
               </div>
               <p className="text-xs text-orbit-muted">Los cambios se aplican al guardar. Las asignaciones de personas inactivas se conservan y vuelven a mostrarse al reactivarlas.</p>
-            </section>
+            </section>}
             <section className="space-y-3">
               <h4 className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                 Información personal
@@ -294,7 +306,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                     disabled={!canEditPerson}
                   />
                 </label>
-                <label className="inline-flex items-start gap-2 text-sm text-orbit-text-secondary sm:col-span-2 pt-1">
+                {!personalDataOnly && <label className="inline-flex items-start gap-2 text-sm text-orbit-text-secondary sm:col-span-2 pt-1">
                   <input
                     type="checkbox"
                     checked={form.is_active}
@@ -318,7 +330,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                         : 'Por defecto queda en la pestaña de Activos.'}
                     </span>
                   </span>
-                </label>
+                </label>}
                 {inactivating && skipsAutoVacancy && (
                   <p className="text-xs text-orbit-muted sm:col-span-2">
                     Para roles DOCENTE, LIDER o LITE no se crea vacante
@@ -352,10 +364,17 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
               </div>
             </section>
 
-            <section className="space-y-3">
-              <h4 className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                Estructura organizacional
-              </h4>
+            <section className={cn('space-y-3', personalDataOnly && 'opacity-70')}>
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                  Estructura organizacional
+                </h4>
+                {personalDataOnly && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-orbit-border px-2 py-1 text-[10px] font-bold text-orbit-muted">
+                    <LockClosedIcon className="h-3 w-3" /> Protegida
+                  </span>
+                )}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="space-y-1.5">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
@@ -373,7 +392,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                     }
                     className={PLANTA_SELECT_CLASS}
                     required={areaRequired}
-                    disabled={!canEditPerson}
+                    disabled={!canEditPerson || personalDataOnly}
                   >
                     {showEmptyAreaOption && <option value="">Sin área</option>}
                     {areas.map((a) => (
@@ -397,7 +416,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                       }))
                     }
                     className={PLANTA_SELECT_CLASS}
-                    disabled={!canEditPerson}
+                    disabled={!canEditPerson || personalDataOnly}
                   >
                     <option value="">Sin escuela</option>
                     {schools.map((s) => (
@@ -420,7 +439,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                       }))
                     }
                     className={PLANTA_SELECT_CLASS}
-                    disabled={!canEditPerson}
+                    disabled={!canEditPerson || personalDataOnly}
                   >
                     <option value="">Sin programa</option>
                     {programs.map((p) => (
@@ -440,7 +459,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                       setForm((f) => ({ ...f, role_id: e.target.value }))
                     }
                     className={PLANTA_SELECT_CLASS}
-                    disabled={!canEditPerson}
+                    disabled={!canEditPerson || personalDataOnly}
                   >
                     <option value="">Sin rol</option>
                     {roles.map((r) => (

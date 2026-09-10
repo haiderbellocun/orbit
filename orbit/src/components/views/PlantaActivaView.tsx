@@ -119,6 +119,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   onOpenVacancyFromNotification,
 }) => {
   const plantaAccess = useMemo(() => getStoredPlantaActivaAccess(), []);
+  const personalDataOnly = plantaAccess?.personalDataOnly === true;
   const editableAreaIds = plantaAccess?.editAreaIds ?? null;
   const viewableAreaIds = plantaAccess?.viewAreaIds ?? null;
   const catalogAreaIds = viewableAreaIds;
@@ -495,7 +496,9 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return roles.filter((r) => !isLiteOrDocenteRoleName(r.name));
   }, [roles, plantaAccess]);
 
-  const canCreate = editableAreaIds == null || editableAreaIds.length > 0;
+  const canCreate =
+    !personalDataOnly &&
+    (editableAreaIds == null || editableAreaIds.length > 0);
 
   const openCreate = () => {
     setFormError(null);
@@ -672,21 +675,29 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       if (!editing) return;
       const wasActive = editing.status === 'active';
       const becameInactive = wasActive && !editForm.is_active;
-      const result = (await updatePlantaPerson(Number(editing.id), {
-        second_in_command_scopes: editForm.second_in_command_scopes,
+      const personalPayload = {
         full_name: editForm.full_name.trim(),
         document: editForm.document.trim() || undefined,
         email: editForm.email.trim() || null,
         edu_email: editForm.edu_email.trim() || null,
         phone: editForm.phone.trim() || null,
         address: editForm.address.trim() || null,
-        area_id: editForm.area_id ? Number(editForm.area_id) : null,
-        school_id: editForm.school_id ? Number(editForm.school_id) : null,
-        program_id: editForm.program_id ? Number(editForm.program_id) : null,
-        role_id: editForm.role_id ? Number(editForm.role_id) : null,
-        is_active: editForm.is_active,
-        ...(becameInactive ? { create_vacancy: editForm.create_vacancy } : {}),
-      })) as Record<string, unknown>;
+      };
+      const result = (await updatePlantaPerson(
+        Number(editing.id),
+        personalDataOnly
+          ? personalPayload
+          : {
+              ...personalPayload,
+              second_in_command_scopes: editForm.second_in_command_scopes,
+              area_id: editForm.area_id ? Number(editForm.area_id) : null,
+              school_id: editForm.school_id ? Number(editForm.school_id) : null,
+              program_id: editForm.program_id ? Number(editForm.program_id) : null,
+              role_id: editForm.role_id ? Number(editForm.role_id) : null,
+              is_active: editForm.is_active,
+              ...(becameInactive ? { create_vacancy: editForm.create_vacancy } : {}),
+            }
+      )) as Record<string, unknown>;
 
       const createdVacancyId =
         result?.created_vacancy_id != null
@@ -1277,6 +1288,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                   onManageReport={(id) => void openEdit(id)}
                   onRemoveReport={setRemoveTarget}
                   canEditPerson={personCanEditDrawer}
+                  personalDataOnly={personalDataOnly}
                   graph={orgGraph}
                   canMutateOrg={canMutateOrg}
                 />

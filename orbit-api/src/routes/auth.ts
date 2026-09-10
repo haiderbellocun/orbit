@@ -9,6 +9,7 @@ import {
   isEmailVacancyAdmin,
   isAcademicCoordinatorRole,
   isEmailExplicitlyDeniedForOrbit,
+  isOrbitLiteRole,
   resolveAllowlistAdminAccess,
   resolvePlantaActivaGrantAccess,
   VACANCIES_ADMIN_CAPABILITIES,
@@ -199,6 +200,11 @@ async function gateOrbitRoleAndLite(
 ): Promise<OrbitGate> {
   const emailNorm = loginEmail.trim().toLowerCase();
   const personEmailNorm = (person.email ?? "").trim().toLowerCase();
+  const liteRole = isOrbitLiteRole({
+    roleId: person.role_id == null ? null : Number(person.role_id),
+    roleCode: person.role_code,
+    roleName: person.role_name,
+  });
 
   if (
     isEmailExplicitlyDeniedForOrbit(emailNorm) ||
@@ -218,7 +224,7 @@ async function gateOrbitRoleAndLite(
     isAcademicCoordinatorRole({
       roleCode: person.role_code,
       roleName: person.role_name,
-    });
+    }) || liteRole;
   if (!authorized) {
     return {
       ok: false,
@@ -277,6 +283,19 @@ async function gateOrbitRoleAndLite(
         hierarchyAreaId != null && grant.editAreaIds?.length === 0
           ? [hierarchyAreaId]
           : grant.editAreaIds,
+    };
+  }
+
+  if (liteRole) {
+    return {
+      ok: true,
+      orbitAccess: "lite",
+      capabilities: ["view:planta_activa"],
+      schoolId: person.school_id == null ? null : Number(person.school_id),
+      areaId: person.area_id == null ? null : Number(person.area_id),
+      programIds: [],
+      plantaViewAreaIds: person.area_id == null ? [] : [Number(person.area_id)],
+      plantaEditAreaIds: [],
     };
   }
 
@@ -458,6 +477,7 @@ type AuthSuccessBody = {
       editAreaIds: number[] | null;
       hierarchyScoped?: boolean;
       coordinationSchoolId?: number | null;
+      personalDataOnly?: boolean;
     };
   };
 };
@@ -530,11 +550,14 @@ async function buildTokenResponse(params: {
       ? {
           viewAreaIds: plantaViewAreaIds,
           editAreaIds: plantaEditAreaIds,
-          hierarchyScoped: isAcademicCoordinatorRole({
-            roleCode: person.role_code,
-            roleName: person.role_name,
-          }),
+          hierarchyScoped:
+            orbitAccess === "lite" ||
+            isAcademicCoordinatorRole({
+              roleCode: person.role_code,
+              roleName: person.role_name,
+            }),
           coordinationSchoolId: schoolId,
+          personalDataOnly: orbitAccess === "lite",
         }
       : undefined;
 

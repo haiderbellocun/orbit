@@ -266,7 +266,7 @@ export function isAcademicCoordinatorRole(input: {
   );
 }
 
-function isOrbitLiteRole(input: {
+export function isOrbitLiteRole(input: {
   roleId: number | null;
   roleCode: string | null;
   roleName: string | null;

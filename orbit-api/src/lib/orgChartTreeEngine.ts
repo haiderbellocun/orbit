@@ -234,3 +234,22 @@ export function collectHierarchyDescendantPersonIds(
   }
   return descendants;
 }
+
+export function collectImmediateManagerPersonIds(
+  personId: number,
+  relations: readonly OrgEdge[],
+  positionChildren: readonly OrgPositionChild[]
+): Set<number> {
+  const managers = new Set<number>();
+  const relationChild = new Map<number, number>();
+  for (const edge of relations) {
+    relationChild.set(edge.id, edge.child_person_id);
+    if (edge.child_person_id === personId) managers.add(edge.parent_person_id);
+  }
+  for (const row of positionChildren) {
+    if (row.child_person_id !== personId) continue;
+    const managerId = relationChild.get(row.parent_relation_id);
+    if (managerId != null) managers.add(managerId);
+  }
+  return managers;
+}

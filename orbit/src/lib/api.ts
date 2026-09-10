@@ -350,6 +350,7 @@ export function getStoredPlantaActivaAccess(): {
   editAreaIds: number[] | null;
   hierarchyScoped?: boolean;
   coordinationSchoolId?: number | null;
+  personalDataOnly?: boolean;
 } | null {
   if (typeof localStorage !== "undefined") {
     try {
@@ -362,6 +363,7 @@ export function getStoredPlantaActivaAccess(): {
             editAreaIds?: number[] | null;
             hierarchyScoped?: boolean;
             coordinationSchoolId?: number | null;
+            personalDataOnly?: boolean;
           };
         };
         const currentEmail =
@@ -380,9 +382,16 @@ export function getStoredPlantaActivaAccess(): {
               viewAreaIds: u.plantaActivaAccess.viewAreaIds,
               editAreaIds: u.plantaActivaAccess.editAreaIds ?? [],
               coordinationSchoolId,
+              personalDataOnly:
+                u.plantaActivaAccess?.personalDataOnly === true,
             };
           }
-          return { ...currentGrant, coordinationSchoolId };
+          return {
+            ...currentGrant,
+            coordinationSchoolId,
+            personalDataOnly:
+              u.plantaActivaAccess?.personalDataOnly === true,
+          };
         }
         if (u.plantaActivaAccess) {
           return {
@@ -391,6 +400,7 @@ export function getStoredPlantaActivaAccess(): {
             hierarchyScoped: u.plantaActivaAccess.hierarchyScoped === true,
             coordinationSchoolId:
               u.plantaActivaAccess.coordinationSchoolId ?? null,
+            personalDataOnly: u.plantaActivaAccess.personalDataOnly === true,
           };
         }
         // Fallback por email (misma tabla que el API) si el JWT es anterior.
@@ -516,6 +526,7 @@ export type GoogleAuthResponse = {
       editAreaIds: number[] | null;
       hierarchyScoped?: boolean;
       coordinationSchoolId?: number | null;
+      personalDataOnly?: boolean;
     };
   };
 };

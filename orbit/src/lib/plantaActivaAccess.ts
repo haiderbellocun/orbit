@@ -15,6 +15,8 @@ export type PlantaActivaAccess = {
   canEditHierarchy?: boolean;
   /** Escuela/coordinación fija para filtros de carga y balance. */
   coordinationSchoolId?: number | null;
+  /** Solo edición de datos personales (perfil LITE). */
+  personalDataOnly?: boolean;
   /** Oculta LITE/LIDER y DOCENTE/DOCENTES en listados. */
   excludeLiteAndDocenteRoles?: boolean;
 };

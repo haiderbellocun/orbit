@@ -20,6 +20,10 @@ export type PlantaActivaGrant = {
   hierarchyScoped?: boolean;
   /** Permite editar personas incluidas en el alcance jerarquico. */
   canEditHierarchy?: boolean;
+  /** Para LITE: corta superiores por encima de su responsable inmediato. */
+  hierarchyStartsAtManager?: boolean;
+  /** Solo permite editar campos personales; bloquea estructura y asignaciones. */
+  personalDataOnly?: boolean;
   /**
    * Si true, no listan ni gestionan personas con rol LITE/LIDER o DOCENTE/DOCENTES.
    * Coordinadores y demás roles sí aparecen.

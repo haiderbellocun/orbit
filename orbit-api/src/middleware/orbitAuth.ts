@@ -8,6 +8,7 @@ import {
   isEmailVacancyAdmin,
   isAcademicCoordinatorRole,
   isEmailExplicitlyDeniedForOrbit,
+  isOrbitLiteRole,
   ORBIT_CAPABILITY,
   resolvePlantaActivaGrantAccess,
   SUPER_ADMIN_CAPABILITIES,
@@ -126,9 +127,15 @@ export function orbitAuthMiddleware(
       roleCode: decoded.role != null ? String(decoded.role) : null,
       roleName: decoded.role != null ? String(decoded.role) : null,
     });
+    const liteRole = isOrbitLiteRole({
+      roleId:
+        decoded.roleId == null ? null : asNum(decoded.roleId, 0) || null,
+      roleCode: decoded.role != null ? String(decoded.role) : null,
+      roleName: decoded.role != null ? String(decoded.role) : null,
+    });
     if (
       isEmailExplicitlyDeniedForOrbit(email) ||
-      (!isEmailAuthorizedForOrbit(email) && !academicCoordinator)
+      (!isEmailAuthorizedForOrbit(email) && !academicCoordinator && !liteRole)
     ) {
       res.status(401).json({
         error:
@@ -172,6 +179,14 @@ export function orbitAuthMiddleware(
         const decodedAreaId = asNum((decoded as { areaId?: unknown }).areaId, 0);
         plantaViewAreaIds = decodedAreaId > 0 ? [decodedAreaId] : [];
         plantaEditAreaIds = decodedAreaId > 0 ? [decodedAreaId] : [];
+        const decodedSchoolId = asNum(decoded.schoolId, 0);
+        coordinationSchoolId = decodedSchoolId > 0 ? decodedSchoolId : null;
+      } else if (liteRole) {
+        orbitAccess = "lite";
+        capabilities = [ORBIT_CAPABILITY.PLANTA_ACTIVA];
+        const decodedAreaId = asNum((decoded as { areaId?: unknown }).areaId, 0);
+        plantaViewAreaIds = decodedAreaId > 0 ? [decodedAreaId] : [];
+        plantaEditAreaIds = [];
         const decodedSchoolId = asNum(decoded.schoolId, 0);
         coordinationSchoolId = decodedSchoolId > 0 ? decodedSchoolId : null;
       } else if (isEmailVacancyAdmin(email)) {

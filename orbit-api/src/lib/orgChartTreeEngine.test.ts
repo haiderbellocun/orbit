@@ -4,6 +4,7 @@ import {
   assignmentCreatesOrgCycle,
   collectHierarchyLinePersonIds,
   collectHierarchyDescendantPersonIds,
+  collectImmediateManagerPersonIds,
   buildChildIndex,
   childrenForPerson,
   orgNodeKey,
@@ -143,4 +144,21 @@ test("edicion jerarquica incluye solo descendientes", () => {
     []
   );
   assert.deepEqual([...descendants].sort((a, b) => a - b), [30, 40]);
+});
+
+test("vista LITE comienza en su coordinador inmediato", () => {
+  const relations = [
+    { id: 1, parent_person_id: 1, child_person_id: 10, visual_level: 1 },
+    { id: 2, parent_person_id: 10, child_person_id: 20, visual_level: 2 },
+    { id: 3, parent_person_id: 20, child_person_id: 30, visual_level: 3 },
+    { id: 4, parent_person_id: 30, child_person_id: 40, visual_level: 4 },
+  ];
+  const managers = collectImmediateManagerPersonIds(30, relations, []);
+  const descendants = collectHierarchyDescendantPersonIds(30, relations, []);
+  const visible = new Set([...managers, 30, ...descendants]);
+
+  assert.deepEqual([...managers], [20]);
+  assert.deepEqual([...visible].sort((a, b) => a - b), [20, 30, 40]);
+  assert.equal(visible.has(10), false);
+  assert.equal(visible.has(1), false);
 });

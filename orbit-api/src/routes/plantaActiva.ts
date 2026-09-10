@@ -12,6 +12,7 @@ import {
   type PlantaActivaGrant,
 } from "../lib/plantaActivaAccess";
 import {
+  isDocenteRole,
   isLiteOrDocenteRole,
   isNamedLiteOrLiderRole,
   shouldSkipVacancyOnInactivation,
@@ -32,6 +33,7 @@ import {
   assignmentCreatesOrgCycle,
   collectHierarchyLinePersonIds,
   collectHierarchyDescendantPersonIds,
+  collectImmediateManagerPersonIds,
   parentByChildFromRelations,
 } from "../lib/orgChartTreeEngine";
 import { validateDocument } from "../lib/dataValidators";
@@ -191,6 +193,17 @@ async function loadAssignedPrograms(
 function plantaGrantFromRequest(req: Request): PlantaActivaGrant | null {
   const u = req.orbitUser;
   if (!u) return null;
+  if (u.orbitAccess === "lite") {
+    return {
+      email: u.email,
+      viewAreaIds: u.plantaViewAreaIds,
+      editAreaIds: [],
+      hierarchyScoped: true,
+      canEditHierarchy: true,
+      hierarchyStartsAtManager: true,
+      personalDataOnly: true,
+    };
+  }
   // Admin allowlist: plantaEditAreaIds === null → sin grant / sin recorte.
   if (u.plantaEditAreaIds == null) return null;
   return (
@@ -245,17 +258,29 @@ async function hierarchyScopeForRequest(
     graph.positionChildren,
     graph.plantaOverrides
   );
+  const editablePersonIds = collectHierarchyDescendantPersonIds(
+    personId,
+    effective.relations,
+    effective.positionChildren
+  );
+  const personIds = grant.hierarchyStartsAtManager === true
+    ? new Set<number>([
+        ...editablePersonIds,
+        personId,
+        ...collectImmediateManagerPersonIds(
+          personId,
+          effective.relations,
+          effective.positionChildren
+        ),
+      ])
+    : collectHierarchyLinePersonIds(
+        personId,
+        effective.relations,
+        effective.positionChildren
+      );
   return {
-    personIds: collectHierarchyLinePersonIds(
-      personId,
-      effective.relations,
-      effective.positionChildren
-    ),
-    editablePersonIds: collectHierarchyDescendantPersonIds(
-      personId,
-      effective.relations,
-      effective.positionChildren
-    ),
+    personIds,
+    editablePersonIds,
     graph,
     jurisdictionAreaId,
   };
@@ -269,7 +294,14 @@ function canEditWithHierarchyScope(
   role: { roleId?: number | null; roleCode?: string | null; roleName?: string | null }
 ): boolean {
   if (grant?.hierarchyScoped === true && grant.canEditHierarchy === true) {
-    return hierarchyScope?.editablePersonIds.has(personId) === true;
+    if (hierarchyScope?.editablePersonIds.has(personId) !== true) return false;
+    if (grant.personalDataOnly === true) {
+      return isDocenteRole({
+        roleCode: role.roleCode,
+        roleName: role.roleName,
+      });
+    }
+    return true;
   }
   return canEditPlantaPerson(grant, areaId, role);
 }
@@ -961,6 +993,10 @@ router.post(
       }
       const prefix = mode === "core" ? "core." : "";
       const plantaGrant = plantaGrantFromRequest(req);
+      if (plantaGrant?.personalDataOnly === true) {
+        res.status(403).json({ error: "Los perfiles LITE no pueden modificar la jerarquía" });
+        return;
+      }
       const schoolScope = schoolScopeFromRequest(req);
 
       const b = (req.body ?? {}) as Record<string, unknown>;
@@ -1149,6 +1185,10 @@ router.patch(
       }
       const prefix = mode === "core" ? "core." : "";
       const plantaGrant = plantaGrantFromRequest(req);
+      if (plantaGrant?.personalDataOnly === true) {
+        res.status(403).json({ error: "Los perfiles LITE no pueden modificar la jerarquía" });
+        return;
+      }
       const schoolScope = schoolScopeFromRequest(req);
 
       const existing = await pool.query(
@@ -1359,6 +1399,25 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
     }
 
     const b = (req.body ?? {}) as Record<string, unknown>;
+    if (plantaGrant?.personalDataOnly === true) {
+      const allowed = new Set([
+        "full_name",
+        "fullName",
+        "document",
+        "email",
+        "personal_email",
+        "edu_email",
+        "phone",
+        "address",
+      ]);
+      const forbidden = Object.keys(b).filter((key) => !allowed.has(key));
+      if (forbidden.length > 0) {
+        res.status(403).json({
+          error: "Como LITE solo puedes modificar datos personales de tus docentes",
+        });
+        return;
+      }
+    }
     let secondScopes: string[] | undefined;
     if ('second_in_command_scopes' in b) {
       try { secondScopes = normalizeSecondInCommandScopes(b.second_in_command_scopes); }
