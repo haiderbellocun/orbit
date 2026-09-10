@@ -25,10 +25,19 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     return Boolean(v.trim());
   }, []);
 
-  const showLocalEmailLogin = useMemo(() => {
-    if (import.meta.env.DEV) return true;
-    const v = (import.meta.env.VITE_ALLOW_LOCAL_EMAIL_LOGIN as string | undefined) ?? "";
-    return v.trim().toLowerCase() === "1" || v.trim().toLowerCase() === "true";
+  const [showLocalEmailLogin, setShowLocalEmailLogin] = useState(
+    () => window.location.hash === "#admin"
+  );
+
+  React.useEffect(() => {
+    const syncLocalEmailLoginVisibility = () => {
+      setShowLocalEmailLogin(window.location.hash === "#admin");
+    };
+
+    window.addEventListener("hashchange", syncLocalEmailLoginVisibility);
+    return () => {
+      window.removeEventListener("hashchange", syncLocalEmailLoginVisibility);
+    };
   }, []);
 
   const [localEmail, setLocalEmail] = useState("");
