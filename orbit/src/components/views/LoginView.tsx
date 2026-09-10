@@ -26,12 +26,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   }, []);
 
   const [showLocalEmailLogin, setShowLocalEmailLogin] = useState(
-    () => window.location.hash === "#admin"
+    () => import.meta.env.DEV || window.location.hash === "#admin"
   );
 
   React.useEffect(() => {
     const syncLocalEmailLoginVisibility = () => {
-      setShowLocalEmailLogin(window.location.hash === "#admin");
+      setShowLocalEmailLogin(
+        import.meta.env.DEV || window.location.hash === "#admin"
+      );
     };
 
     window.addEventListener("hashchange", syncLocalEmailLoginVisibility);
