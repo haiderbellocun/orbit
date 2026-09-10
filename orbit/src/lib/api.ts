@@ -349,6 +349,7 @@ export function getStoredPlantaActivaAccess(): {
   viewAreaIds: number[] | null;
   editAreaIds: number[] | null;
   hierarchyScoped?: boolean;
+  coordinationSchoolId?: number | null;
 } | null {
   if (typeof localStorage !== "undefined") {
     try {
@@ -360,12 +361,15 @@ export function getStoredPlantaActivaAccess(): {
             viewAreaIds?: number[] | null;
             editAreaIds?: number[] | null;
             hierarchyScoped?: boolean;
+            coordinationSchoolId?: number | null;
           };
         };
         const currentEmail =
           typeof u.email === "string" ? u.email : getStoredUserEmail();
         const currentGrant = getPlantaActivaGrantByEmail(currentEmail);
         if (currentGrant) {
+          const coordinationSchoolId =
+            u.plantaActivaAccess?.coordinationSchoolId ?? null;
           if (
             currentGrant.hierarchyScoped === true &&
             currentGrant.viewAreaIds.length === 0 &&
@@ -375,15 +379,18 @@ export function getStoredPlantaActivaAccess(): {
               ...currentGrant,
               viewAreaIds: u.plantaActivaAccess.viewAreaIds,
               editAreaIds: u.plantaActivaAccess.editAreaIds ?? [],
+              coordinationSchoolId,
             };
           }
-          return currentGrant;
+          return { ...currentGrant, coordinationSchoolId };
         }
         if (u.plantaActivaAccess) {
           return {
             viewAreaIds: u.plantaActivaAccess.viewAreaIds ?? null,
             editAreaIds: u.plantaActivaAccess.editAreaIds ?? null,
             hierarchyScoped: u.plantaActivaAccess.hierarchyScoped === true,
+            coordinationSchoolId:
+              u.plantaActivaAccess.coordinationSchoolId ?? null,
           };
         }
         // Fallback por email (misma tabla que el API) si el JWT es anterior.
@@ -508,6 +515,7 @@ export type GoogleAuthResponse = {
       viewAreaIds: number[] | null;
       editAreaIds: number[] | null;
       hierarchyScoped?: boolean;
+      coordinationSchoolId?: number | null;
     };
   };
 };

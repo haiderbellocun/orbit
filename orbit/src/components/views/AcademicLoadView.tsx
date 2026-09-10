@@ -4,6 +4,7 @@ import {
   MagnifyingGlassIcon,
   XMarkIcon,
   ChevronDownIcon,
+  LockClosedIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -14,6 +15,7 @@ import {
   getAcademicLoadTeacherSummaries,
   getCatalogAreas,
   getCatalogSchools,
+  getStoredPlantaActivaAccess,
   type AcademicLoadTeacherSummary,
   type CatalogSchool,
 } from '@/src/lib/api';
@@ -552,8 +554,31 @@ interface AcademicLoadViewProps {
 export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
   onOpenVacancyFromNotification,
 }) => {
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
+  const access = useMemo(() => getStoredPlantaActivaAccess(), []);
+  const scopedAreaId =
+    access?.hierarchyScoped === true && access.viewAreaIds?.length === 1
+      ? access.viewAreaIds[0]
+      : null;
+  const scopedSchoolId =
+    access?.hierarchyScoped === true && access.coordinationSchoolId != null
+      ? access.coordinationSchoolId
+      : null;
+  const lockedArea: AcademicAreaValue =
+    scopedAreaId === 9
+      ? 'especializaciones'
+      : scopedAreaId === 1
+        ? 'operacion_academica'
+        : '';
+  const initialFilters = useMemo<Filters>(
+    () => ({
+      ...EMPTY_FILTERS,
+      area: lockedArea,
+      schoolId: scopedSchoolId == null ? '' : String(scopedSchoolId),
+    }),
+    [lockedArea, scopedSchoolId]
+  );
+  const [filters, setFilters] = useState<Filters>(() => initialFilters);
+  const [applied, setApplied] = useState<Filters>(() => initialFilters);
   const [periodOptions, setPeriodOptions] = useState<string[]>([]);
   const [blockOptions, setBlockOptions] = useState<string[]>([]);
   const [programOptions, setProgramOptions] = useState<string[]>([]);
@@ -602,8 +627,9 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
         setSchools(
           (Array.isArray(s) ? s : []).filter(
             (school) =>
-              school.area_id == null ||
-              !harveyAreaIds.has(Number(school.area_id))
+              (scopedSchoolId == null || Number(school.id) === scopedSchoolId) &&
+              (school.area_id == null ||
+                !harveyAreaIds.has(Number(school.area_id)))
           )
         );
       } catch {
@@ -613,7 +639,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [scopedSchoolId]);
 
   const schoolOptions = useMemo(() => {
     if (filters.area === "especializaciones") {
@@ -690,8 +716,8 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
   };
 
   const clearFilters = () => {
-    setFilters(EMPTY_FILTERS);
-    setApplied(EMPTY_FILTERS);
+    setFilters(initialFilters);
+    setApplied(initialFilters);
     setCurrentPage(1);
   };
 
@@ -870,12 +896,19 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                   </label>
 
                   <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Área
+                      {scopedAreaId != null && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-orbit-border bg-orbit-interactive px-1.5 py-0.5 text-[9px] normal-case tracking-normal">
+                          <LockClosedIcon className="h-3 w-3" /> Fijo por tu coordinación
+                        </span>
+                      )}
                     </span>
                     <select
-                      className={selectClass}
+                      className={cn(selectClass, scopedAreaId != null && 'cursor-not-allowed opacity-70')}
+                      title={scopedAreaId != null ? 'Tu acceso está limitado a esta área' : undefined}
                       value={filters.area}
+                      disabled={scopedAreaId != null}
                       onChange={(e) =>
                         setFilters((f) => ({
                           ...f,
@@ -884,8 +917,10 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                         }))
                       }
                     >
-                      <option value="">Todas</option>
-                      {AREA_OPTIONS.map((a) => (
+                      {scopedAreaId == null && <option value="">Todas</option>}
+                      {AREA_OPTIONS.filter(
+                        (a) => scopedAreaId == null || Number(a.catalogAreaId) === scopedAreaId
+                      ).map((a) => (
                         <option key={a.value} value={a.value}>
                           {a.label}
                         </option>
@@ -953,12 +988,19 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                   </label>
 
                   <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Escuela
+                      {scopedSchoolId != null && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-orbit-border bg-orbit-interactive px-1.5 py-0.5 text-[9px] normal-case tracking-normal">
+                          <LockClosedIcon className="h-3 w-3" /> Fijo por tu coordinación
+                        </span>
+                      )}
                     </span>
                     <select
-                      className={selectClass}
+                      className={cn(selectClass, scopedSchoolId != null && 'cursor-not-allowed opacity-70')}
+                      title={scopedSchoolId != null ? 'Solo puedes consultar tu coordinación' : undefined}
                       value={filters.schoolId}
+                      disabled={scopedSchoolId != null}
                       onChange={(e) =>
                         setFilters((f) => ({
                           ...f,

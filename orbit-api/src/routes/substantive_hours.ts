@@ -23,7 +23,11 @@ import {
   sqlQuotaLoadIndexExpr,
   sqlQuotaStatusExpr,
 } from "../lib/workloadQuota";
-import { orbitAreaScopeFromRequest, schoolScopeFromRequest } from "../middleware/orbitAuth";
+import {
+  orbitAreaScopeFromRequest,
+  orbitCoordinationSchoolIdFromRequest,
+  schoolScopeFromRequest,
+} from "../middleware/orbitAuth";
 import { sqlPersonIsActive } from "../sql/personActive";
 import { sqlExcludeHarveyArea } from "../sql/excludeHarveyArea";
 
@@ -70,6 +74,7 @@ async function loadActivePersonForHours(
        p.role_id,
        COALESCE(r.name, '') AS role_name,
        COALESCE(r.code, '') AS role_code,
+       p.school_id,
        COALESCE(p.area_id, s.area_id) AS effective_area_id,
        ct.name AS contract_type,
        ct.work_schedule
@@ -84,6 +89,10 @@ async function loadActivePersonForHours(
 }
 
 function personIsInOrbitAreaScope(req: Request, person: Record<string, unknown>): boolean {
+  const coordinationSchoolId = orbitCoordinationSchoolIdFromRequest(req);
+  if (coordinationSchoolId != null) {
+    return Number(person.school_id) === coordinationSchoolId;
+  }
   const scope = orbitAreaScopeFromRequest(req);
   if (scope == null) return true;
   const areaId = person.effective_area_id == null
@@ -232,7 +241,9 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
     );
     const offset = (pageNum - 1) * limitNum;
 
-    const schoolScope = schoolScopeFromRequest(req);
+    const coordinationSchoolId = orbitCoordinationSchoolIdFromRequest(req);
+    const schoolScope = schoolScopeFromRequest(req) ??
+      (coordinationSchoolId == null ? null : { schoolId: coordinationSchoolId });
     const areaScope = orbitAreaScopeFromRequest(req);
     const hasCargaSql = sqlPersonHasAcademicLoad("p");
     const prepHoursExpr = `

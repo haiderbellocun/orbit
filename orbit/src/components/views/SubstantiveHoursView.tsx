@@ -9,6 +9,7 @@ import {
   TrashIcon,
   ClockIcon,
   PencilSquareIcon,
+  LockClosedIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -22,6 +23,7 @@ import {
   getCatalogAreas,
   getCatalogSchools,
   getAcademicLoadSummary,
+  getStoredPlantaActivaAccess,
   type SubstantiveHoursTeacher,
   type SubstantiveHoursCategory,
   type SubstantiveHoursAssignment,
@@ -81,8 +83,25 @@ type ActionMode = 'substantive' | 'preparation';
 export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   onOpenVacancyFromNotification,
 }) => {
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-  const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
+  const access = useMemo(() => getStoredPlantaActivaAccess(), []);
+  const scopedAreaId =
+    access?.hierarchyScoped === true && access.viewAreaIds?.length === 1
+      ? access.viewAreaIds[0]
+      : null;
+  const scopedSchoolId =
+    access?.hierarchyScoped === true && access.coordinationSchoolId != null
+      ? access.coordinationSchoolId
+      : null;
+  const initialFilters = useMemo<Filters>(
+    () => ({
+      ...EMPTY_FILTERS,
+      areaId: scopedAreaId == null ? '' : String(scopedAreaId),
+      schoolId: scopedSchoolId == null ? '' : String(scopedSchoolId),
+    }),
+    [scopedAreaId, scopedSchoolId]
+  );
+  const [filters, setFilters] = useState<Filters>(() => initialFilters);
+  const [applied, setApplied] = useState<Filters>(() => initialFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [actionMode, setActionMode] = useState<ActionMode>('substantive');
   const [rows, setRows] = useState<SubstantiveHoursTeacher[]>([]);
@@ -130,11 +149,16 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
             .filter((area) => isHarveyAreaName(area.name ?? ''))
             .map((area) => Number(area.id))
         );
-        setAreas(areasList);
+        setAreas(
+          areasList.filter(
+            (area) => scopedAreaId == null || Number(area.id) === scopedAreaId
+          )
+        );
         setSchools(
           (Array.isArray(s) ? s : []).filter(
             (school) =>
-              school.area_id == null || !harveyAreaIds.has(Number(school.area_id))
+              (scopedSchoolId == null || Number(school.id) === scopedSchoolId) &&
+              (school.area_id == null || !harveyAreaIds.has(Number(school.area_id)))
           )
         );
         const raw = summary as { periods?: unknown[] };
@@ -152,7 +176,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [scopedAreaId, scopedSchoolId]);
 
   const schoolOptions = useMemo(() => {
     if (!filters.areaId) return schools;
@@ -218,8 +242,8 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   };
 
   const clearFilters = () => {
-    setFilters(EMPTY_FILTERS);
-    setApplied(EMPTY_FILTERS);
+    setFilters(initialFilters);
+    setApplied(initialFilters);
     setCurrentPage(1);
   };
 
@@ -516,12 +540,19 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   </select>
                 </label>
                 <label className="space-y-1">
-                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-orbit-muted uppercase tracking-wide">
                     Área
+                    {scopedAreaId != null && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-orbit-border bg-orbit-interactive px-1.5 py-0.5 text-[9px] normal-case tracking-normal">
+                        <LockClosedIcon className="h-3 w-3" /> Fijo por tu coordinación
+                      </span>
+                    )}
                   </span>
                   <select
-                    className={selectClass}
+                    className={cn(selectClass, scopedAreaId != null && 'cursor-not-allowed opacity-70')}
+                    title={scopedAreaId != null ? 'Tu acceso está limitado a esta área' : undefined}
                     value={filters.areaId}
+                    disabled={scopedAreaId != null}
                     onChange={(e) =>
                       setFilters((f) => ({
                         ...f,
@@ -530,7 +561,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                       }))
                     }
                   >
-                    <option value="">Todas</option>
+                    {scopedAreaId == null && <option value="">Todas</option>}
                     {areas.map((a) => (
                       <option key={a.id} value={String(a.id)}>
                         {a.name}
@@ -539,12 +570,19 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                   </select>
                 </label>
                 <label className="space-y-1">
-                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-orbit-muted uppercase tracking-wide">
                     Escuela
+                    {scopedSchoolId != null && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-orbit-border bg-orbit-interactive px-1.5 py-0.5 text-[9px] normal-case tracking-normal">
+                        <LockClosedIcon className="h-3 w-3" /> Fijo por tu coordinación
+                      </span>
+                    )}
                   </span>
                   <select
-                    className={selectClass}
+                    className={cn(selectClass, scopedSchoolId != null && 'cursor-not-allowed opacity-70')}
+                    title={scopedSchoolId != null ? 'Solo puedes consultar tu coordinación' : undefined}
                     value={filters.schoolId}
+                    disabled={scopedSchoolId != null}
                     onChange={(e) =>
                       setFilters((f) => ({ ...f, schoolId: e.target.value }))
                     }

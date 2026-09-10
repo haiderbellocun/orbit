@@ -13,6 +13,8 @@ export type PlantaActivaAccess = {
   hierarchyScoped?: boolean;
   /** Puede editar las personas devueltas por su alcance jerárquico. */
   canEditHierarchy?: boolean;
+  /** Escuela/coordinación fija para filtros de carga y balance. */
+  coordinationSchoolId?: number | null;
   /** Oculta LITE/LIDER y DOCENTE/DOCENTES en listados. */
   excludeLiteAndDocenteRoles?: boolean;
 };

@@ -17,7 +17,9 @@ function roleTables(mode: Awaited<ReturnType<typeof resolveCoreSchemaMode>>): {
   };
 }
 
-router.use(requireCapability(ORBIT_CAPABILITY.ROLES_MANAGE));
+// El router se monta en /api junto con los demás módulos. Acotar el middleware
+// evita interceptar rutas posteriores como /academic-load y /substantive-hours.
+router.use("/roles", requireCapability(ORBIT_CAPABILITY.ROLES_MANAGE));
 
 router.get("/roles", async (_req, res) => {
   try {

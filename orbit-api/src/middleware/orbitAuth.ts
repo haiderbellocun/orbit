@@ -141,6 +141,7 @@ export function orbitAuthMiddleware(
     let capabilities: OrbitCapability[];
     let plantaViewAreaIds: number[] | null = null;
     let plantaEditAreaIds: number[] | null = null;
+    let coordinationSchoolId: number | null = null;
 
     if (isEmailOnOrbitAllowlist(email)) {
       // Allowlist admin = acceso total (ignora capabilities antiguas del JWT).
@@ -158,6 +159,10 @@ export function orbitAuthMiddleware(
           grant.hierarchyScoped === true && grant.editAreaIds?.length === 0 && decodedAreaId > 0
             ? [decodedAreaId]
             : grant.editAreaIds == null ? null : [...grant.editAreaIds];
+        if (grant.hierarchyScoped === true) {
+          const decodedSchoolId = asNum(decoded.schoolId, 0);
+          coordinationSchoolId = decodedSchoolId > 0 ? decodedSchoolId : null;
+        }
       } else if (academicCoordinator) {
         capabilities = [
           ORBIT_CAPABILITY.PLANTA_ACTIVA,
@@ -167,6 +172,8 @@ export function orbitAuthMiddleware(
         const decodedAreaId = asNum((decoded as { areaId?: unknown }).areaId, 0);
         plantaViewAreaIds = decodedAreaId > 0 ? [decodedAreaId] : [];
         plantaEditAreaIds = decodedAreaId > 0 ? [decodedAreaId] : [];
+        const decodedSchoolId = asNum(decoded.schoolId, 0);
+        coordinationSchoolId = decodedSchoolId > 0 ? decodedSchoolId : null;
       } else if (isEmailVacancyAdmin(email)) {
         capabilities = [...VACANCIES_ADMIN_CAPABILITIES];
       } else {
@@ -199,7 +206,7 @@ export function orbitAuthMiddleware(
       orbitAccess,
       capabilities,
       // Acceso total / planta grant: sin recorte por escuela ni programa.
-      schoolId: null,
+      schoolId: coordinationSchoolId,
       areaId: (() => {
         const aid =
           typeof decoded.areaId === "number"
@@ -233,6 +240,21 @@ export function orbitAreaScopeFromRequest(req: Request): number[] | null {
     return null;
   }
   return [...new Set(u.plantaViewAreaIds.filter((id) => Number.isFinite(id) && id > 0))];
+}
+
+/** Escuela/coordinación específica de un grant jerárquico. */
+export function orbitCoordinationSchoolIdFromRequest(req: Request): number | null {
+  const u = req.orbitUser;
+  if (
+    u == null ||
+    u.plantaEditAreaIds == null ||
+    u.schoolId == null ||
+    !Number.isFinite(u.schoolId) ||
+    u.schoolId <= 0
+  ) {
+    return null;
+  }
+  return u.schoolId;
 }
 
 /** Alcance docentes para usuario LITE (misma escuela + intersección de programas). */

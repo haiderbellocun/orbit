@@ -2,7 +2,11 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/connection";
 import { sqlPersonIsActive } from "../sql/personActive";
 import { sqlExcludeHarveyFromAcademicLoad } from "../sql/excludeHarveyArea";
-import { orbitAreaScopeFromRequest, schoolScopeFromRequest } from "../middleware/orbitAuth";
+import {
+  orbitAreaScopeFromRequest,
+  orbitCoordinationSchoolIdFromRequest,
+  schoolScopeFromRequest,
+} from "../middleware/orbitAuth";
 import { weeklyContractHoursFromLabels } from "../lib/substantiveHours";
 import {
   evaluateWorkloadQuota,
@@ -14,6 +18,13 @@ import {
 } from "../lib/workloadQuota";
 
 const router = Router();
+
+function academicSchoolScope(req: Request): { schoolId: number } | null {
+  const regular = schoolScopeFromRequest(req);
+  if (regular != null) return regular;
+  const schoolId = orbitCoordinationSchoolIdFromRequest(req);
+  return schoolId == null ? null : { schoolId };
+}
 
 function parsePositiveInt(raw: unknown): number | null {
   if (raw == null || raw === "") return null;
@@ -186,7 +197,7 @@ function buildAcademicLoadFilters(
     values.push(studyLevel);
   }
 
-  const schoolScope = schoolScopeFromRequest(req);
+  const schoolScope = academicSchoolScope(req);
   const orbitAreaScope = orbitAreaScopeFromRequest(req);
   if (schoolScope != null) {
     conditions.push(`(p.school_id = $${i} OR pr.school_id = $${i})`);
@@ -213,7 +224,7 @@ function buildAcademicLoadFilters(
 
 router.get("/academic-load/filter-options", async (req: Request, res: Response) => {
   try {
-    const schoolScope = schoolScopeFromRequest(req);
+    const schoolScope = academicSchoolScope(req);
     const areaScope = orbitAreaScopeFromRequest(req);
     const params: unknown[] = [];
     let scopeSql = "";
@@ -504,7 +515,7 @@ router.get("/academic-load/teacher-summaries", async (req: Request, res: Respons
 
 router.get("/academic-load/summary", async (req: Request, res: Response) => {
   try {
-    const schoolScope = schoolScopeFromRequest(req);
+    const schoolScope = academicSchoolScope(req);
     const areaScope = orbitAreaScopeFromRequest(req);
     const params: unknown[] = [];
     let scopeSql = "";
@@ -547,7 +558,7 @@ router.get("/academic-load/summary", async (req: Request, res: Response) => {
 
 router.get("/academic-load/teacher/:document", async (req: Request, res: Response) => {
   try {
-    const schoolScope = schoolScopeFromRequest(req);
+    const schoolScope = academicSchoolScope(req);
     const params: unknown[] = [req.params.document];
     let scopeSql = "";
     if (schoolScope) {

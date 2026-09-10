@@ -263,7 +263,10 @@ async function gateOrbitRoleAndLite(
         capabilities,
         emailNorm || personEmailNorm
       ),
-      schoolId: null,
+      schoolId:
+        grant.hierarchyScoped === true && person.school_id != null
+          ? Number(person.school_id)
+          : null,
       areaId: hierarchyAreaId,
       programIds: [],
       plantaViewAreaIds:
@@ -292,7 +295,7 @@ async function gateOrbitRoleAndLite(
         "view:academic_load",
         "view:substantive_hours",
       ],
-      schoolId: null,
+      schoolId: person.school_id == null ? null : Number(person.school_id),
       areaId: person.area_id == null ? null : Number(person.area_id),
       programIds: [],
       plantaViewAreaIds:
@@ -454,6 +457,7 @@ type AuthSuccessBody = {
       viewAreaIds: number[] | null;
       editAreaIds: number[] | null;
       hierarchyScoped?: boolean;
+      coordinationSchoolId?: number | null;
     };
   };
 };
@@ -511,8 +515,7 @@ async function buildTokenResponse(params: {
       roleId,
       orbitAccess,
       capabilities,
-      schoolId:
-        orbitAccess === "lite" || orbitAccess === "school" ? schoolId : null,
+      schoolId,
       areaId: areaId != null && Number.isFinite(areaId) ? areaId : null,
       programIds: orbitAccess === "lite" ? programIds : [],
       plantaViewAreaIds,
@@ -531,6 +534,7 @@ async function buildTokenResponse(params: {
             roleCode: person.role_code,
             roleName: person.role_name,
           }),
+          coordinationSchoolId: schoolId,
         }
       : undefined;
 
