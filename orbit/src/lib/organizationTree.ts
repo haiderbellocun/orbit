@@ -496,12 +496,40 @@ export function personMatchesQuery(
   person: PlantaPerson,
   query: string
 ): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  const hay = [person.name, person.email, person.edu_email, person.document]
-    .join(' ')
-    .toLowerCase();
-  return hay.includes(q);
+  const normalizeSearchText = (value: unknown): string =>
+    String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('es')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+
+  // Cada palabra puede coincidir con un campo distinto. Por ejemplo,
+  // "ingenieria coordinador" encuentra por escuela + cargo aunque las
+  // palabras no estén juntas ni en el mismo orden dentro del registro.
+  const terms = normalizeSearchText(query).split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+
+  const searchableText = normalizeSearchText([
+    person.name,
+    person.document,
+    person.type_document,
+    person.email,
+    person.edu_email,
+    person.phone,
+    person.address,
+    person.area,
+    person.school,
+    person.program,
+    person.role_name,
+    person.role_code,
+    person.manager_name,
+    person.manager_role_name,
+    person.manager_document,
+    ...(person.second_in_command_scopes ?? []),
+  ].join(' '));
+
+  return terms.every((term) => searchableText.includes(term));
 }
 
 export type PersonMatchPredicate = (person: PlantaPerson) => boolean;

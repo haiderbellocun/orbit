@@ -943,7 +943,9 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') applyFilters();
               }}
-              placeholder="Buscar por nombre, correo o cédula…"
+              placeholder="Buscar persona, área, escuela, programa, cargo…"
+              aria-label="Buscar en todos los datos de planta activa"
+              autoComplete="off"
               className={cn(PLANTA_SELECT_CLASS, 'pl-10')}
             />
           </div>

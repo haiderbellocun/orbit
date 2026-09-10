@@ -139,7 +139,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     view: "planta-activa",
     target: "planta-filters",
     title: "Buscar y filtrar",
-    body: "Busca por nombre, correo o cédula y aplica filtros para acotar el listado.",
+    body: "Busca por nombre, documento, correo, área, escuela, programa, cargo o responsable y aplica filtros para acotar el listado.",
     capability: ORBIT_CAPABILITY.PLANTA_ACTIVA,
   },
   {
