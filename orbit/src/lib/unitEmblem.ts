@@ -1,4 +1,4 @@
-export type UnitSubject = { document?: string; area?: string; school?: string; program?: string; role_name?: string };
+export type UnitSubject = { document?: string; name?: string; area?: string; school?: string; program?: string; role_name?: string };
 
 const fold = (value = '') => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
 /** Cubre "DIRECTOR DE OPERACIONES" y "DIRECCION (GENERAL) DE OPERACIONES". */
@@ -29,6 +29,20 @@ type DarkVariant = {
    * glow de un color detras de un logo de otro.
    */
   glow: string;
+};
+
+/**
+ * Nueva identidad de las escuelas para Orbit Day. Las claves conservan los
+ * nombres historicos porque `unitEmblem` tambien se usa para identificar la
+ * unidad, independientemente del arte que finalmente se muestra.
+ */
+const DAY_VARIANTS: Record<string, string> = {
+  'Especializaciones.png': 'nuevos-logos/ESPECIALIZACIONES.svg',
+  'Ingenierias.png': 'nuevos-logos/INGENIERIAS.svg',
+  'Transversales.png': 'nuevos-logos/TRENSVERSALES.svg',
+  'Transformacion Empresarial.png': 'nuevos-logos/TRANSFOR EMPRESARIAL.svg',
+  'Negocios.png': 'nuevos-logos/NEGOCIOS BLANCO.svg',
+  'Bellas Artes.png': 'nuevos-logos/BELLAS ARTES.svg',
 };
 
 /**
@@ -67,13 +81,19 @@ export type UnitEmblemAssets = {
  * CoordinatorNode y LeaderNode estan memoizados.
  */
 export function unitEmblemAssets(subject: UnitSubject): UnitEmblemAssets | null {
-  const day = unitEmblem(subject);
-  if (!day) return null;
-  const variant = DARK_VARIANTS[day];
+  const identity = unitEmblem(subject);
+  if (!identity) return null;
+  const day = DAY_VARIANTS[identity] ?? identity;
+  const variant = DARK_VARIANTS[identity];
+  const keepsPreviousNightArt = fold(subject.name).includes('LEIDY BERNAL');
   return {
     day,
-    night: variant?.asset ?? null,
-    nightGlow: variant?.glow ?? null,
+    // Las escuelas usan la identidad nueva en ambos temas. Leidy conserva en
+    // Night el arte anterior de su unidad como excepcion individual.
+    night: keepsPreviousNightArt && day !== identity
+      ? (variant?.asset ?? identity)
+      : (day === identity ? variant?.asset ?? null : null),
+    nightGlow: keepsPreviousNightArt ? variant?.glow ?? null : null,
   };
 }
 

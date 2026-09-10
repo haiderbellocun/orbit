@@ -4,6 +4,8 @@ export type SchoolAccent = {
   border: string;
   /** Hex institucional sin adaptar: la identidad del área (logoColor). */
   identity: string;
+  /** Hex del arte que se muestra en Orbit Night. */
+  nightIdentity: string;
 };
 
 export type AccentSubject = {
@@ -20,6 +22,7 @@ type CatalogRow = {
   soft: string;
   border: string;
   identity: string;
+  nightIdentity: string;
   match: (ctx: FoldedCtx) => boolean;
 };
 
@@ -49,13 +52,14 @@ function themed(dayValue: string, nightValue: string): string {
  * legible sobre fondo oscuro, y cambia el pastel claro por el propio color
  * institucional a baja opacidad.
  */
-function tone(accent: string, soft: string): SchoolAccent {
-  const night = liftForDark(accent);
+function tone(accent: string, soft: string, nightIdentity = accent): SchoolAccent {
+  const night = liftForDark(nightIdentity);
   return {
     accent: themed(accent, night),
     soft: themed(soft, hexToRgba(night, 0.14)),
-    border: themed(hexToRgba(accent, 0.38), hexToRgba(night, 0.36)),
+    border: themed(hexToRgba(accent, 0.38), hexToRgba(nightIdentity, 0.36)),
     identity: accent.toUpperCase(),
+    nightIdentity: nightIdentity.toUpperCase(),
   };
 }
 
@@ -172,9 +176,10 @@ function isFabrica(ctx: FoldedCtx): boolean {
 function row(
   accent: string,
   soft: string,
-  match: CatalogRow['match']
+  match: CatalogRow['match'],
+  nightIdentity?: string
 ): CatalogRow {
-  return { ...tone(accent, soft), match };
+  return { ...tone(accent, soft, nightIdentity), match };
 }
 
 /** Sin identidad reconocible: gris neutro. */
@@ -209,15 +214,26 @@ const BY_UNIT: CatalogRow[] = [
     (c) => inUnit(c, 'ANALISTA') && !inUnit(c, 'MARKETING', 'DESARROLLO', 'AUDIOVISUAL')
   ),
   row('#2563EB', '#DBEAFE', (c) => inUnit(c, 'DATOS')),
-  row('#FF4C4C', '#FFE2E2', (c) => inUnit(c, 'ESPECIALIZACION')),
-  row('#BC4C00', '#FFDCBE', (c) => inUnit(c, 'INGENIER')),
-  row('#F8B133', '#FFEDC2', (c) => inUnit(c, 'TRANSVERSAL')),
-  row('#D7502C', '#FFDACF', (c) => inUnit(c, 'NEGOCIO')),
-  row('#533583', '#E1D6FF', (c) => inUnit(c, 'BELLAS ARTES', 'BELLAS ARTE')),
-  row('#540077', '#EBCFFF', (c) => inUnit(c, 'TRANSFORMACION EMPRESARIAL')),
+  // Identidad tomada directamente de los nuevos logos de las escuelas.
+  row('#F5B700', '#FFF4C2', (c) => inUnit(c, 'ESPECIALIZACION')),
+  row('#2962FF', '#DBEAFE', (c) => inUnit(c, 'INGENIER')),
+  row('#16A34A', '#DCFCE7', (c) => inUnit(c, 'TRANSVERSAL')),
+  row('#0D47A1', '#DBEAFE', (c) => inUnit(c, 'NEGOCIO')),
+  row('#E91E63', '#FCE7F3', (c) => inUnit(c, 'BELLAS ARTES', 'BELLAS ARTE')),
+  row('#0096C7', '#D9F5FC', (c) => inUnit(c, 'TRANSFORMACION EMPRESARIAL')),
   row('#BEF23C', '#F0FDCE', (c) => inUnit(c, 'PRUEBAS SABER', 'SABER PRO')),
   row('#4ADE80', '#DCFCE7', (c) => inUnit(c, 'PROYECCION SOCIAL')),
   row('#F43F94', '#FCE7F3', (c) => inUnit(c, 'SERVICIO')),
+];
+
+/** Leidy conserva en Night la identidad anterior de la escuela que encabeza. */
+const LEIDY_NIGHT_BY_UNIT: CatalogRow[] = [
+  row('#F5B700', '#FFF4C2', (c) => inUnit(c, 'ESPECIALIZACION'), '#FF4C4C'),
+  row('#2962FF', '#DBEAFE', (c) => inUnit(c, 'INGENIER'), '#BC4C00'),
+  row('#16A34A', '#DCFCE7', (c) => inUnit(c, 'TRANSVERSAL'), '#F8B133'),
+  row('#0D47A1', '#DBEAFE', (c) => inUnit(c, 'NEGOCIO'), '#D7502C'),
+  row('#E91E63', '#FCE7F3', (c) => inUnit(c, 'BELLAS ARTES', 'BELLAS ARTE'), '#533583'),
+  row('#0096C7', '#D9F5FC', (c) => inUnit(c, 'TRANSFORMACION EMPRESARIAL'), '#540077'),
 ];
 
 const BY_PERSON: CatalogRow[] = [
@@ -260,11 +276,11 @@ function sameAccent(a: SchoolAccent, b: SchoolAccent): boolean {
 }
 
 const NESTED_ALTERNATES: SchoolAccent[] = [
-  tone('#BC4C00', '#FFDCBE'),
-  tone('#F8B133', '#FFEDC2'),
-  tone('#D7502C', '#FFDACF'),
-  tone('#533583', '#E1D6FF'),
-  tone('#540077', '#EBCFFF'),
+  tone('#2962FF', '#DBEAFE'),
+  tone('#16A34A', '#DCFCE7'),
+  tone('#0D47A1', '#DBEAFE'),
+  tone('#E91E63', '#FCE7F3'),
+  tone('#550378', '#EBCFFF'),
   tone('#AE00EB', '#F3E8FF'),
   tone('#2563EB', '#DBEAFE'),
   tone('#52BEB5', '#D5FFF8'),
@@ -280,6 +296,7 @@ function pick(rows: CatalogRow[], ctx: FoldedCtx): SchoolAccent | null {
     soft: hit.soft,
     border: hit.border,
     identity: hit.identity,
+    nightIdentity: hit.nightIdentity,
   };
 }
 
@@ -293,6 +310,11 @@ function resolveAccent(subject: AccentSubject): SchoolAccent {
   const hay = [area, school, program, role, personName].filter(Boolean).join(' ');
   if (!hay) return NEUTRAL;
   const ctx: FoldedCtx = { area, school, program, role, unit, hay };
+
+  if (has(personName, 'LEIDY BERNAL')) {
+    const leidyTone = pick(LEIDY_NIGHT_BY_UNIT, ctx);
+    if (leidyTone) return leidyTone;
+  }
 
   return (
     pick(BY_PERSON, ctx) ??

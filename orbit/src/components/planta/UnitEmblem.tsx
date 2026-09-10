@@ -16,13 +16,13 @@ export function UnitEmblem({ subject }: { subject: UnitSubject }) {
   // recibe su propia luz e intensidad en vez de un brillo único para todos.
   // La luz solo se dibuja en modo oscuro, por eso cuando hay arte oscuro
   // propio se toma su color y no el del área.
-  const { identity } = schoolAccent({
+  const { nightIdentity } = schoolAccent({
     schoolName: subject.school,
     programName: subject.program,
     areaName: subject.area,
     roleName: subject.role_name,
   });
-  const glow = emblemGlow(assets.nightGlow ?? identity);
+  const glow = emblemGlow(assets.nightGlow ?? nightIdentity);
 
   return <div
     className="unit-emblem"
