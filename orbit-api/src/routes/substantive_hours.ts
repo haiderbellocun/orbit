@@ -26,6 +26,7 @@ import {
 import {
   orbitAreaScopeFromRequest,
   orbitCoordinationSchoolIdFromRequest,
+  liteTeacherScopeFromRequest,
   schoolScopeFromRequest,
 } from "../middleware/orbitAuth";
 import { sqlPersonIsActive } from "../sql/personActive";
@@ -86,6 +87,18 @@ async function loadActivePersonForHours(
     [personId]
   );
   return result.rows[0] ?? null;
+}
+
+/** Algunas filas ACA conservan el nombre del programa pero no su FK. */
+function sqlAcademicLoadInPrograms(alias: string, placeholder: string): string {
+  return `(
+    ${alias}.program_id = ANY(${placeholder}::int[])
+    OR LOWER(TRIM(COALESCE(${alias}.program_name, ''))) IN (
+      SELECT LOWER(TRIM(scope_program.name))
+      FROM program scope_program
+      WHERE scope_program.id = ANY(${placeholder}::int[])
+    )
+  )`;
 }
 
 function personIsInOrbitAreaScope(req: Request, person: Record<string, unknown>): boolean {
@@ -245,6 +258,7 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
     const schoolScope = schoolScopeFromRequest(req) ??
       (coordinationSchoolId == null ? null : { schoolId: coordinationSchoolId });
     const areaScope = orbitAreaScopeFromRequest(req);
+    const liteScope = liteTeacherScopeFromRequest(req);
     const hasCargaSql = sqlPersonHasAcademicLoad("p");
     const prepHoursExpr = `
       CASE
@@ -295,6 +309,15 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
       values.push(areaScope);
       i++;
     }
+    if (liteScope != null) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM academic_workload.academic_load al_scope
+        WHERE al_scope.person_id = p.id
+          AND ${sqlAcademicLoadInPrograms('al_scope', `$${i}`)}
+      )`);
+      values.push(liteScope.programIds);
+      i++;
+    }
 
     if (search) {
       conditions.push(
@@ -308,6 +331,12 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
     if (period) {
       periodSql = ` AND al.period_code = $${i}`;
       values.push(period);
+      i++;
+    }
+    let programScopeSql = "";
+    if (liteScope != null) {
+      programScopeSql = ` AND ${sqlAcademicLoadInPrograms('al', `$${i}`)}`;
+      values.push(liteScope.programIds);
       i++;
     }
 
@@ -443,7 +472,7 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         FROM academic_workload.academic_load al
         LEFT JOIN academic_workload.subject subj
           ON subj.subject_code = al.subject_code
-        WHERE al.person_id = p.id${periodSql}
+        WHERE al.person_id = p.id${periodSql}${programScopeSql}
       ) cath ON true
       LEFT JOIN LATERAL (
         SELECT
@@ -457,7 +486,7 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         LEFT JOIN academic_workload.class_group cgq
           ON cgq.subject_code = al.subject_code
          AND cgq.group_code = al.group_code
-        WHERE al.person_id = p.id${periodSql}
+        WHERE al.person_id = p.id${periodSql}${programScopeSql}
       ) quota ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(a.hours_quantity), 0) AS substantive_hours

@@ -183,7 +183,11 @@ export function orbitAuthMiddleware(
         coordinationSchoolId = decodedSchoolId > 0 ? decodedSchoolId : null;
       } else if (liteRole) {
         orbitAccess = "lite";
-        capabilities = [ORBIT_CAPABILITY.PLANTA_ACTIVA];
+        capabilities = [
+          ORBIT_CAPABILITY.PLANTA_ACTIVA,
+          ORBIT_CAPABILITY.ACADEMIC_LOAD,
+          ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
+        ];
         const decodedAreaId = asNum((decoded as { areaId?: unknown }).areaId, 0);
         plantaViewAreaIds = decodedAreaId > 0 ? [decodedAreaId] : [];
         plantaEditAreaIds = [];
@@ -229,7 +233,9 @@ export function orbitAuthMiddleware(
             : Number.parseInt(String(decoded.areaId ?? ""), 10);
         return Number.isFinite(aid) && aid > 0 ? aid : null;
       })(),
-      programIds: [],
+      programIds: orbitAccess === "lite" && Array.isArray(decoded.programIds)
+        ? decoded.programIds.map((id) => asNum(id, 0)).filter((id) => id > 0)
+        : [],
       plantaViewAreaIds,
       plantaEditAreaIds,
     };
@@ -278,10 +284,12 @@ export function liteTeacherScopeFromRequest(
 ): { schoolId: number; programIds: number[] } | null {
   const u = req.orbitUser;
   if (!u || u.orbitAccess !== "lite") return null;
-  if (u.schoolId == null || !Number.isFinite(u.schoolId) || u.programIds.length === 0) {
-    return null;
-  }
-  return { schoolId: u.schoolId, programIds: u.programIds };
+  // Para LITE nunca convertir una asignación incompleta en acceso amplio. Un
+  // array vacío produce cero filas hasta que el usuario renueve su sesión.
+  return {
+    schoolId: u.schoolId != null && Number.isFinite(u.schoolId) ? u.schoolId : 0,
+    programIds: u.programIds,
+  };
 }
 
 /**

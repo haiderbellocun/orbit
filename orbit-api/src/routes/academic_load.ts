@@ -5,6 +5,7 @@ import { sqlExcludeHarveyFromAcademicLoad } from "../sql/excludeHarveyArea";
 import {
   orbitAreaScopeFromRequest,
   orbitCoordinationSchoolIdFromRequest,
+  liteTeacherScopeFromRequest,
   schoolScopeFromRequest,
 } from "../middleware/orbitAuth";
 import { weeklyContractHoursFromLabels } from "../lib/substantiveHours";
@@ -34,6 +35,18 @@ function parsePositiveInt(raw: unknown): number | null {
 
 function qStr(raw: unknown): string {
   return typeof raw === "string" ? raw.trim() : "";
+}
+
+/** La carga histórica puede traer solo program_name aunque program_id sea null. */
+function sqlAcademicLoadInPrograms(alias: string, placeholder: string): string {
+  return `(
+    ${alias}.program_id = ANY(${placeholder}::int[])
+    OR LOWER(TRIM(COALESCE(${alias}.program_name, ''))) IN (
+      SELECT LOWER(TRIM(scope_program.name))
+      FROM program scope_program
+      WHERE scope_program.id = ANY(${placeholder}::int[])
+    )
+  )`;
 }
 
 /** SQL expression: pregrado | especializacion | otro (from program name). */
@@ -198,6 +211,7 @@ function buildAcademicLoadFilters(
   }
 
   const schoolScope = academicSchoolScope(req);
+  const liteScope = liteTeacherScopeFromRequest(req);
   const orbitAreaScope = orbitAreaScopeFromRequest(req);
   if (schoolScope != null) {
     conditions.push(`(p.school_id = $${i} OR pr.school_id = $${i})`);
@@ -212,6 +226,11 @@ function buildAcademicLoadFilters(
     conditions.push(`COALESCE(p.area_id, sch.area_id) = $${i++}`);
     values.push(areaId);
   }
+
+  if (liteScope != null) {
+    conditions.push(sqlAcademicLoadInPrograms('al', `$${i++}`));
+    values.push(liteScope.programIds);
+  }
   if (orbitAreaScope != null) {
     conditions.push(`COALESCE(p.area_id, sch.area_id) = ANY($${i++}::int[])`);
     values.push(orbitAreaScope);
@@ -225,6 +244,7 @@ function buildAcademicLoadFilters(
 router.get("/academic-load/filter-options", async (req: Request, res: Response) => {
   try {
     const schoolScope = academicSchoolScope(req);
+    const liteScope = liteTeacherScopeFromRequest(req);
     const areaScope = orbitAreaScopeFromRequest(req);
     const params: unknown[] = [];
     let scopeSql = "";
@@ -235,6 +255,10 @@ router.get("/academic-load/filter-options", async (req: Request, res: Response) 
     if (areaScope != null) {
       params.push(areaScope);
       scopeSql += ` AND COALESCE(p.area_id, sch.area_id) = ANY($${params.length}::int[])`;
+    }
+    if (liteScope != null) {
+      params.push(liteScope.programIds);
+      scopeSql += ` AND ${sqlAcademicLoadInPrograms('al', `$${params.length}`)}`;
     }
 
     const [periodsR, blocksR, programsR] = await Promise.all([
@@ -516,6 +540,7 @@ router.get("/academic-load/teacher-summaries", async (req: Request, res: Respons
 router.get("/academic-load/summary", async (req: Request, res: Response) => {
   try {
     const schoolScope = academicSchoolScope(req);
+    const liteScope = liteTeacherScopeFromRequest(req);
     const areaScope = orbitAreaScopeFromRequest(req);
     const params: unknown[] = [];
     let scopeSql = "";
@@ -526,6 +551,10 @@ router.get("/academic-load/summary", async (req: Request, res: Response) => {
     if (areaScope != null) {
       params.push(areaScope);
       scopeSql += ` AND COALESCE(p.area_id, sch.area_id) = ANY($${params.length}::int[])`;
+    }
+    if (liteScope != null) {
+      params.push(liteScope.programIds);
+      scopeSql += ` AND ${sqlAcademicLoadInPrograms('al', `$${params.length}`)}`;
     }
     const result = await pool.query(
       `
@@ -559,6 +588,7 @@ router.get("/academic-load/summary", async (req: Request, res: Response) => {
 router.get("/academic-load/teacher/:document", async (req: Request, res: Response) => {
   try {
     const schoolScope = academicSchoolScope(req);
+    const liteScope = liteTeacherScopeFromRequest(req);
     const params: unknown[] = [req.params.document];
     let scopeSql = "";
     if (schoolScope) {
@@ -569,6 +599,10 @@ router.get("/academic-load/teacher/:document", async (req: Request, res: Respons
     if (areaScope != null) {
       params.push(areaScope);
       scopeSql += ` AND COALESCE(p.area_id, sch.area_id) = ANY($${params.length}::int[])`;
+    }
+    if (liteScope != null) {
+      params.push(liteScope.programIds);
+      scopeSql += ` AND ${sqlAcademicLoadInPrograms('al', `$${params.length}`)}`;
     }
 
     const result = await pool.query(

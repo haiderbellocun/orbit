@@ -15,6 +15,7 @@ import {
   getAcademicLoadTeacherSummaries,
   getCatalogAreas,
   getCatalogSchools,
+  getStoredOrbitAccess,
   getStoredPlantaActivaAccess,
   type AcademicLoadTeacherSummary,
   type CatalogSchool,
@@ -555,6 +556,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
   onOpenVacancyFromNotification,
 }) => {
   const access = useMemo(() => getStoredPlantaActivaAccess(), []);
+  const isLiteScope = useMemo(() => getStoredOrbitAccess() === 'lite', []);
   const scopedAreaId =
     access?.hierarchyScoped === true && access.viewAreaIds?.length === 1
       ? access.viewAreaIds[0]
@@ -1020,17 +1022,24 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                   </label>
 
                   <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                       Programa
+                      {isLiteScope && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-orbit-border bg-orbit-interactive px-1.5 py-0.5 text-[9px] normal-case tracking-normal">
+                          <LockClosedIcon className="h-3 w-3" /> Fijo por tu programa
+                        </span>
+                      )}
                     </span>
                     <select
-                      className={selectClass}
+                      className={cn(selectClass, isLiteScope && 'cursor-not-allowed opacity-70')}
+                      title={isLiteScope ? 'Solo puedes consultar tus programas asignados' : undefined}
                       value={filters.program}
+                      disabled={isLiteScope}
                       onChange={(e) =>
                         setFilters((f) => ({ ...f, program: e.target.value }))
                       }
                     >
-                      <option value="">Todos</option>
+                      <option value="">{isLiteScope ? 'Tus programas asignados' : 'Todos'}</option>
                       {programOptions.map((p) => (
                         <option key={p} value={p}>
                           {p}

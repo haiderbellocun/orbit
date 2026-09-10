@@ -23,6 +23,7 @@ import {
   getCatalogAreas,
   getCatalogSchools,
   getAcademicLoadSummary,
+  getStoredOrbitAccess,
   getStoredPlantaActivaAccess,
   type SubstantiveHoursTeacher,
   type SubstantiveHoursCategory,
@@ -84,6 +85,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   onOpenVacancyFromNotification,
 }) => {
   const access = useMemo(() => getStoredPlantaActivaAccess(), []);
+  const isLiteScope = useMemo(() => getStoredOrbitAccess() === 'lite', []);
   const scopedAreaId =
     access?.hierarchyScoped === true && access.viewAreaIds?.length === 1
       ? access.viewAreaIds[0]
@@ -595,6 +597,24 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                         {s.name}
                       </option>
                     ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-orbit-muted uppercase tracking-wide">
+                    Programa
+                    {isLiteScope && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-orbit-border bg-orbit-interactive px-1.5 py-0.5 text-[9px] normal-case tracking-normal">
+                        <LockClosedIcon className="h-3 w-3" /> Fijo por tu programa
+                      </span>
+                    )}
+                  </span>
+                  <select
+                    className={cn(selectClass, 'cursor-not-allowed opacity-70')}
+                    title={isLiteScope ? 'Solo puedes consultar tus programas asignados' : 'El programa se deriva de la carga académica'}
+                    disabled
+                    value=""
+                  >
+                    <option value="">{isLiteScope ? 'Tus programas asignados' : 'Todos los programas'}</option>
                   </select>
                 </label>
                 <label className="space-y-1">

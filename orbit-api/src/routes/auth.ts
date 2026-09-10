@@ -287,13 +287,21 @@ async function gateOrbitRoleAndLite(
   }
 
   if (liteRole) {
+    const programIds = [...new Set([
+      ...(Array.isArray(person.programs_id) ? person.programs_id : []),
+      ...(person.program_id == null ? [] : [Number(person.program_id)]),
+    ].map(Number).filter((id) => Number.isFinite(id) && id > 0))];
     return {
       ok: true,
       orbitAccess: "lite",
-      capabilities: ["view:planta_activa"],
+      capabilities: [
+        "view:planta_activa",
+        "view:academic_load",
+        "view:substantive_hours",
+      ],
       schoolId: person.school_id == null ? null : Number(person.school_id),
       areaId: person.area_id == null ? null : Number(person.area_id),
-      programIds: [],
+      programIds,
       plantaViewAreaIds: person.area_id == null ? [] : [Number(person.area_id)],
       plantaEditAreaIds: [],
     };
