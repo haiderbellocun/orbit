@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   applyPlantaOrgOverrides,
   assignmentCreatesOrgCycle,
+  collectHierarchyLinePersonIds,
   buildChildIndex,
   childrenForPerson,
   orgNodeKey,
@@ -113,4 +114,18 @@ test("overrides de Planta no mezclan y ganan sobre organigrama", () => {
     detached.relations.some((e) => e.child_person_id === 30),
     false
   );
+});
+
+test("alcance jerarquico incluye superiores y descendientes, no ramas hermanas", () => {
+  const visible = collectHierarchyLinePersonIds(
+    20,
+    [
+      { id: 1, parent_person_id: 10, child_person_id: 20, visual_level: 1 },
+      { id: 2, parent_person_id: 10, child_person_id: 21, visual_level: 1 },
+      { id: 3, parent_person_id: 20, child_person_id: 30, visual_level: 2 },
+      { id: 4, parent_person_id: 21, child_person_id: 40, visual_level: 2 },
+    ],
+    [{ parent_relation_id: 3, child_person_id: 31, visual_level: 3 }]
+  );
+  assert.deepEqual([...visible].sort((a, b) => a - b), [10, 20, 30, 31]);
 });

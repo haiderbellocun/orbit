@@ -160,13 +160,14 @@ test("LITE by name", () => {
   assert.equal(r.orbitAccess, "lite");
 });
 
-test("coordinator name without whitelisted id is denied", () => {
+test("academic coordinator gets hierarchy-scoped Planta Activa access", () => {
   const r = resolveOrbitAccess({
     roleId: 20,
     roleCode: "COORDINADOR_ACADEMICO",
     roleName: "COORDINADOR DE PROGRAMA",
   });
-  assert.equal(r, null);
+  assert.ok(r);
+  assert.deepEqual(r.capabilities, [ORBIT_CAPABILITY.PLANTA_ACTIVA]);
 });
 
 test("unknown role is denied", () => {
@@ -382,6 +383,24 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
     assert.equal(access.capabilities.includes(ORBIT_CAPABILITY.NEWS), true);
   }
 
+  const hierarchyCoordinatorEmails = [
+    "viviana_cabrerac@cun.edu.co",
+    "aura_royero@cun.edu.co",
+    "andres_prieto@cun.edu.co",
+    "maira_doncel@cun.edu.co",
+  ] as const;
+  for (const email of hierarchyCoordinatorEmails) {
+    const grant = getPlantaActivaGrant(email);
+    assert.ok(grant, email);
+    assert.equal(grant!.hierarchyScoped, true);
+    assert.deepEqual(grant!.viewAreaIds, []);
+    assert.deepEqual(grant!.editAreaIds, []);
+    assert.deepEqual(
+      resolvePlantaActivaGrantAccess(grant).capabilities,
+      [ORBIT_CAPABILITY.PLANTA_ACTIVA]
+    );
+  }
+
   assert.equal(getPlantaActivaGrant("camilo_quintero@cun.edu.co"), null);
 });
 
@@ -394,6 +413,11 @@ test("isEmailAuthorizedForOrbit includes planta grants", () => {
   assert.equal(isEmailAuthorizedForOrbit("leidy_diazgranados@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("lidy_alonso@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("monica_pachon@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("viviana_cabrerac@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("jonh_cuevas@cun.edu.co"), false);
+  assert.equal(isEmailAuthorizedForOrbit("aura_royero@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("andres_prieto@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("maira_doncel@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("otro@cun.edu.co"), false);
   assert.equal(isEmailAuthorizedForOrbit("camilo_quintero@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("zuany_acuna@cun.edu.co"), true);

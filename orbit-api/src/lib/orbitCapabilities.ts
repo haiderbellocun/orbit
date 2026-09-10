@@ -58,6 +58,17 @@ const DEFAULT_ACCESS_ALLOWLIST = [
   "zuany_acuna@cun.edu.co",
 ] as const;
 
+const EXPLICIT_ACCESS_DENYLIST: readonly string[] = [
+  "jonh_cuevas@cun.edu.co",
+];
+
+export function isEmailExplicitlyDeniedForOrbit(
+  email: string | null | undefined
+): boolean {
+  const norm = (email ?? "").trim().toLowerCase();
+  return Boolean(norm) && EXPLICIT_ACCESS_DENYLIST.includes(norm);
+}
+
 /**
  * Correos autorizados a eliminar vacantes / admin de estado
  * (capability `vacancies:admin`), independiente del role_id.
@@ -140,6 +151,7 @@ export function isEmailRoleManagementAdmin(
 export function isEmailAuthorizedForOrbit(
   email: string | null | undefined
 ): boolean {
+  if (isEmailExplicitlyDeniedForOrbit(email)) return false;
   return (
     isEmailOnOrbitAllowlist(email) ||
     isEmailOnPlantaActivaGrant(email) ||
@@ -242,6 +254,18 @@ function normalizeRoleLabel(s: string | null | undefined): string {
     .replace(/\s+/g, " ");
 }
 
+export function isAcademicCoordinatorRole(input: {
+  roleCode: string | null;
+  roleName: string | null;
+}): boolean {
+  const code = normalizeRoleLabel(input.roleCode).replace(/\s+/g, "_");
+  const name = normalizeRoleLabel(input.roleName);
+  return (
+    code === "COORDINADOR_ACADEMICO" ||
+    name === "COORDINADOR ACADEMICO"
+  );
+}
+
 function isOrbitLiteRole(input: {
   roleId: number | null;
   roleCode: string | null;
@@ -280,6 +304,13 @@ export function resolveOrbitAccess(input: {
   roleName: string | null;
 }): ResolvedOrbitAccess | null {
   const roleId = input.roleId;
+
+  if (isAcademicCoordinatorRole(input)) {
+    return {
+      orbitAccess: "full",
+      capabilities: [...PLANTA_ACTIVA_ONLY_CAPABILITIES],
+    };
+  }
 
   if (roleId != null && Number.isFinite(roleId)) {
     const fullIds = getFullAccessRoleIds();

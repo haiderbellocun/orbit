@@ -16,6 +16,10 @@ export type PlantaActivaGrant = {
   viewAreaIds: number[] | null;
   /** Áreas que puede editar. `null` = todas (mismo alcance que admin). */
   editAreaIds: number[] | null;
+  /** Limita Planta Activa a la linea del usuario: jefes, persona y descendientes. */
+  hierarchyScoped?: boolean;
+  /** Permite editar personas incluidas en el alcance jerarquico. */
+  canEditHierarchy?: boolean;
   /**
    * Si true, no listan ni gestionan personas con rol LITE/LIDER o DOCENTE/DOCENTES.
    * Coordinadores y demás roles sí aparecen.
@@ -51,6 +55,14 @@ const RAUL_ANALYST_GRANT = {
   extraCapabilities: RAUL_ANALYST_EXTRAS,
 } as const;
 
+/** Coordinadores con vista de su linea; sin permisos de gestion por area. */
+const HIERARCHY_VIEW_ONLY_GRANT: Omit<PlantaActivaGrant, "email"> = {
+  viewAreaIds: [],
+  editAreaIds: [],
+  hierarchyScoped: true,
+  canEditHierarchy: true,
+};
+
 const GRANTS: readonly PlantaActivaGrant[] = [
   {
     email: "sara_murillofo@cun.edu.co",
@@ -68,19 +80,40 @@ const GRANTS: readonly PlantaActivaGrant[] = [
     email: "leidy_bernal@cun.edu.co",
     viewAreaIds: [1],
     editAreaIds: [1],
+    hierarchyScoped: true,
     extraCapabilities: ["view:academic_load", "view:news"],
   },
   {
     email: "carlos_rodriguezs@cun.edu.co",
     viewAreaIds: [1],
     editAreaIds: [1],
+    hierarchyScoped: true,
+    canEditHierarchy: true,
     extraCapabilities: ["view:academic_load", "view:news"],
   },
   {
     email: "tania_rocha@cun.edu.co",
     viewAreaIds: [9],
     editAreaIds: [9],
+    hierarchyScoped: true,
+    canEditHierarchy: true,
     extraCapabilities: ["view:academic_load", "view:news"],
+  },
+  {
+    email: "viviana_cabrerac@cun.edu.co",
+    ...HIERARCHY_VIEW_ONLY_GRANT,
+  },
+  {
+    email: "aura_royero@cun.edu.co",
+    ...HIERARCHY_VIEW_ONLY_GRANT,
+  },
+  {
+    email: "andres_prieto@cun.edu.co",
+    ...HIERARCHY_VIEW_ONLY_GRANT,
+  },
+  {
+    email: "maira_doncel@cun.edu.co",
+    ...HIERARCHY_VIEW_ONLY_GRANT,
   },
   {
     email: "katherinn_devia@cun.edu.co",

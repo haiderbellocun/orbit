@@ -6,6 +6,8 @@ import {
   isEmailAuthorizedForOrbit,
   isEmailOnOrbitAllowlist,
   isEmailVacancyAdmin,
+  isAcademicCoordinatorRole,
+  isEmailExplicitlyDeniedForOrbit,
   ORBIT_CAPABILITY,
   resolvePlantaActivaGrantAccess,
   SUPER_ADMIN_CAPABILITIES,
@@ -120,7 +122,14 @@ export function orbitAuthMiddleware(
     }
 
     const email = String(decoded.email ?? "").trim().toLowerCase();
-    if (!isEmailAuthorizedForOrbit(email)) {
+    const academicCoordinator = isAcademicCoordinatorRole({
+      roleCode: decoded.role != null ? String(decoded.role) : null,
+      roleName: decoded.role != null ? String(decoded.role) : null,
+    });
+    if (
+      isEmailExplicitlyDeniedForOrbit(email) ||
+      (!isEmailAuthorizedForOrbit(email) && !academicCoordinator)
+    ) {
       res.status(401).json({
         error:
           "ORBIT está en reestructuración. Tu cuenta aún no tiene acceso autorizado.",
@@ -143,6 +152,11 @@ export function orbitAuthMiddleware(
         plantaViewAreaIds = grant.viewAreaIds;
         plantaEditAreaIds =
           grant.editAreaIds == null ? null : [...grant.editAreaIds];
+      } else if (academicCoordinator) {
+        capabilities = [ORBIT_CAPABILITY.PLANTA_ACTIVA];
+        const decodedAreaId = asNum((decoded as { areaId?: unknown }).areaId, 0);
+        plantaViewAreaIds = decodedAreaId > 0 ? [decodedAreaId] : [];
+        plantaEditAreaIds = decodedAreaId > 0 ? [decodedAreaId] : [];
       } else if (isEmailVacancyAdmin(email)) {
         capabilities = [...VACANCIES_ADMIN_CAPABILITIES];
       } else {

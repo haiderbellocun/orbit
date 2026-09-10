@@ -7,6 +7,8 @@ import {
   isEmailAuthorizedForOrbit,
   isEmailOnOrbitAllowlist,
   isEmailVacancyAdmin,
+  isAcademicCoordinatorRole,
+  isEmailExplicitlyDeniedForOrbit,
   resolveAllowlistAdminAccess,
   resolvePlantaActivaGrantAccess,
   VACANCIES_ADMIN_CAPABILITIES,
@@ -197,10 +199,25 @@ async function gateOrbitRoleAndLite(
   const emailNorm = loginEmail.trim().toLowerCase();
   const personEmailNorm = (person.email ?? "").trim().toLowerCase();
 
+  if (
+    isEmailExplicitlyDeniedForOrbit(emailNorm) ||
+    isEmailExplicitlyDeniedForOrbit(personEmailNorm)
+  ) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Tu cuenta no tiene acceso autorizado a ORBIT.",
+    };
+  }
+
   // Reborn: allowlist admin (acceso total) o grant acotado de Planta Activa.
   const authorized =
     isEmailAuthorizedForOrbit(emailNorm) ||
-    isEmailAuthorizedForOrbit(personEmailNorm);
+    isEmailAuthorizedForOrbit(personEmailNorm) ||
+    isAcademicCoordinatorRole({
+      roleCode: person.role_code,
+      roleName: person.role_name,
+    });
   if (!authorized) {
     return {
       ok: false,
@@ -246,6 +263,27 @@ async function gateOrbitRoleAndLite(
       programIds: [],
       plantaViewAreaIds: grant.viewAreaIds ?? null,
       plantaEditAreaIds: grant.editAreaIds,
+    };
+  }
+
+
+  if (
+    isAcademicCoordinatorRole({
+      roleCode: person.role_code,
+      roleName: person.role_name,
+    })
+  ) {
+    return {
+      ok: true,
+      orbitAccess: "full",
+      capabilities: ["view:planta_activa"],
+      schoolId: null,
+      areaId: person.area_id == null ? null : Number(person.area_id),
+      programIds: [],
+      plantaViewAreaIds:
+        person.area_id == null ? [] : [Number(person.area_id)],
+      plantaEditAreaIds:
+        person.area_id == null ? [] : [Number(person.area_id)],
     };
   }
 
@@ -400,6 +438,7 @@ type AuthSuccessBody = {
     plantaActivaAccess?: {
       viewAreaIds: number[] | null;
       editAreaIds: number[] | null;
+      hierarchyScoped?: boolean;
     };
   };
 };
@@ -473,6 +512,10 @@ async function buildTokenResponse(params: {
       ? {
           viewAreaIds: plantaViewAreaIds,
           editAreaIds: plantaEditAreaIds,
+          hierarchyScoped: isAcademicCoordinatorRole({
+            roleCode: person.role_code,
+            roleName: person.role_name,
+          }),
         }
       : undefined;
 

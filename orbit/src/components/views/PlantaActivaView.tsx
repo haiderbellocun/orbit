@@ -123,6 +123,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const viewableAreaIds = plantaAccess?.viewAreaIds ?? null;
   const catalogAreaIds = viewableAreaIds;
   const lockedAreaId =
+    plantaAccess?.hierarchyScoped !== true &&
     catalogAreaIds != null && catalogAreaIds.length === 1
       ? String(catalogAreaIds[0])
       : '';

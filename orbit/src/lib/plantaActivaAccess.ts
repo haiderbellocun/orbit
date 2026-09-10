@@ -9,6 +9,10 @@ export type PlantaActivaAccess = {
   viewAreaIds: number[] | null;
   /** `null` = editar cualquier área (admin). Array = solo esas áreas. */
   editAreaIds: number[] | null;
+  /** La API limita la vista a jefes, persona y descendientes. */
+  hierarchyScoped?: boolean;
+  /** Puede editar las personas devueltas por su alcance jerárquico. */
+  canEditHierarchy?: boolean;
   /** Oculta LITE/LIDER y DOCENTE/DOCENTES en listados. */
   excludeLiteAndDocenteRoles?: boolean;
 };
@@ -25,21 +29,37 @@ const RAUL_ANALYST_ACCESS: PlantaActivaAccess = {
   editAreaIds: [1, 9],
 };
 
+const HIERARCHY_VIEW_ONLY_ACCESS: PlantaActivaAccess = {
+  viewAreaIds: [],
+  editAreaIds: [],
+  hierarchyScoped: true,
+  canEditHierarchy: true,
+};
+
 const GRANTS: Readonly<Record<string, PlantaActivaAccess>> = {
   "sara_murillofo@cun.edu.co": SARA_LEVEL_ACCESS,
   "cindy_russi@cun.edu.co": SARA_LEVEL_ACCESS,
   "leidy_bernal@cun.edu.co": {
     viewAreaIds: [1],
     editAreaIds: [1],
+    hierarchyScoped: true,
   },
   "carlos_rodriguezs@cun.edu.co": {
     viewAreaIds: [1],
     editAreaIds: [1],
+    hierarchyScoped: true,
+    canEditHierarchy: true,
   },
   "tania_rocha@cun.edu.co": {
     viewAreaIds: [9],
     editAreaIds: [9],
+    hierarchyScoped: true,
+    canEditHierarchy: true,
   },
+  "viviana_cabrerac@cun.edu.co": HIERARCHY_VIEW_ONLY_ACCESS,
+  "aura_royero@cun.edu.co": HIERARCHY_VIEW_ONLY_ACCESS,
+  "andres_prieto@cun.edu.co": HIERARCHY_VIEW_ONLY_ACCESS,
+  "maira_doncel@cun.edu.co": HIERARCHY_VIEW_ONLY_ACCESS,
   "katherinn_devia@cun.edu.co": RAUL_ANALYST_ACCESS,
   "leidy_diazgranados@cun.edu.co": RAUL_ANALYST_ACCESS,
   "lidy_alonso@cun.edu.co": RAUL_ANALYST_ACCESS,

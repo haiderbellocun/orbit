@@ -30,6 +30,7 @@ import {
 import {
   applyPlantaOrgOverrides,
   assignmentCreatesOrgCycle,
+  collectHierarchyLinePersonIds,
   parentByChildFromRelations,
 } from "../lib/orgChartTreeEngine";
 import { validateDocument } from "../lib/dataValidators";
@@ -45,6 +46,7 @@ import {
 } from "../sql/personActive";
 
 import { normalizeSecondInCommandScopes } from "../lib/secondInCommand";
+import { isAcademicCoordinatorRole } from "../lib/orbitCapabilities";
 
 const router = Router();
 
@@ -118,7 +120,8 @@ function plantaPersonJoins(prefix: string): string {
 async function loadDirectReports(
   prefix: string,
   managerId: number,
-  plantaGrant: PlantaActivaGrant | null
+  plantaGrant: PlantaActivaGrant | null,
+  visiblePersonIds?: ReadonlySet<number>
 ): Promise<Record<string, unknown>[]> {
   const { rows } = await pool.query(
     `SELECT
@@ -140,19 +143,26 @@ async function loadDirectReports(
      ORDER BY p.full_name ASC NULLS LAST`,
     [managerId]
   );
-  return rows.map((row: Record<string, unknown>) => {
+  return rows
+    .filter((row: Record<string, unknown>) =>
+      visiblePersonIds == null || visiblePersonIds.has(Number(row.id))
+    )
+    .map((row: Record<string, unknown>) => {
     const { effective_area_id: ea, role_code: roleCode, ...rest } = row;
     const effectiveArea = ea != null ? Number(ea) : null;
     return {
       ...rest,
       role_code: roleCode,
-      can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
-        roleId: rest.role_id != null ? Number(rest.role_id) : null,
-        roleName: String(rest.role_name ?? ""),
-        roleCode: String(roleCode ?? ""),
-      }),
+      can_edit:
+        plantaGrant?.hierarchyScoped === true && plantaGrant.canEditHierarchy === true
+          ? visiblePersonIds?.has(Number(rest.id)) === true
+          : canEditPlantaPerson(plantaGrant, effectiveArea, {
+              roleId: rest.role_id != null ? Number(rest.role_id) : null,
+              roleName: String(rest.role_name ?? ""),
+              roleCode: String(roleCode ?? ""),
+            }),
     };
-  });
+    });
 }
 
 async function loadAssignedPrograms(
@@ -186,12 +196,85 @@ function plantaGrantFromRequest(req: Request): PlantaActivaGrant | null {
       email: u.email,
       viewAreaIds: u.plantaViewAreaIds,
       editAreaIds: u.plantaEditAreaIds,
+      hierarchyScoped: isAcademicCoordinatorRole({
+        roleCode: u.role,
+        roleName: u.role,
+      }),
     }
   );
 }
 
 function effectiveAreaSql(aliasP = "p", aliasS = "s"): string {
   return `COALESCE(${aliasP}.area_id, ${aliasS}.area_id)`;
+}
+
+async function hierarchyScopeForRequest(
+  req: Request,
+  grant: PlantaActivaGrant | null
+): Promise<{ personIds: Set<number>; graph: Awaited<ReturnType<typeof loadOrgChartGraph>> } | null> {
+  if (grant?.hierarchyScoped !== true) return null;
+  const personId = orbitPersonIdFromRequest(req);
+  if (personId == null) return { personIds: new Set(), graph: null };
+  const graph = await loadOrgChartGraph();
+  if (graph == null) return { personIds: new Set([personId]), graph: null };
+  const effective = applyPlantaOrgOverrides(
+    graph.relations,
+    graph.positionChildren,
+    graph.plantaOverrides
+  );
+  return {
+    personIds: collectHierarchyLinePersonIds(
+      personId,
+      effective.relations,
+      effective.positionChildren
+    ),
+    graph,
+  };
+}
+
+function canEditWithHierarchyScope(
+  grant: PlantaActivaGrant | null,
+  hierarchyScope: Awaited<ReturnType<typeof hierarchyScopeForRequest>>,
+  personId: number,
+  areaId: number | null,
+  role: { roleId?: number | null; roleCode?: string | null; roleName?: string | null }
+): boolean {
+  if (grant?.hierarchyScoped === true && grant.canEditHierarchy === true) {
+    return hierarchyScope?.personIds.has(personId) === true;
+  }
+  return canEditPlantaPerson(grant, areaId, role);
+}
+
+function serializeScopedOrgChart(
+  graph: NonNullable<Awaited<ReturnType<typeof loadOrgChartGraph>>>,
+  personIds: ReadonlySet<number>
+) {
+  const serialized = serializeOrgChartGraph(graph);
+  const relationIds = new Set(
+    serialized.relations
+      .filter(
+        (edge) =>
+          personIds.has(edge.parent_person_id) && personIds.has(edge.child_person_id)
+      )
+      .map((edge) => edge.id)
+  );
+  return {
+    ...serialized,
+    can_mutate: false,
+    relations: serialized.relations.filter((edge) => relationIds.has(edge.id)),
+    position_children: serialized.position_children.filter(
+      (row) => relationIds.has(row.parent_relation_id) && personIds.has(row.child_person_id)
+    ),
+    person_overrides: serialized.person_overrides.filter((row) =>
+      personIds.has(row.person_id)
+    ),
+    relation_overrides: serialized.relation_overrides.filter((row) =>
+      relationIds.has(row.relation_id)
+    ),
+    planta_overrides: serialized.planta_overrides.filter((row) =>
+      personIds.has(row.person_id)
+    ),
+  };
 }
 
 /** Bloquea asignación de rol LITE/DOCENTE para grants acotados (Sara/Cindy). */
@@ -270,6 +353,7 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
 
     const schoolScope = schoolScopeFromRequest(req);
     const plantaGrant = plantaGrantFromRequest(req);
+    const hierarchyScope = await hierarchyScopeForRequest(req, plantaGrant);
     const conditions: string[] = [
       statusFilter === "inactive"
         ? sqlPersonIsInactive("p")
@@ -289,7 +373,11 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
     }
 
     // Recorte de vista por grant (si aplica).
-    if (plantaGrant?.viewAreaIds != null && plantaGrant.viewAreaIds.length > 0) {
+    if (hierarchyScope != null) {
+      conditions.push(`p.id = ANY($${i}::int[])`);
+      values.push([...hierarchyScope.personIds]);
+      i++;
+    } else if (plantaGrant?.viewAreaIds != null && plantaGrant.viewAreaIds.length > 0) {
       if (areaId != null && !plantaGrant.viewAreaIds.includes(areaId)) {
         res.json({
           data: [],
@@ -409,11 +497,13 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
         typeof rest.role_code === "string" ? rest.role_code : null;
       return {
         ...rest,
-        can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
-          roleId,
-          roleName,
-          roleCode,
-        }),
+        can_edit: canEditWithHierarchyScope(
+          plantaGrant,
+          hierarchyScope,
+          Number(rest.id),
+          effectiveArea,
+          { roleId, roleName, roleCode }
+        ),
       };
     });
 
@@ -427,9 +517,13 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
       },
       ...(includeOrg
         ? {
-            org: await loadOrgChartGraph().then((g) =>
-              g ? serializeOrgChartGraph(g) : null
-            ),
+            org: hierarchyScope != null
+              ? hierarchyScope.graph
+                ? serializeScopedOrgChart(hierarchyScope.graph, hierarchyScope.personIds)
+                : null
+              : await loadOrgChartGraph().then((g) =>
+                  g ? serializeOrgChartGraph(g) : null
+                ),
           }
         : {}),
     });
@@ -456,6 +550,7 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
     const prefix = mode === "core" ? "core." : "";
     const schoolScope = schoolScopeFromRequest(req);
     const plantaGrant = plantaGrantFromRequest(req);
+    const hierarchyScope = await hierarchyScopeForRequest(req, plantaGrant);
 
     const { rows } = await pool.query(
       `SELECT
@@ -473,6 +568,10 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
     }
 
     const row = rows[0] as Record<string, unknown>;
+    if (hierarchyScope != null && !hierarchyScope.personIds.has(id)) {
+      res.status(403).json({ error: "No tienes permiso para este recurso" });
+      return;
+    }
     if (
       schoolScope != null &&
       (row.school_id == null || Number(row.school_id) !== schoolScope.schoolId)
@@ -483,7 +582,7 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
 
     const effectiveArea =
       row.effective_area_id != null ? Number(row.effective_area_id) : null;
-    if (!canViewPlantaArea(plantaGrant, effectiveArea)) {
+    if (hierarchyScope == null && !canViewPlantaArea(plantaGrant, effectiveArea)) {
       res.status(403).json({ error: "No tienes permiso para este recurso" });
       return;
     }
@@ -500,17 +599,19 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
 
     const { effective_area_id: _ea, role_code: roleCode, ...rest } = row;
     const [directReports, assignedPrograms] = await Promise.all([
-      loadDirectReports(prefix, id, plantaGrant),
+      loadDirectReports(prefix, id, plantaGrant, hierarchyScope?.personIds),
       loadAssignedPrograms(prefix, id),
     ]);
     res.json({
       ...rest,
       role_code: roleCode,
-      can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
-        roleId,
-        roleName,
-        roleCode: String(roleCode ?? ""),
-      }),
+      can_edit: canEditWithHierarchyScope(
+        plantaGrant,
+        hierarchyScope,
+        id,
+        effectiveArea,
+        { roleId, roleName, roleCode: String(roleCode ?? "") }
+      ),
       direct_reports: directReports,
       assigned_programs: assignedPrograms,
     });
@@ -1154,6 +1255,7 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
     const prefix = mode === "core" ? "core." : "";
     const schoolScope = schoolScopeFromRequest(req);
     const plantaGrant = plantaGrantFromRequest(req);
+    const hierarchyScope = await hierarchyScopeForRequest(req, plantaGrant);
 
     const existing = await pool.query(
       `SELECT
@@ -1203,11 +1305,17 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
         ? Number(current.effective_area_id)
         : null;
     if (
-      !canEditPlantaPerson(plantaGrant, currentArea, {
-        roleId: current.role_id,
-        roleName: current.role_name,
-        roleCode: current.role_code,
-      })
+      !canEditWithHierarchyScope(
+        plantaGrant,
+        hierarchyScope,
+        id,
+        currentArea,
+        {
+          roleId: current.role_id,
+          roleName: current.role_name,
+          roleCode: current.role_code,
+        }
+      )
     ) {
       res.status(403).json({
         error: "No tienes permiso para editar personal de esta área",

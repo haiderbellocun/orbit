@@ -348,6 +348,7 @@ export function getStoredOrbitAccess(): OrbitAccess | null {
 export function getStoredPlantaActivaAccess(): {
   viewAreaIds: number[] | null;
   editAreaIds: number[] | null;
+  hierarchyScoped?: boolean;
 } | null {
   if (typeof localStorage !== "undefined") {
     try {
@@ -358,6 +359,7 @@ export function getStoredPlantaActivaAccess(): {
           plantaActivaAccess?: {
             viewAreaIds?: number[] | null;
             editAreaIds?: number[] | null;
+            hierarchyScoped?: boolean;
           };
         };
         const currentEmail =
@@ -368,6 +370,7 @@ export function getStoredPlantaActivaAccess(): {
           return {
             viewAreaIds: u.plantaActivaAccess.viewAreaIds ?? null,
             editAreaIds: u.plantaActivaAccess.editAreaIds ?? null,
+            hierarchyScoped: u.plantaActivaAccess.hierarchyScoped === true,
           };
         }
         // Fallback por email (misma tabla que el API) si el JWT es anterior.
@@ -491,6 +494,7 @@ export type GoogleAuthResponse = {
     plantaActivaAccess?: {
       viewAreaIds: number[] | null;
       editAreaIds: number[] | null;
+      hierarchyScoped?: boolean;
     };
   };
 };

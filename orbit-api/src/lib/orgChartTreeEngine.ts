@@ -155,3 +155,50 @@ export function assignmentCreatesOrgCycle(
   }
   return false;
 }
+
+/**
+ * Personas visibles para una vista jerarquica personal: toda la cadena de
+ * superiores y toda la rama de descendientes, incluyendo al usuario.
+ */
+export function collectHierarchyLinePersonIds(
+  personId: number,
+  relations: readonly OrgEdge[],
+  positionChildren: readonly OrgPositionChild[]
+): Set<number> {
+  const parents = new Map<number, Set<number>>();
+  const children = new Map<number, Set<number>>();
+  const add = (parentId: number, childId: number) => {
+    const ps = parents.get(childId) ?? new Set<number>();
+    ps.add(parentId);
+    parents.set(childId, ps);
+    const cs = children.get(parentId) ?? new Set<number>();
+    cs.add(childId);
+    children.set(parentId, cs);
+  };
+
+  const relationChild = new Map<number, number>();
+  for (const edge of relations) {
+    relationChild.set(edge.id, edge.child_person_id);
+    add(edge.parent_person_id, edge.child_person_id);
+  }
+  for (const row of positionChildren) {
+    const parentId = relationChild.get(row.parent_relation_id);
+    if (parentId != null) add(parentId, row.child_person_id);
+  }
+
+  const visible = new Set<number>([personId]);
+  const walk = (index: ReadonlyMap<number, Set<number>>) => {
+    const stack = [personId];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      for (const next of index.get(current) ?? []) {
+        if (visible.has(next)) continue;
+        visible.add(next);
+        stack.push(next);
+      }
+    }
+  };
+  walk(parents);
+  walk(children);
+  return visible;
+}
