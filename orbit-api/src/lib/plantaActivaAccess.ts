@@ -61,6 +61,7 @@ const HIERARCHY_VIEW_ONLY_GRANT: Omit<PlantaActivaGrant, "email"> = {
   editAreaIds: [],
   hierarchyScoped: true,
   canEditHierarchy: true,
+  extraCapabilities: ["view:academic_load", "view:substantive_hours"],
 };
 
 const GRANTS: readonly PlantaActivaGrant[] = [
@@ -82,7 +83,7 @@ const GRANTS: readonly PlantaActivaGrant[] = [
     editAreaIds: [1],
     hierarchyScoped: true,
     canEditHierarchy: true,
-    extraCapabilities: ["view:academic_load", "view:news"],
+    extraCapabilities: ["view:academic_load", "view:substantive_hours", "view:news"],
   },
   {
     email: "carlos_rodriguezs@cun.edu.co",
@@ -90,7 +91,7 @@ const GRANTS: readonly PlantaActivaGrant[] = [
     editAreaIds: [1],
     hierarchyScoped: true,
     canEditHierarchy: true,
-    extraCapabilities: ["view:academic_load", "view:news"],
+    extraCapabilities: ["view:academic_load", "view:substantive_hours", "view:news"],
   },
   {
     email: "tania_rocha@cun.edu.co",
@@ -98,7 +99,7 @@ const GRANTS: readonly PlantaActivaGrant[] = [
     editAreaIds: [9],
     hierarchyScoped: true,
     canEditHierarchy: true,
-    extraCapabilities: ["view:academic_load", "view:news"],
+    extraCapabilities: ["view:academic_load", "view:substantive_hours", "view:news"],
   },
   {
     email: "viviana_cabrerac@cun.edu.co",

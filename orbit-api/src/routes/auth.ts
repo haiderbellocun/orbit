@@ -287,7 +287,11 @@ async function gateOrbitRoleAndLite(
     return {
       ok: true,
       orbitAccess: "full",
-      capabilities: ["view:planta_activa"],
+      capabilities: [
+        "view:planta_activa",
+        "view:academic_load",
+        "view:substantive_hours",
+      ],
       schoolId: null,
       areaId: person.area_id == null ? null : Number(person.area_id),
       programIds: [],

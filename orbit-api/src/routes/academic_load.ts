@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/connection";
 import { sqlPersonIsActive } from "../sql/personActive";
 import { sqlExcludeHarveyFromAcademicLoad } from "../sql/excludeHarveyArea";
-import { schoolScopeFromRequest } from "../middleware/orbitAuth";
+import { orbitAreaScopeFromRequest, schoolScopeFromRequest } from "../middleware/orbitAuth";
 import { weeklyContractHoursFromLabels } from "../lib/substantiveHours";
 import {
   evaluateWorkloadQuota,
@@ -187,6 +187,7 @@ function buildAcademicLoadFilters(
   }
 
   const schoolScope = schoolScopeFromRequest(req);
+  const orbitAreaScope = orbitAreaScopeFromRequest(req);
   if (schoolScope != null) {
     conditions.push(`(p.school_id = $${i} OR pr.school_id = $${i})`);
     values.push(schoolScope.schoolId);
@@ -200,6 +201,10 @@ function buildAcademicLoadFilters(
     conditions.push(`COALESCE(p.area_id, sch.area_id) = $${i++}`);
     values.push(areaId);
   }
+  if (orbitAreaScope != null) {
+    conditions.push(`COALESCE(p.area_id, sch.area_id) = ANY($${i++}::int[])`);
+    values.push(orbitAreaScope);
+  }
 
   conditions.push(sqlExcludeHarveyFromAcademicLoad("a"));
 
@@ -209,10 +214,17 @@ function buildAcademicLoadFilters(
 router.get("/academic-load/filter-options", async (req: Request, res: Response) => {
   try {
     const schoolScope = schoolScopeFromRequest(req);
-    const schoolSql = schoolScope
-      ? ` AND (p.school_id = $1 OR pr.school_id = $1)`
-      : "";
-    const params = schoolScope ? [schoolScope.schoolId] : [];
+    const areaScope = orbitAreaScopeFromRequest(req);
+    const params: unknown[] = [];
+    let scopeSql = "";
+    if (schoolScope) {
+      params.push(schoolScope.schoolId);
+      scopeSql += ` AND (p.school_id = $${params.length} OR pr.school_id = $${params.length})`;
+    }
+    if (areaScope != null) {
+      params.push(areaScope);
+      scopeSql += ` AND COALESCE(p.area_id, sch.area_id) = ANY($${params.length}::int[])`;
+    }
 
     const [periodsR, blocksR, programsR] = await Promise.all([
       pool.query(
@@ -224,7 +236,7 @@ router.get("/academic-load/filter-options", async (req: Request, res: Response) 
         LEFT JOIN school sch ON sch.id = p.school_id
         LEFT JOIN area a ON a.id = COALESCE(p.area_id, sch.area_id)
         WHERE al.period_code IS NOT NULL AND TRIM(al.period_code) <> ''
-          AND ${sqlExcludeHarveyFromAcademicLoad("a")}${schoolSql}
+          AND ${sqlExcludeHarveyFromAcademicLoad("a")}${scopeSql}
         ORDER BY period DESC
         `,
         params
@@ -240,7 +252,7 @@ router.get("/academic-load/filter-options", async (req: Request, res: Response) 
         LEFT JOIN school sch ON sch.id = p.school_id
         LEFT JOIN area a ON a.id = COALESCE(p.area_id, sch.area_id)
         WHERE cg.block IS NOT NULL AND TRIM(cg.block) <> ''
-          AND ${sqlExcludeHarveyFromAcademicLoad("a")}${schoolSql}
+          AND ${sqlExcludeHarveyFromAcademicLoad("a")}${scopeSql}
         ORDER BY block ASC
         `,
         params
@@ -254,7 +266,7 @@ router.get("/academic-load/filter-options", async (req: Request, res: Response) 
         LEFT JOIN school sch ON sch.id = p.school_id
         LEFT JOIN area a ON a.id = COALESCE(p.area_id, sch.area_id)
         WHERE COALESCE(NULLIF(TRIM(al.program_name), ''), NULLIF(TRIM(pr.name), ''), NULL) IS NOT NULL
-          AND ${sqlExcludeHarveyFromAcademicLoad("a")}${schoolSql}
+          AND ${sqlExcludeHarveyFromAcademicLoad("a")}${scopeSql}
         ORDER BY program ASC
         LIMIT 500
         `,
@@ -493,10 +505,17 @@ router.get("/academic-load/teacher-summaries", async (req: Request, res: Respons
 router.get("/academic-load/summary", async (req: Request, res: Response) => {
   try {
     const schoolScope = schoolScopeFromRequest(req);
-    const schoolSql = schoolScope
-      ? ` AND (p.school_id = $1 OR pr.school_id = $1)`
-      : "";
-    const params = schoolScope ? [schoolScope.schoolId] : [];
+    const areaScope = orbitAreaScopeFromRequest(req);
+    const params: unknown[] = [];
+    let scopeSql = "";
+    if (schoolScope) {
+      params.push(schoolScope.schoolId);
+      scopeSql += ` AND (p.school_id = $${params.length} OR pr.school_id = $${params.length})`;
+    }
+    if (areaScope != null) {
+      params.push(areaScope);
+      scopeSql += ` AND COALESCE(p.area_id, sch.area_id) = ANY($${params.length}::int[])`;
+    }
     const result = await pool.query(
       `
       SELECT
@@ -509,7 +528,7 @@ router.get("/academic-load/summary", async (req: Request, res: Response) => {
       LEFT JOIN program pr ON pr.id = al.program_id
       LEFT JOIN school sch ON sch.id = p.school_id
       LEFT JOIN area a ON a.id = COALESCE(p.area_id, sch.area_id)
-      WHERE ${sqlExcludeHarveyFromAcademicLoad("a")}${schoolSql}
+      WHERE ${sqlExcludeHarveyFromAcademicLoad("a")}${scopeSql}
       GROUP BY al.period_code
       ORDER BY al.period_code DESC
     `,
@@ -529,11 +548,17 @@ router.get("/academic-load/summary", async (req: Request, res: Response) => {
 router.get("/academic-load/teacher/:document", async (req: Request, res: Response) => {
   try {
     const schoolScope = schoolScopeFromRequest(req);
-    const schoolSql = schoolScope
-      ? ` AND (p.school_id = $2 OR pr.school_id = $2)`
-      : "";
     const params: unknown[] = [req.params.document];
-    if (schoolScope) params.push(schoolScope.schoolId);
+    let scopeSql = "";
+    if (schoolScope) {
+      params.push(schoolScope.schoolId);
+      scopeSql += ` AND (p.school_id = $${params.length} OR pr.school_id = $${params.length})`;
+    }
+    const areaScope = orbitAreaScopeFromRequest(req);
+    if (areaScope != null) {
+      params.push(areaScope);
+      scopeSql += ` AND COALESCE(p.area_id, sch.area_id) = ANY($${params.length}::int[])`;
+    }
 
     const result = await pool.query(
       `
@@ -561,7 +586,7 @@ router.get("/academic-load/teacher/:document", async (req: Request, res: Respons
         ON cg.subject_code = al.subject_code
        AND cg.group_code = al.group_code
       WHERE p.document = $1
-        AND ${sqlExcludeHarveyFromAcademicLoad("a")}${schoolSql}
+        AND ${sqlExcludeHarveyFromAcademicLoad("a")}${scopeSql}
       ORDER BY al.period_code DESC, s.name ASC
       `,
       params

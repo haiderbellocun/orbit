@@ -23,7 +23,7 @@ import {
   sqlQuotaLoadIndexExpr,
   sqlQuotaStatusExpr,
 } from "../lib/workloadQuota";
-import { schoolScopeFromRequest } from "../middleware/orbitAuth";
+import { orbitAreaScopeFromRequest, schoolScopeFromRequest } from "../middleware/orbitAuth";
 import { sqlPersonIsActive } from "../sql/personActive";
 import { sqlExcludeHarveyArea } from "../sql/excludeHarveyArea";
 
@@ -70,15 +70,26 @@ async function loadActivePersonForHours(
        p.role_id,
        COALESCE(r.name, '') AS role_name,
        COALESCE(r.code, '') AS role_code,
+       COALESCE(p.area_id, s.area_id) AS effective_area_id,
        ct.name AS contract_type,
        ct.work_schedule
      FROM ${prefix}person p
      LEFT JOIN ${prefix}role r ON r.id = p.role_id
+     LEFT JOIN ${prefix}school s ON s.id = p.school_id
      LEFT JOIN ${prefix}contract_type ct ON ct.id = p.contract_type_id
      WHERE p.id = $1 AND ${sqlPersonIsActive("p")}`,
     [personId]
   );
   return result.rows[0] ?? null;
+}
+
+function personIsInOrbitAreaScope(req: Request, person: Record<string, unknown>): boolean {
+  const scope = orbitAreaScopeFromRequest(req);
+  if (scope == null) return true;
+  const areaId = person.effective_area_id == null
+    ? null
+    : Number(person.effective_area_id);
+  return areaId != null && scope.includes(areaId);
 }
 
 const router = Router();
@@ -222,6 +233,7 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
     const offset = (pageNum - 1) * limitNum;
 
     const schoolScope = schoolScopeFromRequest(req);
+    const areaScope = orbitAreaScopeFromRequest(req);
     const hasCargaSql = sqlPersonHasAcademicLoad("p");
     const prepHoursExpr = `
       CASE
@@ -265,6 +277,11 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
     if (areaId != null) {
       conditions.push(`COALESCE(p.area_id, s.area_id) = $${i}`);
       values.push(areaId);
+      i++;
+    }
+    if (areaScope != null) {
+      conditions.push(`COALESCE(p.area_id, s.area_id) = ANY($${i}::int[])`);
+      values.push(areaScope);
       i++;
     }
 
@@ -532,6 +549,10 @@ router.get(
         res.status(404).json({ error: "Docente no encontrado" });
         return;
       }
+      if (!personIsInOrbitAreaScope(req, person)) {
+        res.status(403).json({ error: "No tienes permiso para docentes de otra área" });
+        return;
+      }
       if (
         personRowIsLite(person) &&
         !(await personHasAcademicLoad(personId))
@@ -641,6 +662,10 @@ router.post("/substantive-hours/assignments", async (req: Request, res: Response
     const personCheck = await loadActivePersonForHours(prefix, personId, client);
     if (personCheck == null) {
       res.status(404).json({ error: "Docente no encontrado" });
+      return;
+    }
+    if (!personIsInOrbitAreaScope(req, personCheck)) {
+      res.status(403).json({ error: "No tienes permiso para docentes de otra área" });
       return;
     }
     if (
@@ -771,6 +796,10 @@ router.put(
       const person = await loadActivePersonForHours(prefix, personId);
       if (person == null) {
         res.status(404).json({ error: "Docente no encontrado" });
+        return;
+      }
+      if (!personIsInOrbitAreaScope(req, person)) {
+        res.status(403).json({ error: "No tienes permiso para docentes de otra área" });
         return;
       }
       if (

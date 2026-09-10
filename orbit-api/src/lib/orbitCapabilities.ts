@@ -308,7 +308,11 @@ export function resolveOrbitAccess(input: {
   if (isAcademicCoordinatorRole(input)) {
     return {
       orbitAccess: "full",
-      capabilities: [...PLANTA_ACTIVA_ONLY_CAPABILITIES],
+      capabilities: [
+        ORBIT_CAPABILITY.PLANTA_ACTIVA,
+        ORBIT_CAPABILITY.ACADEMIC_LOAD,
+        ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
+      ],
     };
   }
 

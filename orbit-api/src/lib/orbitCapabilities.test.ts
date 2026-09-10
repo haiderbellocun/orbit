@@ -167,7 +167,11 @@ test("academic coordinator gets hierarchy-scoped Planta Activa access", () => {
     roleName: "COORDINADOR DE PROGRAMA",
   });
   assert.ok(r);
-  assert.deepEqual(r.capabilities, [ORBIT_CAPABILITY.PLANTA_ACTIVA]);
+  assert.deepEqual(r.capabilities, [
+    ORBIT_CAPABILITY.PLANTA_ACTIVA,
+    ORBIT_CAPABILITY.ACADEMIC_LOAD,
+    ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
+  ]);
 });
 
 test("unknown role is denied", () => {
@@ -297,6 +301,7 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
   assert.deepEqual(leidy!.viewAreaIds, [1]);
   assert.deepEqual(leidy!.extraCapabilities, [
     "view:academic_load",
+    "view:substantive_hours",
     "view:news",
   ]);
   assert.equal(canViewPlantaArea(leidy, 1), true);
@@ -328,6 +333,7 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
   assert.deepEqual(tania!.viewAreaIds, [9]);
   assert.deepEqual(tania!.extraCapabilities, [
     "view:academic_load",
+    "view:substantive_hours",
     "view:news",
   ]);
   assert.equal(canViewPlantaArea(tania, 9), true);
@@ -395,10 +401,11 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
     assert.equal(grant!.hierarchyScoped, true);
     assert.deepEqual(grant!.viewAreaIds, []);
     assert.deepEqual(grant!.editAreaIds, []);
-    assert.deepEqual(
-      resolvePlantaActivaGrantAccess(grant).capabilities,
-      [ORBIT_CAPABILITY.PLANTA_ACTIVA]
-    );
+    assert.deepEqual(resolvePlantaActivaGrantAccess(grant).capabilities, [
+      ORBIT_CAPABILITY.PLANTA_ACTIVA,
+      ORBIT_CAPABILITY.ACADEMIC_LOAD,
+      ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
+    ]);
   }
 
   assert.equal(getPlantaActivaGrant("camilo_quintero@cun.edu.co"), null);

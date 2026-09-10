@@ -159,7 +159,11 @@ export function orbitAuthMiddleware(
             ? [decodedAreaId]
             : grant.editAreaIds == null ? null : [...grant.editAreaIds];
       } else if (academicCoordinator) {
-        capabilities = [ORBIT_CAPABILITY.PLANTA_ACTIVA];
+        capabilities = [
+          ORBIT_CAPABILITY.PLANTA_ACTIVA,
+          ORBIT_CAPABILITY.ACADEMIC_LOAD,
+          ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
+        ];
         const decodedAreaId = asNum((decoded as { areaId?: unknown }).areaId, 0);
         plantaViewAreaIds = decodedAreaId > 0 ? [decodedAreaId] : [];
         plantaEditAreaIds = decodedAreaId > 0 ? [decodedAreaId] : [];
@@ -220,6 +224,15 @@ export function orbitPersonIdFromRequest(req: Request): number | null {
     return null;
   }
   return u.personId;
+}
+
+/** Áreas obligatorias para grants acotados; `null` significa acceso global. */
+export function orbitAreaScopeFromRequest(req: Request): number[] | null {
+  const u = req.orbitUser;
+  if (u == null || u.plantaEditAreaIds == null || u.plantaViewAreaIds == null) {
+    return null;
+  }
+  return [...new Set(u.plantaViewAreaIds.filter((id) => Number.isFinite(id) && id > 0))];
 }
 
 /** Alcance docentes para usuario LITE (misma escuela + intersección de programas). */
