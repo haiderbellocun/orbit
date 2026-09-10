@@ -3,6 +3,7 @@ import {
   applyPlantaOrgOverrides,
   assignmentCreatesOrgCycle,
   collectHierarchyLinePersonIds,
+  collectHierarchyDescendantPersonIds,
   buildChildIndex,
   childrenForPerson,
   orgNodeKey,
@@ -128,4 +129,18 @@ test("alcance jerarquico incluye superiores y descendientes, no ramas hermanas",
     [{ parent_relation_id: 3, child_person_id: 31, visual_level: 3 }]
   );
   assert.deepEqual([...visible].sort((a, b) => a - b), [10, 20, 30, 31]);
+});
+
+test("edicion jerarquica incluye solo descendientes", () => {
+  const descendants = collectHierarchyDescendantPersonIds(
+    20,
+    [
+      { id: 1, parent_person_id: 10, child_person_id: 20, visual_level: 1 },
+      { id: 2, parent_person_id: 10, child_person_id: 21, visual_level: 1 },
+      { id: 3, parent_person_id: 20, child_person_id: 30, visual_level: 2 },
+      { id: 4, parent_person_id: 30, child_person_id: 40, visual_level: 3 },
+    ],
+    []
+  );
+  assert.deepEqual([...descendants].sort((a, b) => a - b), [30, 40]);
 });

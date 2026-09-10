@@ -365,7 +365,20 @@ export function getStoredPlantaActivaAccess(): {
         const currentEmail =
           typeof u.email === "string" ? u.email : getStoredUserEmail();
         const currentGrant = getPlantaActivaGrantByEmail(currentEmail);
-        if (currentGrant) return currentGrant;
+        if (currentGrant) {
+          if (
+            currentGrant.hierarchyScoped === true &&
+            currentGrant.viewAreaIds.length === 0 &&
+            u.plantaActivaAccess?.viewAreaIds?.length
+          ) {
+            return {
+              ...currentGrant,
+              viewAreaIds: u.plantaActivaAccess.viewAreaIds,
+              editAreaIds: u.plantaActivaAccess.editAreaIds ?? [],
+            };
+          }
+          return currentGrant;
+        }
         if (u.plantaActivaAccess) {
           return {
             viewAreaIds: u.plantaActivaAccess.viewAreaIds ?? null,

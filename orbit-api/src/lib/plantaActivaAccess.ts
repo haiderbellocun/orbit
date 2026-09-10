@@ -81,6 +81,7 @@ const GRANTS: readonly PlantaActivaGrant[] = [
     viewAreaIds: [1],
     editAreaIds: [1],
     hierarchyScoped: true,
+    canEditHierarchy: true,
     extraCapabilities: ["view:academic_load", "view:news"],
   },
   {

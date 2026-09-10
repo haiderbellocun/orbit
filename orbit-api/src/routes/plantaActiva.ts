@@ -31,6 +31,7 @@ import {
   applyPlantaOrgOverrides,
   assignmentCreatesOrgCycle,
   collectHierarchyLinePersonIds,
+  collectHierarchyDescendantPersonIds,
   parentByChildFromRelations,
 } from "../lib/orgChartTreeEngine";
 import { validateDocument } from "../lib/dataValidators";
@@ -121,7 +122,8 @@ async function loadDirectReports(
   prefix: string,
   managerId: number,
   plantaGrant: PlantaActivaGrant | null,
-  visiblePersonIds?: ReadonlySet<number>
+  visiblePersonIds?: ReadonlySet<number>,
+  editablePersonIds?: ReadonlySet<number>
 ): Promise<Record<string, unknown>[]> {
   const { rows } = await pool.query(
     `SELECT
@@ -155,7 +157,7 @@ async function loadDirectReports(
       role_code: roleCode,
       can_edit:
         plantaGrant?.hierarchyScoped === true && plantaGrant.canEditHierarchy === true
-          ? visiblePersonIds?.has(Number(rest.id)) === true
+          ? editablePersonIds?.has(Number(rest.id)) === true
           : canEditPlantaPerson(plantaGrant, effectiveArea, {
               roleId: rest.role_id != null ? Number(rest.role_id) : null,
               roleName: String(rest.role_name ?? ""),
@@ -200,6 +202,10 @@ function plantaGrantFromRequest(req: Request): PlantaActivaGrant | null {
         roleCode: u.role,
         roleName: u.role,
       }),
+      canEditHierarchy: isAcademicCoordinatorRole({
+        roleCode: u.role,
+        roleName: u.role,
+      }),
     }
   );
 }
@@ -211,12 +217,29 @@ function effectiveAreaSql(aliasP = "p", aliasS = "s"): string {
 async function hierarchyScopeForRequest(
   req: Request,
   grant: PlantaActivaGrant | null
-): Promise<{ personIds: Set<number>; graph: Awaited<ReturnType<typeof loadOrgChartGraph>> } | null> {
+): Promise<{
+  personIds: Set<number>;
+  editablePersonIds: Set<number>;
+  graph: Awaited<ReturnType<typeof loadOrgChartGraph>>;
+  jurisdictionAreaId: number | null;
+} | null> {
   if (grant?.hierarchyScoped !== true) return null;
   const personId = orbitPersonIdFromRequest(req);
-  if (personId == null) return { personIds: new Set(), graph: null };
+  if (personId == null) return { personIds: new Set(), editablePersonIds: new Set(), graph: null, jurisdictionAreaId: null };
+  const schemaMode = await resolveCoreSchemaMode();
+  const scopePrefix = schemaMode === "core" ? "core." : "";
+  const areaResult = await pool.query(
+    `SELECT COALESCE(p.area_id, s.area_id) AS area_id
+     FROM ${scopePrefix}person p
+     LEFT JOIN ${scopePrefix}school s ON s.id = p.school_id
+     WHERE p.id = $1`,
+    [personId]
+  );
+  const jurisdictionAreaId = areaResult.rows[0]?.area_id == null
+    ? null
+    : Number(areaResult.rows[0].area_id);
   const graph = await loadOrgChartGraph();
-  if (graph == null) return { personIds: new Set([personId]), graph: null };
+  if (graph == null) return { personIds: new Set([personId]), editablePersonIds: new Set(), graph: null, jurisdictionAreaId };
   const effective = applyPlantaOrgOverrides(
     graph.relations,
     graph.positionChildren,
@@ -228,7 +251,13 @@ async function hierarchyScopeForRequest(
       effective.relations,
       effective.positionChildren
     ),
+    editablePersonIds: collectHierarchyDescendantPersonIds(
+      personId,
+      effective.relations,
+      effective.positionChildren
+    ),
     graph,
+    jurisdictionAreaId,
   };
 }
 
@@ -240,7 +269,7 @@ function canEditWithHierarchyScope(
   role: { roleId?: number | null; roleCode?: string | null; roleName?: string | null }
 ): boolean {
   if (grant?.hierarchyScoped === true && grant.canEditHierarchy === true) {
-    return hierarchyScope?.personIds.has(personId) === true;
+    return hierarchyScope?.editablePersonIds.has(personId) === true;
   }
   return canEditPlantaPerson(grant, areaId, role);
 }
@@ -599,7 +628,13 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
 
     const { effective_area_id: _ea, role_code: roleCode, ...rest } = row;
     const [directReports, assignedPrograms] = await Promise.all([
-      loadDirectReports(prefix, id, plantaGrant, hierarchyScope?.personIds),
+      loadDirectReports(
+        prefix,
+        id,
+        plantaGrant,
+        hierarchyScope?.personIds,
+        hierarchyScope?.editablePersonIds
+      ),
       loadAssignedPrograms(prefix, id),
     ]);
     res.json({
@@ -1407,6 +1442,46 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
       }
     }
 
+    const jurisdictionAreaId =
+      plantaGrant?.canEditHierarchy === true
+        ? hierarchyScope?.jurisdictionAreaId ?? null
+        : null;
+
+    const ensureDestinationInJurisdiction = async (
+      column: "area_id" | "school_id" | "program_id",
+      value: number | null
+    ): Promise<boolean> => {
+      if (jurisdictionAreaId == null || value == null) return true;
+      if (column === "area_id") return value === jurisdictionAreaId;
+      if (column === "school_id") {
+        const check = await pool.query(
+          `SELECT 1 FROM ${prefix}school WHERE id = $1 AND area_id = $2 LIMIT 1`,
+          [value, jurisdictionAreaId]
+        );
+        return check.rows.length > 0;
+      }
+      const check = await pool.query(
+        `SELECT 1
+         FROM ${prefix}program pr
+         LEFT JOIN ${prefix}school s ON s.id = pr.school_id
+         WHERE pr.id = $1
+           AND (
+             s.area_id = $2
+             OR EXISTS (
+               SELECT 1
+               FROM ${prefix}person scoped_person
+               LEFT JOIN ${prefix}school scoped_school
+                 ON scoped_school.id = scoped_person.school_id
+               WHERE scoped_person.program_id = pr.id
+                 AND COALESCE(scoped_person.area_id, scoped_school.area_id) = $2
+             )
+           )
+         LIMIT 1`,
+        [value, jurisdictionAreaId]
+      );
+      return check.rows.length > 0;
+    };
+
     for (const [key, col] of [
       ["area_id", "area_id"],
       ["areaId", "area_id"],
@@ -1420,6 +1495,15 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
       if (!(key in b)) continue;
       if (sets.some((s) => s.startsWith(`${col} =`))) continue;
       const n = parsePositiveInt(b[key]);
+      if (
+        (col === "area_id" || col === "school_id" || col === "program_id") &&
+        !(await ensureDestinationInJurisdiction(col, n))
+      ) {
+        res.status(403).json({
+          error: "Solo puedes asignar áreas, escuelas y programas de tu coordinación",
+        });
+        return;
+      }
       if (col === "area_id" && plantaGrant != null) {
         // No permitir mover a un área fuera del alcance de edición.
         if (!canEditPlantaArea(plantaGrant, n)) {

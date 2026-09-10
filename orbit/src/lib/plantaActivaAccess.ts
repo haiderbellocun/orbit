@@ -43,6 +43,7 @@ const GRANTS: Readonly<Record<string, PlantaActivaAccess>> = {
     viewAreaIds: [1],
     editAreaIds: [1],
     hierarchyScoped: true,
+    canEditHierarchy: true,
   },
   "carlos_rodriguezs@cun.edu.co": {
     viewAreaIds: [1],

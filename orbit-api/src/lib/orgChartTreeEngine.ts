@@ -202,3 +202,35 @@ export function collectHierarchyLinePersonIds(
   walk(children);
   return visible;
 }
+
+/** Descendientes de una persona, sin incluir a la persona ni sus superiores. */
+export function collectHierarchyDescendantPersonIds(
+  personId: number,
+  relations: readonly OrgEdge[],
+  positionChildren: readonly OrgPositionChild[]
+): Set<number> {
+  const children = new Map<number, Set<number>>();
+  const add = (parentId: number, childId: number) => {
+    const list = children.get(parentId) ?? new Set<number>();
+    list.add(childId);
+    children.set(parentId, list);
+  };
+  const relationChild = new Map<number, number>();
+  for (const edge of relations) {
+    relationChild.set(edge.id, edge.child_person_id);
+    add(edge.parent_person_id, edge.child_person_id);
+  }
+  for (const row of positionChildren) {
+    const parentId = relationChild.get(row.parent_relation_id);
+    if (parentId != null) add(parentId, row.child_person_id);
+  }
+  const descendants = new Set<number>();
+  const stack = [...(children.get(personId) ?? [])];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (descendants.has(current)) continue;
+    descendants.add(current);
+    stack.push(...(children.get(current) ?? []));
+  }
+  return descendants;
+}

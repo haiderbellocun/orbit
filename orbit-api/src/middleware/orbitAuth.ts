@@ -149,9 +149,15 @@ export function orbitAuthMiddleware(
       const grant = getPlantaActivaGrant(email);
       if (grant) {
         capabilities = resolvePlantaActivaGrantAccess(grant).capabilities;
-        plantaViewAreaIds = grant.viewAreaIds;
+        const decodedAreaId = asNum((decoded as { areaId?: unknown }).areaId, 0);
+        plantaViewAreaIds =
+          grant.hierarchyScoped === true && grant.viewAreaIds?.length === 0 && decodedAreaId > 0
+            ? [decodedAreaId]
+            : grant.viewAreaIds;
         plantaEditAreaIds =
-          grant.editAreaIds == null ? null : [...grant.editAreaIds];
+          grant.hierarchyScoped === true && grant.editAreaIds?.length === 0 && decodedAreaId > 0
+            ? [decodedAreaId]
+            : grant.editAreaIds == null ? null : [...grant.editAreaIds];
       } else if (academicCoordinator) {
         capabilities = [ORBIT_CAPABILITY.PLANTA_ACTIVA];
         const decodedAreaId = asNum((decoded as { areaId?: unknown }).areaId, 0);

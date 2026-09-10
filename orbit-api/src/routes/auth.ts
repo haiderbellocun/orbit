@@ -153,7 +153,7 @@ async function fetchPersonByEmail(emailNorm: string): Promise<PersonRow | null> 
          p.full_name,
          COALESCE(NULLIF(TRIM(p.edu_email), ''), NULLIF(TRIM(p.email), '')) AS email,
          p.role_id,
-         p.area_id,
+         COALESCE(p.area_id, s.area_id) AS area_id,
          p.school_id,
          p.program_id,
          ${programsSelect},
@@ -161,6 +161,7 @@ async function fetchPersonByEmail(emailNorm: string): Promise<PersonRow | null> 
          r.name AS role_name
        FROM person p
        LEFT JOIN role r ON r.id = p.role_id
+       LEFT JOIN school s ON s.id = p.school_id
        ${ppaJoin}
        WHERE (
            LOWER(TRIM(p.email)) = $1
@@ -251,6 +252,10 @@ async function gateOrbitRoleAndLite(
     getPlantaActivaGrant(emailNorm) ?? getPlantaActivaGrant(personEmailNorm);
   if (grant) {
     const { orbitAccess, capabilities } = resolvePlantaActivaGrantAccess(grant);
+    const hierarchyAreaId =
+      grant.hierarchyScoped === true && person.area_id != null
+        ? Number(person.area_id)
+        : null;
     return {
       ok: true,
       orbitAccess,
@@ -259,10 +264,16 @@ async function gateOrbitRoleAndLite(
         emailNorm || personEmailNorm
       ),
       schoolId: null,
-      areaId: null,
+      areaId: hierarchyAreaId,
       programIds: [],
-      plantaViewAreaIds: grant.viewAreaIds ?? null,
-      plantaEditAreaIds: grant.editAreaIds,
+      plantaViewAreaIds:
+        hierarchyAreaId != null && grant.viewAreaIds?.length === 0
+          ? [hierarchyAreaId]
+          : grant.viewAreaIds ?? null,
+      plantaEditAreaIds:
+        hierarchyAreaId != null && grant.editAreaIds?.length === 0
+          ? [hierarchyAreaId]
+          : grant.editAreaIds,
     };
   }
 
