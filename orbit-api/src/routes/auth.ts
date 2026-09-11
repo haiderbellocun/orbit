@@ -19,6 +19,8 @@ import {
 import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
 import { recordAppLoginAsync } from "../lib/loginAppsLog";
 import { ORBIT_JWT_EXPIRES_IN } from "../lib/sessionPolicy";
+import { clearOrbitSessionCookie, setOrbitSessionCookie } from "../lib/sessionCookie";
+import { orbitAuthMiddleware } from "../middleware/orbitAuth";
 
 const router = Router();
 
@@ -43,10 +45,7 @@ function verifyGisRedirectCsrf(req: Request, body: Record<string, unknown>): boo
   const cookieTok = readCookie(req, "g_csrf_token");
   const bodyTok =
     typeof body.g_csrf_token === "string" ? body.g_csrf_token.trim() : "";
-  if (cookieTok && bodyTok) return cookieTok === bodyTok;
-  // Si solo llega una de las dos (muy habitual: `g_csrf_token` en el POST pero la cookie quedó en el origen del SPA
-  // y no se envía al `login_uri` en otro host), no podemos comparar; la autenticación real es verifyIdToken(credential).
-  return true;
+  return Boolean(cookieTok && bodyTok && cookieTok === bodyTok);
 }
 
 function getOrbitFrontendBaseUrl(): string {
@@ -66,20 +65,13 @@ function sendGisCallbackHtml(res: Response, status: number, title: string, bodyH
 
 function sendGisSuccessRedirect(res: Response, auth: AuthSuccessBody): void {
   const target = `${getOrbitFrontendBaseUrl().replace(/\/$/, "")}/`;
-  const tokenJs = JSON.stringify(auth.token);
-  res
-    .status(200)
-    .type("html")
-    .send(`<!DOCTYPE html>
-<html lang="es"><head><meta charset="utf-8"/><title>Entrando…</title></head>
-<body>
-<script>
-  localStorage.setItem("orbit_jwt", ${tokenJs});
-  localStorage.setItem("orbit_user", ${JSON.stringify(JSON.stringify(auth.user))});
-  location.replace(${JSON.stringify(target)});
-</script>
-<p>Entrando a Orbit…</p>
-</body></html>`);
+  setOrbitSessionCookie(res, auth.token);
+  res.redirect(303, target);
+}
+
+function sendAuthSuccess(res: Response, auth: AuthSuccessBody): void {
+  setOrbitSessionCookie(res, auth.token);
+  res.json({ user: auth.user, expiresAt: Date.now() + 2 * 60 * 60 * 1000 });
 }
 
 type GoogleLoginBody = {
@@ -737,7 +729,7 @@ router.post("/auth/google", async (req, res) => {
       res.status(result.status).json({ error: result.error });
       return;
     }
-    res.json(result.body);
+    sendAuthSuccess(res, result.body);
   } catch (e: unknown) {
     console.error("POST /auth/google failed:", e);
     const message = e instanceof Error ? e.message : String(e);
@@ -808,13 +800,43 @@ router.post("/auth/local-email", async (req, res) => {
       sub: localSub,
       userId,
     });
-    res.json(bodyOut);
+    sendAuthSuccess(res, bodyOut);
   } catch (e: unknown) {
     console.error("POST /auth/local-email failed:", e);
     const message = e instanceof Error ? e.message : String(e);
     const isProd = (process.env.NODE_ENV ?? "").trim().toLowerCase() === "production";
     res.status(500).json(isProd ? { error: "Internal server error" } : { error: "Internal server error", message });
   }
+});
+
+router.get("/auth/session", orbitAuthMiddleware, (req, res) => {
+  const user = req.orbitUser!;
+  res.json({
+    user: {
+      id: user.userId,
+      personId: user.personId,
+      email: user.email,
+      name: user.name,
+      picture: user.picture,
+      roleId: user.roleId,
+      roleCode: user.role,
+      roleName: user.role,
+      orbitAccess: user.orbitAccess,
+      capabilities: user.capabilities,
+      plantaActivaAccess: {
+        viewAreaIds: user.plantaViewAreaIds,
+        editAreaIds: user.plantaEditAreaIds,
+        coordinationSchoolId: user.schoolId,
+        personalDataOnly: user.orbitAccess === "lite",
+      },
+    },
+    expiresAt: user.expiresAt,
+  });
+});
+
+router.post("/auth/logout", (_req, res) => {
+  clearOrbitSessionCookie(res);
+  res.status(204).end();
 });
 
 export default router;

@@ -18,6 +18,7 @@ import {
 } from "../lib/orbitCapabilities";
 import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
 import { isOrbitSessionActive } from "../lib/sessionPolicy";
+import { ORBIT_SESSION_COOKIE } from "../lib/sessionCookie";
 export {
   schoolScopeFromRequest,
   vacancyAllowedForSchoolScope,
@@ -42,6 +43,7 @@ export type OrbitJwtUser = {
   plantaViewAreaIds: number[] | null;
   /** `null` = puede editar cualquier área (admin). */
   plantaEditAreaIds: number[] | null;
+  expiresAt: number;
 };
 
 declare global {
@@ -65,10 +67,14 @@ function extractBearerToken(req: Request): string | null {
     const t = auth.slice(prefix.length).trim();
     if (t) return t;
   }
-  /** EventSource no puede enviar cabeceras; el cliente envía el JWT en query. */
-  if (req.method === "GET") {
-    const q = req.query.access_token;
-    if (typeof q === "string" && q.trim() !== "") return q.trim();
+  const rawCookie = req.headers.cookie;
+  if (rawCookie) {
+    for (const part of rawCookie.split(";")) {
+      const cookie = part.trim();
+      if (!cookie.startsWith(`${ORBIT_SESSION_COOKIE}=`)) continue;
+      const value = decodeURIComponent(cookie.slice(ORBIT_SESSION_COOKIE.length + 1));
+      if (value.trim()) return value.trim();
+    }
   }
   return null;
 }
@@ -238,6 +244,7 @@ export function orbitAuthMiddleware(
         : [],
       plantaViewAreaIds,
       plantaEditAreaIds,
+      expiresAt: typeof decoded.exp === "number" ? decoded.exp * 1000 : 0,
     };
     next();
   } catch {

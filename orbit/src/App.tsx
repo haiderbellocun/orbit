@@ -23,11 +23,14 @@ import { VacancyDetailView } from "./components/views/VacancyDetailView";
 import { VacancyInformativePanelView } from "./components/views/VacancyInformativePanelView";
 import {
   clearOrbitSession,
+  getCurrentOrbitSession,
   getStoredCapabilities,
   getStoredOrbitAccess,
   getStoredSessionExpiresAt,
   getVacancy,
   isStoredJwtValid,
+  logoutOrbitSession,
+  persistOrbitSession,
   type GoogleAuthResponse,
   type OrbitAccess,
 } from "./lib/api";
@@ -226,18 +229,37 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const jwtPresent =
-      typeof localStorage !== "undefined" &&
-      Boolean(localStorage.getItem("orbit_jwt")?.trim());
-    if (jwtPresent && !isStoredJwtValid()) {
-      clearOrbitSession();
-      return;
+    let cancelled = false;
+    localStorage.removeItem("orbit_jwt");
+
+    if (isStoredJwtValid()) {
+      const caps = getStoredCapabilities();
+      setOrbitAccess(getStoredOrbitAccess() ?? "full");
+      setCapabilities(caps);
+      setView(getDefaultView(caps));
     }
-    if (!isStoredJwtValid()) return;
-    const caps = getStoredCapabilities();
-    setOrbitAccess(getStoredOrbitAccess() ?? "full");
-    setCapabilities(caps);
-    setView(getDefaultView(caps));
+
+    void getCurrentOrbitSession()
+      .then((auth) => {
+        if (cancelled) return;
+        if (!auth) {
+          clearOrbitSession();
+          setView("login");
+          return;
+        }
+        persistOrbitSession(auth);
+        const caps = auth.user.capabilities ?? [];
+        setOrbitAccess(auth.user.orbitAccess ?? "full");
+        setCapabilities(caps);
+        setView(getDefaultView(caps));
+      })
+      .catch(() => {
+        // Una caída temporal del API no destruye una sesión local aún vigente.
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -249,7 +271,7 @@ export default function App() {
 
   const handleLogout = useCallback(() => {
     clearTutorialSession();
-    clearOrbitSession();
+    void logoutOrbitSession();
     setOrbitAccess(null);
     setCapabilities([]);
     setSelectedVacancy(null);

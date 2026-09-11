@@ -9,6 +9,7 @@ import { ThemeToggle } from "../layout/ThemeToggle";
 import {
   loginWithGoogleIdToken,
   loginWithLocalEmail,
+  persistOrbitSession,
   type GoogleAuthResponse,
 } from "@/src/lib/api";
 
@@ -58,8 +59,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     setError(null);
     try {
       const auth = await loginWithLocalEmail(trimmed);
-      localStorage.setItem("orbit_jwt", auth.token);
-      localStorage.setItem("orbit_user", JSON.stringify(auth.user));
+      persistOrbitSession(auth);
       onLogin(auth);
     } catch (err) {
       setError(
@@ -77,8 +77,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     setError(null);
     try {
       const auth = await loginWithGoogleIdToken(credential);
-      localStorage.setItem("orbit_jwt", auth.token);
-      localStorage.setItem("orbit_user", JSON.stringify(auth.user));
+      persistOrbitSession(auth);
       onLogin(auth);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo autenticar con el servidor.");

@@ -69,13 +69,17 @@ export function clearOrbitSession(): void {
   localStorage.removeItem(ORBIT_USER_STORAGE_KEY);
 }
 
+export async function logoutOrbitSession(): Promise<void> {
+  clearOrbitSession();
+  await fetch(`${BASE_URL}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  }).catch(() => undefined);
+}
+
 function withAuth(init: RequestInit = {}): RequestInit {
   const headers = new Headers(init.headers ?? undefined);
-  const token = getStoredJwt();
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-  return { ...init, headers };
+  return { ...init, headers, credentials: "include" };
 }
 
 async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -134,6 +138,8 @@ function parseStoredUserCapabilities(): string[] | null {
 
 /** SesiÃ³n local vÃ¡lida (JWT con orbitAccess, capabilities y no expirado en ~30s). */
 export function isStoredJwtValid(): boolean {
+  const storedExpiry = getStoredUserSessionExpiresAt();
+  if (storedExpiry != null) return storedExpiry > Date.now() + 30_000;
   const token = getStoredJwt();
   if (!token) return false;
   const p = parseJwtPayload(token);
@@ -160,6 +166,8 @@ export function isStoredJwtValid(): boolean {
 
 /** Instante efectivo de expiración, limitado a dos horas desde la emisión. */
 export function getStoredSessionExpiresAt(): number | null {
+  const storedExpiry = getStoredUserSessionExpiresAt();
+  if (storedExpiry != null) return storedExpiry;
   const token = getStoredJwt();
   const payload = token ? parseJwtPayload(token) : null;
   if (!payload) return null;
@@ -448,6 +456,20 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
+function getStoredUserSessionExpiresAt(): number | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(ORBIT_USER_STORAGE_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as { sessionExpiresAt?: unknown };
+    return typeof value.sessionExpiresAt === "number" && Number.isFinite(value.sessionExpiresAt)
+      ? value.sessionExpiresAt
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function friendlyConnectionError(error: unknown): Error {
   if (isAbortError(error)) return error as Error;
   if (error instanceof TypeError) {
@@ -646,7 +668,7 @@ export type AuthUser = {
 };
 
 export type GoogleAuthResponse = {
-  token: string;
+  expiresAt: number;
   user: {
     id: number;
     personId: number | null;
@@ -667,6 +689,20 @@ export type GoogleAuthResponse = {
     };
   };
 };
+
+export function persistOrbitSession(auth: GoogleAuthResponse): void {
+  localStorage.removeItem(ORBIT_JWT_STORAGE_KEY);
+  localStorage.setItem(
+    ORBIT_USER_STORAGE_KEY,
+    JSON.stringify({ ...auth.user, sessionExpiresAt: auth.expiresAt })
+  );
+}
+
+export async function getCurrentOrbitSession(): Promise<GoogleAuthResponse | null> {
+  const response = await authFetch(`${BASE_URL}/auth/session`);
+  if (response.status === 401) return null;
+  return handleJson<GoogleAuthResponse>(response);
+}
 
 export async function loginWithGoogleIdToken(
   idToken: string
