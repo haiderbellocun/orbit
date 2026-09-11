@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   clearPlantaPendingFilters,
   peekPlantaPendingFilters,
 } from '@/src/lib/plantaPendingFilters';
+import { useFilterState, type FilterState } from '@/src/lib/useFilterState';
 
 export type PlantaFilters = {
   search: string;
@@ -30,8 +31,8 @@ export const EMPTY_PLANTA_FILTERS: PlantaFilters = {
   withoutDocument: false,
 };
 
-/** Los filtros de checkbox; `search` se cuenta aparte. */
-const TOGGLE_KEYS = [
+/** Campos que cuentan como filtro activo en el panel. */
+const PLANTA_FILTER_KEYS = [
   'areaId',
   'schoolId',
   'programId',
@@ -43,29 +44,16 @@ const TOGGLE_KEYS = [
   'withoutDocument',
 ] as const satisfies readonly (keyof PlantaFilters)[];
 
-const SEARCH_DEBOUNCE_MS = 300;
-
-export type PlantaFiltersController = {
-  /** Lo que el usuario está escribiendo. */
-  filters: PlantaFilters;
-  setFilters: React.Dispatch<React.SetStateAction<PlantaFilters>>;
-  /** Lo que realmente filtra la lista (search llega con debounce). */
-  applied: PlantaFilters;
-  filtersOpen: boolean;
-  setFiltersOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  applyFilters: () => void;
-  clearFilters: () => void;
-  activeFilterCount: number;
-  hasActiveQuery: boolean;
-};
-
 /**
- * Estado de los filtros de Planta Activa.
+ * Filtros de Planta Activa.
  *
- * Otra vista puede dejar filtros pendientes (p. ej. "sin correo CUN" desde el
- * Command Center); se consumen en el primer render y se descartan.
+ * Igual que el resto de listados, salvo que otra vista puede dejar filtros
+ * pendientes (p. ej. "sin correo CUN" desde el Command Center): se consumen en
+ * el primer render, abren el panel y se descartan.
  */
-export function usePlantaFilters(lockedAreaId: string): PlantaFiltersController {
+export function usePlantaFilters(
+  lockedAreaId: string
+): FilterState<PlantaFilters> {
   const initial = useMemo<PlantaFilters>(() => {
     const pending = peekPlantaPendingFilters();
     return {
@@ -78,52 +66,13 @@ export function usePlantaFilters(lockedAreaId: string): PlantaFiltersController 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [filters, setFilters] = useState<PlantaFilters>(initial);
-  const [applied, setApplied] = useState<PlantaFilters>(initial);
-  const [filtersOpen, setFiltersOpen] = useState(
-    () => initial.withoutEduEmail || initial.withoutDocument
-  );
+  const state = useFilterState(initial, PLANTA_FILTER_KEYS, {
+    initiallyOpen: initial.withoutEduEmail || initial.withoutDocument,
+  });
 
   useEffect(() => {
     clearPlantaPendingFilters();
   }, []);
 
-  useEffect(() => {
-    if (filters.search === applied.search) return;
-    const t = setTimeout(() => {
-      setApplied((prev) => ({ ...prev, search: filters.search }));
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [filters.search, applied.search]);
-
-  const applyFilters = useCallback(() => {
-    setApplied({ ...filters });
-  }, [filters]);
-
-  const clearFilters = useCallback(() => {
-    const next: PlantaFilters = {
-      ...EMPTY_PLANTA_FILTERS,
-      areaId: lockedAreaId,
-    };
-    setFilters(next);
-    setApplied(next);
-  }, [lockedAreaId]);
-
-  const activeFilterCount = useMemo(
-    () => TOGGLE_KEYS.filter((key) => Boolean(applied[key])).length,
-    [applied]
-  );
-
-  return {
-    filters,
-    setFilters,
-    applied,
-    filtersOpen,
-    setFiltersOpen,
-    applyFilters,
-    clearFilters,
-    activeFilterCount,
-    hasActiveQuery:
-      Boolean(applied.search.trim()) || activeFilterCount > 0,
-  };
+  return state;
 }

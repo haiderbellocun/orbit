@@ -7,6 +7,7 @@ import {
   LockClosedIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
+import { useFilterState } from '@/src/lib/useFilterState';
 import { cn } from '@/src/lib/utils';
 import { Teacher, Vacancy, Coordinator } from '@/src/types';
 import {
@@ -527,6 +528,20 @@ type Filters = {
   block: string;
 };
 
+/** Campos que cuentan como filtro activo en el panel. */
+const ACADEMIC_LOAD_FILTER_KEYS = [
+  'period',
+  'modality',
+  'teachingModality',
+  'quotaStatus',
+  'area',
+  'schoolId',
+  'program',
+  'subject',
+  'groupCode',
+  'block',
+] as const satisfies readonly (keyof Filters)[];
+
 const EMPTY_FILTERS: Filters = {
   search: '',
   period: '',
@@ -579,8 +594,16 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
     }),
     [lockedArea, scopedSchoolId]
   );
-  const [filters, setFilters] = useState<Filters>(() => initialFilters);
-  const [applied, setApplied] = useState<Filters>(() => initialFilters);
+  const {
+    filters,
+    setFilters,
+    applied,
+    applyFilters,
+    clearFilters,
+    hasActiveQuery: hasActive,
+    currentPage,
+    setCurrentPage,
+  } = useFilterState(initialFilters, ACADEMIC_LOAD_FILTER_KEYS);
   const [periodOptions, setPeriodOptions] = useState<string[]>([]);
   const [blockOptions, setBlockOptions] = useState<string[]>([]);
   const [programOptions, setProgramOptions] = useState<string[]>([]);
@@ -601,7 +624,6 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
     null
   );
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -704,26 +726,6 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
   }, [loadList]);
 
   useEffect(() => {
-    if (filters.search === applied.search) return;
-    const t = setTimeout(() => {
-      setCurrentPage(1);
-      setApplied((prev) => ({ ...prev, search: filters.search }));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [filters.search, applied.search]);
-
-  const applyFilters = () => {
-    setCurrentPage(1);
-    setApplied({ ...filters });
-  };
-
-  const clearFilters = () => {
-    setFilters(initialFilters);
-    setApplied(initialFilters);
-    setCurrentPage(1);
-  };
-
-  useEffect(() => {
     setAssignmentsByPerson({});
     setOpenTeacherIds(new Set());
   }, [applied]);
@@ -786,24 +788,6 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
       void loadTeacherAssignments(personId);
     }
   };
-
-  const activeFilterCount = useMemo(() => {
-    let n = 0;
-    if (applied.period) n++;
-    if (applied.modality) n++;
-    if (applied.teachingModality) n++;
-    if (applied.quotaStatus) n++;
-    if (applied.area) n++;
-    if (applied.schoolId) n++;
-    if (applied.program) n++;
-    if (applied.subject.trim()) n++;
-    if (applied.groupCode.trim()) n++;
-    if (applied.block) n++;
-    return n;
-  }, [applied]);
-
-  const hasActive =
-    Boolean(applied.search.trim()) || activeFilterCount > 0;
 
   return (
     <div className="space-y-8 relative">

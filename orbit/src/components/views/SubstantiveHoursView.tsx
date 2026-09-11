@@ -12,6 +12,7 @@ import {
   LockClosedIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
+import { useFilterState } from '@/src/lib/useFilterState';
 import { cn } from '@/src/lib/utils';
 import type { Vacancy, Teacher, Coordinator } from '@/src/types';
 import {
@@ -77,6 +78,21 @@ const EMPTY_FILTERS: Filters = {
   quotaStatus: '',
 };
 
+/** Campos que cuentan como filtro activo en el panel. */
+const SUBSTANTIVE_FILTER_KEYS = [
+  'areaId',
+  'schoolId',
+  'period',
+  'contractHours',
+  'availability',
+  'hasCatedra',
+  'hasSubstantive',
+  'withoutEduEmail',
+  'role',
+  'teachingModality',
+  'quotaStatus',
+] as const satisfies readonly (keyof Filters)[];
+
 const PLACEHOLDER_CATEGORY = 'PEDIR LISTA CATEGORIAS HORAS SUSTANTIVAS';
 
 type ActionMode = 'substantive' | 'preparation';
@@ -102,13 +118,22 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     }),
     [scopedAreaId, scopedSchoolId]
   );
-  const [filters, setFilters] = useState<Filters>(() => initialFilters);
-  const [applied, setApplied] = useState<Filters>(() => initialFilters);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const {
+    filters,
+    setFilters,
+    applied,
+    filtersOpen,
+    setFiltersOpen,
+    applyFilters,
+    clearFilters,
+    activeFilterCount,
+    hasActiveQuery: hasActive,
+    currentPage,
+    setCurrentPage,
+  } = useFilterState(initialFilters, SUBSTANTIVE_FILTER_KEYS);
   const [actionMode, setActionMode] = useState<ActionMode>('substantive');
   const [rows, setRows] = useState<SubstantiveHoursTeacher[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [areas, setAreas] = useState<CatalogArea[]>([]);
@@ -229,43 +254,6 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     void loadList();
   }, [loadList]);
 
-  useEffect(() => {
-    if (filters.search === applied.search) return;
-    const t = setTimeout(() => {
-      setCurrentPage(1);
-      setApplied((prev) => ({ ...prev, search: filters.search }));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [filters.search, applied.search]);
-
-  const applyFilters = () => {
-    setCurrentPage(1);
-    setApplied({ ...filters });
-  };
-
-  const clearFilters = () => {
-    setFilters(initialFilters);
-    setApplied(initialFilters);
-    setCurrentPage(1);
-  };
-
-  const activeFilterCount = useMemo(() => {
-    let n = 0;
-    if (applied.areaId) n++;
-    if (applied.schoolId) n++;
-    if (applied.period) n++;
-    if (applied.contractHours) n++;
-    if (applied.availability) n++;
-    if (applied.hasCatedra) n++;
-    if (applied.hasSubstantive) n++;
-    if (applied.withoutEduEmail) n++;
-    if (applied.role) n++;
-    if (applied.teachingModality) n++;
-    if (applied.quotaStatus) n++;
-    return n;
-  }, [applied]);
-
-  const hasActive = Boolean(applied.search.trim()) || activeFilterCount > 0;
   const openAddModal = async (teacher: SubstantiveHoursTeacher) => {
     setModalKind('substantive');
     setModalTeacher(teacher);
