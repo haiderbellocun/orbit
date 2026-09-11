@@ -223,6 +223,30 @@ function plantaGrantFromRequest(req: Request): PlantaActivaGrant | null {
   );
 }
 
+type PostgresError = {
+  code?: string;
+  constraint?: string;
+  detail?: string;
+};
+
+/** Convierte restricciones conocidas de persona en feedback seguro y accionable. */
+function personConflictMessage(error: unknown): string | null {
+  const dbError = error as PostgresError;
+  if (dbError?.code !== "23505") return null;
+
+  const source = `${dbError.constraint ?? ""} ${dbError.detail ?? ""}`.toLowerCase();
+  if (source.includes("edu_email")) {
+    return "El correo institucional ya está registrado en otra persona";
+  }
+  if (source.includes("email")) {
+    return "El correo personal ya está registrado en otra persona";
+  }
+  if (source.includes("document")) {
+    return "La identificación ya está registrada en otra persona";
+  }
+  return "Ya existe una persona con la misma identificación o correo";
+}
+
 function effectiveAreaSql(aliasP = "p", aliasS = "s"): string {
   return `COALESCE(${aliasP}.area_id, ${aliasS}.area_id)`;
 }
@@ -960,11 +984,9 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
       }),
     });
   } catch (e: unknown) {
-    const err = e as { code?: string };
-    if (err?.code === "23505") {
-      res.status(409).json({
-        error: "Ya existe una persona con ese documento o correo",
-      });
+    const conflictMessage = personConflictMessage(e);
+    if (conflictMessage != null) {
+      res.status(409).json({ error: conflictMessage });
       return;
     }
     console.error("POST /planta-activa failed:", e);
@@ -1673,6 +1695,11 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
     });
   } catch (e: unknown) {
     const err = e as { code?: string };
+    const conflictMessage = personConflictMessage(e);
+    if (conflictMessage != null) {
+      res.status(409).json({ error: conflictMessage });
+      return;
+    }
     if (err?.code === "23514") {
       res.status(400).json({
         error: "Una persona no puede ser responsable de sí misma",
