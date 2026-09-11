@@ -11,28 +11,19 @@ import {
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
-import type { OrgChartGraphPayload, PlantaPerson, Vacancy, Teacher, Coordinator } from '@/src/types';
+import type { PlantaPerson, Vacancy, Teacher, Coordinator } from '@/src/types';
 import {
-  getPlantaActiva,
   getPlantaPerson,
   createPlantaPerson,
   updatePlantaPerson,
   updatePlantaOrgParent,
   bulkUpdatePlantaOrgParent,
-  getCatalogAreas,
   getCatalogSchools,
   getCatalogPrograms,
-  getCatalogRoles,
   getStoredPlantaActivaAccess,
-  type CatalogArea,
   type CatalogSchool,
   type CatalogProgram,
-  type CatalogRole,
 } from '@/src/lib/api';
-import {
-  clearPlantaPendingFilters,
-  peekPlantaPendingFilters,
-} from '@/src/lib/plantaPendingFilters';
 import {
   canEditPlantaPersonArea,
   shouldExcludeLiteAndDocenteFromPlantaView,
@@ -43,8 +34,6 @@ import {
   buildOrganizationHierarchy,
   collectExpandableIds,
   filterOrganizationForest,
-  overlayOrgParents,
-  parseOrgChartGraph,
   personMatchesQuery,
 } from '@/src/lib/organizationTree';
 import { OrganizationHierarchy } from '@/src/components/planta/OrganizationHierarchy';
@@ -52,6 +41,14 @@ import {
   PersonManagementDrawer,
   type PlantaEditForm,
 } from '@/src/components/planta/PersonManagementDrawer';
+import {
+  usePlantaBaseCatalogs,
+  usePlantaScopedCatalogs,
+} from '@/src/components/planta/usePlantaCatalogs';
+import {
+  usePlantaFilters,
+} from '@/src/components/planta/usePlantaFilters';
+import { usePlantaPeople } from '@/src/components/planta/usePlantaPeople';
 import { AssignCollaboratorModal } from '@/src/components/planta/AssignCollaboratorModal';
 import { BulkAssignPickLeaderModal } from '@/src/components/planta/BulkAssignPickLeaderModal';
 import { ChangeManagerModal } from '@/src/components/planta/ChangeManagerModal';
@@ -76,7 +73,6 @@ const EMPTY_EDIT_FORM: PlantaEditForm = {
   create_vacancy: true,
 };
 
-const HIERARCHY_PAGE_SIZE = 5000;
 
 interface PlantaActivaViewProps {
   searchQuery?: string;
@@ -88,32 +84,6 @@ interface PlantaActivaViewProps {
   } | null;
   onOpenVacancyFromNotification?: (vacancyId: string) => void;
 }
-
-type Filters = {
-  search: string;
-  areaId: string;
-  schoolId: string;
-  programId: string;
-  roleId: string;
-  withoutSchool: boolean;
-  withoutProgram: boolean;
-  withoutRole: boolean;
-  withoutEduEmail: boolean;
-  withoutDocument: boolean;
-};
-
-const EMPTY_FILTERS: Filters = {
-  search: '',
-  areaId: '',
-  schoolId: '',
-  programId: '',
-  roleId: '',
-  withoutSchool: false,
-  withoutProgram: false,
-  withoutRole: false,
-  withoutEduEmail: false,
-  withoutDocument: false,
-};
 
 export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   onOpenVacancyFromNotification,
@@ -129,40 +99,19 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       ? String(catalogAreaIds[0])
       : '';
 
-  const [filters, setFilters] = useState<Filters>(() => {
-    const pending = peekPlantaPendingFilters();
-    return {
-      ...EMPTY_FILTERS,
-      areaId: lockedAreaId,
-      withoutEduEmail: Boolean(pending?.withoutEduEmail),
-      withoutDocument: Boolean(pending?.withoutDocument),
-    };
-  });
-  const [applied, setApplied] = useState<Filters>(() => {
-    const pending = peekPlantaPendingFilters();
-    return {
-      ...EMPTY_FILTERS,
-      areaId: lockedAreaId,
-      withoutEduEmail: Boolean(pending?.withoutEduEmail),
-      withoutDocument: Boolean(pending?.withoutDocument),
-    };
-  });
-  const [filtersOpen, setFiltersOpen] = useState(() => {
-    const pending = peekPlantaPendingFilters();
-    return Boolean(pending?.withoutEduEmail || pending?.withoutDocument);
-  });
+  const {
+    filters,
+    setFilters,
+    applied,
+    filtersOpen,
+    setFiltersOpen,
+    applyFilters,
+    clearFilters,
+    activeFilterCount,
+    hasActiveQuery,
+  } = usePlantaFilters(lockedAreaId);
   const [listStatus, setListStatus] = useState<'active' | 'inactive'>('active');
-  const [rows, setRows] = useState<PlantaPerson[]>([]);
-  const [orgGraph, setOrgGraph] = useState<OrgChartGraphPayload | null>(null);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [userExpanded, setUserExpanded] = useState<Set<string>>(new Set());
-
-  const [areas, setAreas] = useState<CatalogArea[]>([]);
-  const [schools, setSchools] = useState<CatalogSchool[]>([]);
-  const [programs, setPrograms] = useState<CatalogProgram[]>([]);
-  const [roles, setRoles] = useState<CatalogRole[]>([]);
 
   const [editing, setEditing] = useState<PlantaPerson | null>(null);
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null);
@@ -191,175 +140,37 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     [plantaAccess]
   );
 
-  useEffect(() => {
-    clearPlantaPendingFilters();
-  }, []);
+  const { areas, roles } = usePlantaBaseCatalogs();
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [a, r] = await Promise.all([getCatalogAreas(), getCatalogRoles()]);
-        if (!cancelled) {
-          setAreas(Array.isArray(a) ? a : []);
-          setRoles(Array.isArray(r) ? r : []);
-        }
-      } catch {
-        if (!cancelled) {
-          setAreas([]);
-          setRoles([]);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Al cambiar de area/escuela, una seleccion que ya no existe se limpia sola.
+  const pruneSchool = useCallback((available: CatalogSchool[]) => {
+    setFilters((f) => {
+      if (!f.schoolId) return f;
+      const sid = Number(f.schoolId);
+      return available.some((s) => s.id === sid)
+        ? f
+        : { ...f, schoolId: '', programId: '' };
+    });
+  }, [setFilters]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const areaId = filters.areaId ? Number(filters.areaId) : undefined;
-    (async () => {
-      try {
-        let list: CatalogSchool[] = [];
-        if (areaId != null && Number.isFinite(areaId)) {
-          if (catalogAreaIds != null && !catalogAreaIds.includes(areaId)) {
-            list = [];
-          } else {
-            const s = await getCatalogSchools({ area_id: areaId });
-            list = Array.isArray(s) ? s : [];
-          }
-        } else if (catalogAreaIds != null && catalogAreaIds.length > 0) {
-          const chunks = await Promise.all(
-            catalogAreaIds.map((id) => getCatalogSchools({ area_id: id }))
-          );
-          const byId = new Map<number, CatalogSchool>();
-          for (const chunk of chunks) {
-            for (const school of Array.isArray(chunk) ? chunk : []) {
-              byId.set(school.id, school);
-            }
-          }
-          list = [...byId.values()].sort((a, b) =>
-            a.name.localeCompare(b.name, 'es')
-          );
-        } else {
-          const s = await getCatalogSchools();
-          list = Array.isArray(s) ? s : [];
-        }
-        if (!cancelled) {
-          setSchools(list);
-          setFilters((f) => {
-            if (!f.schoolId) return f;
-            const sid = Number(f.schoolId);
-            if (list.some((s) => s.id === sid)) return f;
-            return { ...f, schoolId: '', programId: '' };
-          });
-        }
-      } catch {
-        if (!cancelled) setSchools([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [filters.areaId, catalogAreaIds]);
+  const pruneProgram = useCallback((available: CatalogProgram[]) => {
+    setFilters((f) => {
+      if (!f.programId) return f;
+      const pid = Number(f.programId);
+      return available.some((p) => p.id === pid) ? f : { ...f, programId: '' };
+    });
+  }, [setFilters]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const schoolId = filters.schoolId ? Number(filters.schoolId) : undefined;
-    (async () => {
-      try {
-        let list: CatalogProgram[] = [];
-        if (schoolId != null && Number.isFinite(schoolId)) {
-          const p = await getCatalogPrograms({ school_id: schoolId });
-          list = Array.isArray(p) ? p : [];
-        } else if (catalogAreaIds != null && catalogAreaIds.length === 1) {
-          const p = await getCatalogPrograms({ area_id: catalogAreaIds[0] });
-          list = Array.isArray(p) ? p : [];
-        } else if (catalogAreaIds != null && catalogAreaIds.length > 1) {
-          const chunks = await Promise.all(
-            catalogAreaIds.map((id) => getCatalogPrograms({ area_id: id }))
-          );
-          const byId = new Map<number, CatalogProgram>();
-          for (const chunk of chunks) {
-            for (const prog of Array.isArray(chunk) ? chunk : []) {
-              byId.set(prog.id, prog);
-            }
-          }
-          list = [...byId.values()].sort((a, b) =>
-            a.name.localeCompare(b.name, 'es')
-          );
-        } else {
-          const p = await getCatalogPrograms();
-          list = Array.isArray(p) ? p : [];
-        }
-        if (!cancelled) {
-          setPrograms(list);
-          setFilters((f) => {
-            if (!f.programId) return f;
-            const pid = Number(f.programId);
-            if (list.some((p) => p.id === pid)) return f;
-            return { ...f, programId: '' };
-          });
-        }
-      } catch {
-        if (!cancelled) setPrograms([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [filters.schoolId, catalogAreaIds]);
+  const { schools, programs } = usePlantaScopedCatalogs({
+    areaId: filters.areaId,
+    schoolId: filters.schoolId,
+    catalogAreaIds,
+    onPruneSchool: pruneSchool,
+    onPruneProgram: pruneProgram,
+  });
 
-  const loadList = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!opts?.silent) setLoading(true);
-    setLoadError(null);
-    try {
-      const collected: PlantaPerson[] = [];
-      let page = 1;
-      let totalCount = 0;
-      let graph: OrgChartGraphPayload | null = null;
-      for (;;) {
-        const includeOrg = listStatus === 'active' && page === 1;
-        const res = await getPlantaActiva({
-          status: listStatus,
-          page,
-          limit: HIERARCHY_PAGE_SIZE,
-          include_org: includeOrg,
-        });
-        if (includeOrg) {
-          graph = parseOrgChartGraph(res.org);
-        }
-        const list = Array.isArray(res.data)
-          ? res.data.map((r) => {
-              const mapped = mapPlantaFromApi(r as Record<string, unknown>);
-              return { ...mapped, can_edit: resolveCanEdit(mapped) };
-            })
-          : [];
-        collected.push(...list);
-        totalCount = res.pagination?.total ?? collected.length;
-        if (collected.length >= totalCount || list.length === 0) break;
-        page += 1;
-        if (page > 20) break;
-      }
-      setOrgGraph(graph);
-      setRows(overlayOrgParents(collected, graph));
-      setTotal(totalCount);
-    } catch (e) {
-      setLoadError(
-        e instanceof Error ? e.message : 'No se pudo cargar la planta activa'
-      );
-      setRows([]);
-      setOrgGraph(null);
-      setTotal(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [listStatus, resolveCanEdit]);
-
-  useEffect(() => {
-    void loadList();
-  }, [loadList]);
+  const { rows, orgGraph, total, loading, loadError, reload: loadList } =
+    usePlantaPeople(listStatus, resolveCanEdit);
 
   useEffect(() => {
     setEditing((prev) => {
@@ -380,40 +191,6 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       };
     });
   }, [rows]);
-
-  useEffect(() => {
-    if (filters.search === applied.search) return;
-    const t = setTimeout(() => {
-      setApplied((prev) => ({ ...prev, search: filters.search }));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [filters.search, applied.search]);
-
-  const applyFilters = () => {
-    setApplied({ ...filters });
-  };
-
-  const clearFilters = () => {
-    const next: Filters = { ...EMPTY_FILTERS, areaId: lockedAreaId };
-    setFilters(next);
-    setApplied(next);
-  };
-
-  const activeFilterCount = useMemo(() => {
-    let n = 0;
-    if (applied.areaId) n++;
-    if (applied.schoolId) n++;
-    if (applied.programId) n++;
-    if (applied.roleId) n++;
-    if (applied.withoutSchool) n++;
-    if (applied.withoutProgram) n++;
-    if (applied.withoutRole) n++;
-    if (applied.withoutEduEmail) n++;
-    if (applied.withoutDocument) n++;
-    return n;
-  }, [applied]);
-
-  const hasActiveQuery = Boolean(applied.search.trim()) || activeFilterCount > 0;
 
   const forest = useMemo(
     () => buildOrganizationHierarchy(rows, orgGraph),
