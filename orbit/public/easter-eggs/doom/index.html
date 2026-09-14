@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DOOM</title>
+    <style>
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; color: #70ff70; font-family: monospace; }
+      body { display: grid; place-items: center; }
+      canvas { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; outline: none; }
+      #status { max-width: 720px; padding: 28px; line-height: 1.6; text-align: center; }
+      #status strong { display: block; margin-bottom: 12px; font-size: 20px; }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas" tabindex="0" hidden></canvas>
+    <div id="status"><strong>CHECKING DOOM ENGINE...</strong></div>
+    <script>
+      const status = document.getElementById("status");
+      const canvas = document.getElementById("canvas");
+      // This port packages the Shareware IWAD as /wad/DOOM1.WAD inside doom.data.
+      const required = ["doom.js", "doom.wasm", "doom.data"];
+
+      window.Module = {
+        canvas,
+        locateFile(path) { return path; },
+        setStatus(message) { if (message) status.textContent = message; },
+        onRuntimeInitialized() {
+          status.hidden = true;
+          canvas.hidden = false;
+          canvas.focus();
+        },
+        printErr(message) { console.error("[DOOM]", message); }
+      };
+
+      window.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        window.parent.postMessage("orbit-doom-exit", "*");
+      }, true);
+
+      Promise.all(required.map(async (file) => {
+        const response = await fetch(file, { method: "HEAD" });
+        return response.ok && response.headers.get("content-type") !== "text/html";
+      })).then((available) => {
+        if (!available.every(Boolean)) throw new Error("missing engine files");
+        status.textContent = "LOADING DOOM...";
+        const script = document.createElement("script");
+        script.src = "doom.js";
+        script.onerror = () => { status.innerHTML = "<strong>DOOM ENGINE FAILED TO LOAD</strong>Check the browser console and Emscripten build paths."; };
+        document.body.appendChild(script);
+      }).catch(() => {
+        status.innerHTML = "<strong>DOOM ENGINE NOT INSTALLED</strong>Place the compatible doom.js, doom.wasm and doom.data files in this directory.";
+      });
+    </script>
+  </body>
+</html>

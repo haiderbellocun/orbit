@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { lazy, Suspense, useState, useMemo, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
@@ -46,6 +46,16 @@ import {
 } from "./components/tutorial/TutorialContext";
 import { GuidedTour } from "./components/tutorial/GuidedTour";
 import { clearTutorialSession } from "./lib/tutorialStorage";
+
+const DoomPage = lazy(() => import("./components/views/DoomPage"));
+const MarioPage = lazy(() => import("./components/views/MarioPage"));
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])")
+  );
+}
 
 function AppShell({
   view,
@@ -227,6 +237,74 @@ export default function App() {
   const [capabilities, setCapabilities] = useState<string[]>([]);
   const [selectedVacancy, setSelectedVacancy] = useState<Vacancy | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDoomOpen, setIsDoomOpen] = useState(
+    () => window.location.pathname === "/doom"
+  );
+  const [isMarioOpen, setIsMarioOpen] = useState(
+    () => window.location.pathname === "/mario"
+  );
+
+  const exitDoom = useCallback(() => {
+    if (window.history.state?.orbitDoom) {
+      window.history.back();
+      return;
+    }
+
+    window.history.replaceState(null, "", "/");
+    setIsDoomOpen(false);
+  }, []);
+
+  const exitMario = useCallback(() => {
+    if (window.history.state?.orbitMario) {
+      window.history.back();
+      return;
+    }
+
+    window.history.replaceState(null, "", "/");
+    setIsMarioOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const syncSecretPath = () => {
+      setIsDoomOpen(window.location.pathname === "/doom");
+      setIsMarioOpen(window.location.pathname === "/mario");
+    };
+    window.addEventListener("popstate", syncSecretPath);
+    return () => window.removeEventListener("popstate", syncSecretPath);
+  }, []);
+
+  useEffect(() => {
+    if (view === "login") return;
+
+    const onSecretShortcut = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      const opensDoom = event.code === "KeyK" || key === "k";
+      const opensMario = event.code === "KeyM" || key === "m";
+      if (
+        event.repeat ||
+        (!opensDoom && !opensMario) ||
+        !event.ctrlKey ||
+        !event.shiftKey ||
+        event.altKey ||
+        event.metaKey ||
+        isEditableShortcutTarget(event.target) ||
+        isEditableShortcutTarget(document.activeElement)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const path = opensMario ? "/mario" : "/doom";
+      if (window.location.pathname === path) return;
+      window.history.pushState(opensMario ? { orbitMario: true } : { orbitDoom: true }, "", path);
+      if (opensMario) setIsMarioOpen(true);
+      else setIsDoomOpen(true);
+    };
+
+    window.addEventListener("keydown", onSecretShortcut, { capture: true });
+    return () => window.removeEventListener("keydown", onSecretShortcut, { capture: true });
+  }, [view]);
 
   useEffect(() => {
     let cancelled = false;
@@ -332,6 +410,22 @@ export default function App() {
 
   if (view === "login") {
     return <LoginView onLogin={handleLogin} />;
+  }
+
+  if (isDoomOpen) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-black" />}>
+        <DoomPage onExit={exitDoom} />
+      </Suspense>
+    );
+  }
+
+  if (isMarioOpen) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-black" />}>
+        <MarioPage onExit={exitMario} />
+      </Suspense>
+    );
   }
 
   return (

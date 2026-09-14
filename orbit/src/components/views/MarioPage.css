@@ -1,0 +1,14 @@
+.mario-page { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: 100%; height: 100vh; height: 100dvh; overflow: hidden; background: #050818; color: white; font-family: "Courier New", monospace; }
+.mario-toolbar, .mario-help { display: flex; align-items: center; min-height: 48px; padding: 8px clamp(12px, 2vw, 24px); background: #161b50; border-color: #62a8ff; }
+.mario-toolbar { justify-content: space-between; border-bottom: 3px solid #62a8ff; }
+.mario-help { justify-content: center; border-top: 3px solid #62a8ff; font-size: 12px; text-align: center; }
+.mario-title { color: #ffdf36; font-weight: 900; letter-spacing: .18em; text-shadow: 2px 2px #d32929; }
+.mario-actions { display: flex; gap: 8px; }
+.mario-actions button { padding: 7px 11px; border: 2px solid white; border-radius: 4px; background: #d32929; color: white; font: inherit; font-size: 12px; cursor: pointer; box-shadow: 2px 2px #050818; }
+.mario-actions button:hover, .mario-actions button:focus-visible { background: #f04444; outline: 2px solid #ffdf36; }
+.mario-stage { position: relative; min-height: 0; display: grid; place-items: center; overflow: hidden; background: #050818; }
+.mario-frame { width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity 180ms ease; }
+.mario-frame--ready { opacity: 1; }
+.mario-loader { position: absolute; color: #ffdf36; font-size: clamp(14px, 2vw, 22px); animation: mario-blink .65s steps(2) infinite; }
+@keyframes mario-blink { 50% { opacity: .35; } }
+@media (max-width: 520px) { .mario-help { font-size: 10px; } .mario-actions button { padding-inline: 7px; font-size: 10px; } }

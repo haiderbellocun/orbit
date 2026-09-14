@@ -1,0 +1,78 @@
+.doom-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: #030503;
+  color: #73ff73;
+  font-family: "Courier New", monospace;
+}
+
+.doom-toolbar,
+.doom-help {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px clamp(12px, 2vw, 24px);
+  border-color: #1d681d;
+  background: #050905;
+}
+
+.doom-toolbar { justify-content: space-between; border-bottom: 1px solid #1d681d; }
+.doom-help { justify-content: center; border-top: 1px solid #1d681d; font-size: 12px; text-align: center; }
+.doom-title { font-weight: 800; letter-spacing: .24em; text-shadow: 0 0 10px #35ff35; }
+.doom-actions { display: flex; gap: 8px; }
+
+.doom-actions button {
+  padding: 7px 11px;
+  border: 1px solid #319331;
+  border-radius: 2px;
+  background: #071207;
+  color: #8dff8d;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.doom-actions button:hover,
+.doom-actions button:focus-visible { background: #123012; outline: 1px solid #73ff73; }
+.doom-stage { position: relative; min-height: 0; background: #000; }
+
+.doom-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.doom-frame--ready { opacity: 1; }
+
+.doom-loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: min(620px, 88vw);
+  margin: auto;
+  padding: 24px;
+  color: #60ff60;
+  font-size: clamp(13px, 1.7vw, 18px);
+  text-shadow: 0 0 8px #28bb28;
+  pointer-events: none;
+}
+
+.doom-loader p { margin: 7px 0; }
+.doom-progress { height: 14px; margin: 14px 0; border: 1px solid #40df40; padding: 2px; }
+.doom-progress span { display: block; height: 100%; background: #52ef52; animation: doom-load 850ms ease-out both; }
+
+@keyframes doom-load { from { width: 0; } to { width: 100%; } }
+
+@media (max-width: 520px) {
+  .doom-help { font-size: 10px; }
+  .doom-actions button { padding-inline: 7px; font-size: 10px; }
+}

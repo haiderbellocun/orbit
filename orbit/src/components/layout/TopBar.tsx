@@ -65,7 +65,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         tag === "select" ||
         target?.isContentEditable;
 
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen(true);
         return;
