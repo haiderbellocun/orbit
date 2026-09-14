@@ -38,6 +38,7 @@ export type OrbitJwtUser = {
   capabilities: OrbitCapability[];
   schoolId: number | null;
   areaId: number | null;
+  areaName: string | null;
   programIds: number[];
   /** `null` = sin recorte de vista (admin o ver todas). */
   plantaViewAreaIds: number[] | null;
@@ -112,6 +113,7 @@ export function orbitAuthMiddleware(
       capabilities?: unknown;
       schoolId?: unknown;
       programIds?: unknown;
+      areaName?: unknown;
     };
 
     if (!isOrbitSessionActive(decoded)) {
@@ -239,6 +241,7 @@ export function orbitAuthMiddleware(
             : Number.parseInt(String(decoded.areaId ?? ""), 10);
         return Number.isFinite(aid) && aid > 0 ? aid : null;
       })(),
+      areaName: decoded.areaName != null ? String(decoded.areaName) : null,
       programIds: orbitAccess === "lite" && Array.isArray(decoded.programIds)
         ? decoded.programIds.map((id) => asNum(id, 0)).filter((id) => id > 0)
         : [],

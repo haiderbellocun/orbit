@@ -370,6 +370,7 @@ export type AuthUser = {
   name: string;
   roleCode: string | null;
   roleName: string | null;
+  areaName?: string | null;
 };
 
 export type GoogleAuthResponse = {
@@ -383,6 +384,7 @@ export type GoogleAuthResponse = {
     roleId?: number | null;
     roleCode?: string | null;
     roleName?: string | null;
+    areaName?: string | null;
     orbitAccess?: OrbitAccess;
     capabilities?: string[];
     plantaActivaAccess?: {

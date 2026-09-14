@@ -93,6 +93,7 @@ type PersonRow = {
   programs_id: number[] | null;
   role_code: string | null;
   role_name: string | null;
+  area_name: string | null;
 };
 
 function getRequiredEnv(name: string): string {
@@ -151,10 +152,12 @@ async function fetchPersonByEmail(emailNorm: string): Promise<PersonRow | null> 
          p.program_id,
          ${programsSelect},
          r.code AS role_code,
-         r.name AS role_name
+         r.name AS role_name,
+         a.name AS area_name
        FROM person p
        LEFT JOIN role r ON r.id = p.role_id
        LEFT JOIN school s ON s.id = p.school_id
+       LEFT JOIN area a ON a.id = COALESCE(p.area_id, s.area_id)
        ${ppaJoin}
        WHERE (
            LOWER(TRIM(p.email)) = $1
@@ -469,6 +472,7 @@ type AuthSuccessBody = {
     roleId: number | null;
     roleCode: string | null;
     roleName: string | null;
+    areaName: string | null;
     orbitAccess: OrbitAccess;
     capabilities: OrbitCapability[];
     /** Presente en grants de Planta Activa; admin no lo necesita. */
@@ -537,6 +541,7 @@ async function buildTokenResponse(params: {
       capabilities,
       schoolId,
       areaId: areaId != null && Number.isFinite(areaId) ? areaId : null,
+      areaName: person.area_name ?? null,
       programIds: orbitAccess === "lite" ? programIds : [],
       plantaViewAreaIds,
       plantaEditAreaIds,
@@ -574,6 +579,7 @@ async function buildTokenResponse(params: {
       roleId,
       roleCode: person.role_code ?? null,
       roleName: person.role_name ?? null,
+      areaName: person.area_name ?? null,
       orbitAccess,
       capabilities,
       ...(plantaActivaAccess ? { plantaActivaAccess } : {}),
@@ -821,6 +827,7 @@ router.get("/auth/session", orbitAuthMiddleware, (req, res) => {
       roleId: user.roleId,
       roleCode: user.role,
       roleName: user.role,
+      areaName: (user as typeof user & { areaName?: string | null }).areaName ?? null,
       orbitAccess: user.orbitAccess,
       capabilities: user.capabilities,
       plantaActivaAccess: {

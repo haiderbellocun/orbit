@@ -28,6 +28,12 @@ import {
 } from "@/src/lib/permissions";
 import { setPlantaPendingFilters } from "@/src/lib/plantaPendingFilters";
 import { useTutorialOptional } from "@/src/components/tutorial/TutorialContext";
+import {
+  getDayPeriodGreeting,
+  getFirstName,
+  getProfileContext,
+  getStoredUserProfile,
+} from "@/src/lib/userPersonalization";
 
 interface HomeViewProps {
   setView: (v: View) => void;
@@ -169,6 +175,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onOpenVacancyFromNotification: _onOpenVacancyFromNotification,
 }) => {
   const tutorial = useTutorialOptional();
+  const userProfile = useMemo(() => getStoredUserProfile(), []);
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ok" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -358,12 +365,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const periodLabel = formatPeriodLabel(summary?.updatedAt);
   const canQuickCreate = canManageVacancies && !isLiteUser;
+  const firstName = getFirstName(userProfile?.name);
+  const greeting = `${getDayPeriodGreeting()}${firstName ? `, ${firstName}` : ""}`;
+  const profileContext = getProfileContext(userProfile);
 
   return (
     <div className="space-y-5">
       <Header
-        title="Command Center"
-        subtitle={`${periodLabel.charAt(0).toUpperCase()}${periodLabel.slice(1)} · Resumen operativo`}
+        title={greeting}
+        subtitle={`${profileContext ? `${profileContext} · ` : ""}${periodLabel.charAt(0).toUpperCase()}${periodLabel.slice(1)} · Resumen operativo`}
         actions={
           canQuickCreate ? (
             <button

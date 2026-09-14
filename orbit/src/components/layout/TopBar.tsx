@@ -9,25 +9,7 @@ import { CommandPalette } from "@/src/components/layout/CommandPalette";
 import { ThemeToggle } from "@/src/components/layout/ThemeToggle";
 import { cn } from "@/src/lib/utils";
 import { View, type NavItem } from "@/src/types";
-
-type StoredUser = {
-  id?: number;
-  email?: string;
-  name?: string;
-  picture?: string;
-  roleCode?: string | null;
-  roleName?: string | null;
-};
-
-function getStoredUser(): StoredUser | null {
-  try {
-    const raw = localStorage.getItem("orbit_user");
-    if (!raw) return null;
-    return JSON.parse(raw) as StoredUser;
-  } catch {
-    return null;
-  }
-}
+import { getProfileContext, getStoredUserProfile } from "@/src/lib/userPersonalization";
 
 function getInitials(name: string): string {
   const initials = name
@@ -67,9 +49,10 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  const user = useMemo(() => getStoredUser(), []);
+  const user = useMemo(() => getStoredUserProfile(), []);
   const displayName = user?.name || "Usuario";
   const displayRole = user?.roleName || user?.roleCode || "Usuario";
+  const displayContext = getProfileContext(user) || displayRole;
   const initials = getInitials(displayName);
 
   useEffect(() => {
@@ -182,7 +165,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   {displayName}
                 </span>
                 <span className="block max-w-[9rem] truncate text-[10px] text-orbit-muted">
-                  {displayRole}
+                  {displayContext}
                 </span>
               </span>
               <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-orbit-border bg-orbit-interactive text-[11px] font-bold text-orbit-primary">
@@ -206,7 +189,10 @@ export const TopBar: React.FC<TopBarProps> = ({
               >
                 <div className="border-b border-orbit-border px-3 py-2.5">
                   <p className="truncate text-sm font-medium text-orbit-text">{displayName}</p>
-                  <p className="truncate text-[11px] text-orbit-muted">{user?.email || displayRole}</p>
+                  <p className="truncate text-[11px] text-orbit-muted">{displayContext}</p>
+                  {user?.email && (
+                    <p className="mt-0.5 truncate text-[10px] text-orbit-muted">{user.email}</p>
+                  )}
                 </div>
                 {onToggleTutorial && (
                   <button
