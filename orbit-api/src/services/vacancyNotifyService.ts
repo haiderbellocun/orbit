@@ -22,7 +22,7 @@ const NOTIFY_TITLE = "Nueva vacante registrada";
 function parseNotifyEmails(): string[] {
   const raw =
     process.env.VACANCY_NOTIFY_EMAILS ??
-    "camilo_quintero@cun.edu.co,sara_murillofo@cun.edu.co,cindy_russi@cun.edu.co";
+    "camilo_quintero@cun.edu.co,sara_murillofo@cun.edu.co,cindy_russi@cun.edu.co,lorena_gomez@cun.edu.co";
   return raw
     .split(",")
     .map((e) => e.trim().toLowerCase())

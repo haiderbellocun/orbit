@@ -79,6 +79,7 @@ const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
   "yesid_rocha@cun.edu.co",
   "sara_murillofo@cun.edu.co",
   "cindy_russi@cun.edu.co",
+  "lorena_gomez@cun.edu.co",
 ] as const;
 
 const DEFAULT_ROLE_MANAGEMENT_ALLOWLIST = [
@@ -87,6 +88,7 @@ const DEFAULT_ROLE_MANAGEMENT_ALLOWLIST = [
   "zuany_acuna@cun.edu.co",
   "sara_murillofo@cun.edu.co",
   "cindy_russi@cun.edu.co",
+  "lorena_gomez@cun.edu.co",
 ] as const;
 
 export function getOrbitAccessAllowlist(): string[] {

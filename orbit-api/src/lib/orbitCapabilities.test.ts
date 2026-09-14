@@ -217,7 +217,7 @@ test("allowlist env override", () => {
   }
 });
 
-test("vacancy admin allowlist: camilo, yesid, sara, cindy", () => {
+test("vacancy admin allowlist: camilo, yesid, sara, cindy, lorena", () => {
   const prev = process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST;
   delete process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST;
   try {
@@ -225,6 +225,7 @@ test("vacancy admin allowlist: camilo, yesid, sara, cindy", () => {
     assert.equal(isEmailVacancyAdmin("yesid_rocha@cun.edu.co"), true);
     assert.equal(isEmailVacancyAdmin("sara_murillofo@cun.edu.co"), true);
     assert.equal(isEmailVacancyAdmin("cindy_russi@cun.edu.co"), true);
+    assert.equal(isEmailVacancyAdmin("lorena_gomez@cun.edu.co"), true);
     assert.equal(isEmailVacancyAdmin("otro@cun.edu.co"), false);
     assert.equal(isEmailAuthorizedForOrbit("yesid_rocha@cun.edu.co"), true);
     assert.equal(
@@ -295,6 +296,13 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
   assert.deepEqual(cindy!.extraCapabilities, sara!.extraCapabilities);
   const cindyAccess = resolvePlantaActivaGrantAccess(cindy);
   assert.deepEqual(cindyAccess, saraAccess);
+
+  const lorena = getPlantaActivaGrant("lorena_gomez@cun.edu.co");
+  assert.ok(lorena);
+  assert.deepEqual(lorena!.viewAreaIds, sara!.viewAreaIds);
+  assert.deepEqual(lorena!.editAreaIds, sara!.editAreaIds);
+  assert.deepEqual(lorena!.extraCapabilities, sara!.extraCapabilities);
+  assert.deepEqual(resolvePlantaActivaGrantAccess(lorena), saraAccess);
 
   const leidy = getPlantaActivaGrant("LEIDY_BERNAL@cun.edu.co");
   assert.ok(leidy);
@@ -414,6 +422,7 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
 test("isEmailAuthorizedForOrbit includes planta grants", () => {
   assert.equal(isEmailAuthorizedForOrbit("sara_murillofo@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("cindy_russi@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("lorena_gomez@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("leidy_bernal@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("tania_rocha@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("katherinn_devia@cun.edu.co"), true);

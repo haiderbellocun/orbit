@@ -11,7 +11,7 @@
   GoogleClientId = "526995286786-c292djsqta9pgassddcrlecocpf2rgfo.apps.googleusercontent.com"
   DbSchema = "core"
 
-  # Acceso total. Sara y Cindy NO van aquí: su grant especial excluye Carga y Balance.
+  # Acceso total. Sara, Cindy y Lorena NO van aquí: su grant especial excluye Carga y Balance.
   OrbitAccessAllowlist = @(
     "camilo_quintero@cun.edu.co"
     "haider_bello@cun.edu.co"
@@ -23,6 +23,7 @@
     "yesid_rocha@cun.edu.co"
     "sara_murillofo@cun.edu.co"
     "cindy_russi@cun.edu.co"
+    "lorena_gomez@cun.edu.co"
   )
   OrbitRoleManagementAllowlist = @(
     "camilo_quintero@cun.edu.co"
@@ -30,11 +31,13 @@
     "zuany_acuna@cun.edu.co"
     "sara_murillofo@cun.edu.co"
     "cindy_russi@cun.edu.co"
+    "lorena_gomez@cun.edu.co"
   )
   VacancyNotifyEmails = @(
     "camilo_quintero@cun.edu.co"
     "sara_murillofo@cun.edu.co"
     "cindy_russi@cun.edu.co"
+    "lorena_gomez@cun.edu.co"
   )
 
   # Mantiene el flujo de login por correo que actualmente usa producción.

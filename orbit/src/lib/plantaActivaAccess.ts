@@ -43,6 +43,7 @@ const HIERARCHY_VIEW_ONLY_ACCESS: PlantaActivaAccess = {
 const GRANTS: Readonly<Record<string, PlantaActivaAccess>> = {
   "sara_murillofo@cun.edu.co": SARA_LEVEL_ACCESS,
   "cindy_russi@cun.edu.co": SARA_LEVEL_ACCESS,
+  "lorena_gomez@cun.edu.co": SARA_LEVEL_ACCESS,
   "leidy_bernal@cun.edu.co": {
     viewAreaIds: [1],
     editAreaIds: [1],
