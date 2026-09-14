@@ -202,7 +202,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
         {expanded && (
           <div
             className={cn(
-              'px-4 py-4 sm:px-6',
+              'px-2 py-3 sm:px-6 sm:py-4',
               isApex
                 ? 'pt-3'
                 : 'border-t border-orbit-border bg-orbit-bg-secondary/40'
@@ -222,7 +222,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
                 )}
               </div>
             ) : (
-              <div className="relative space-y-3 pl-3 sm:pl-5">
+              <div className="relative space-y-3 pl-1.5 sm:pl-5">
                 <div
                   className="absolute bottom-2 left-0 top-2 w-px"
                   style={{ backgroundColor: tone.border }}

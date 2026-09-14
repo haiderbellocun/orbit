@@ -63,7 +63,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
         >
           <div
             className={cn(
-              'unit-card-header flex items-start gap-3 p-3 sm:p-4',
+              'unit-card-header grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 p-3 sm:flex sm:p-4',
               canExpand && 'cursor-pointer'
             )}
             onClick={() => {
@@ -86,10 +86,10 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
               {personInitials(person.name)}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+              <p className="break-words text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                 {person.role_name || 'Líder'}
               </p>
-              <p className="font-semibold text-orbit-text truncate">
+              <p className="break-words font-semibold text-orbit-text sm:truncate">
                 {person.name}
               </p>
               <SecondInCommandBadges person={person} />
@@ -98,11 +98,11 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
                   {node.assignmentLabel}
                 </p>
               ) : null}
-              <p className="text-xs truncate font-semibold" style={{ color: tone.accent }}>
+              <p className="break-words text-xs font-semibold sm:truncate" style={{ color: tone.accent }}>
                 {person.school || person.program || 'Sin programa'}
               </p>
               {person.edu_email?.trim() ? (
-                <p className="text-xs text-orbit-muted truncate">
+                <p className="break-all text-xs text-orbit-muted sm:truncate">
                   {person.edu_email}
                 </p>
               ) : (
@@ -115,11 +115,11 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
                 {node.totalReportsCount === 1 ? '' : 'es'}
               </p>
             </div>
-            <UnitEmblem subject={person} />
             <div
-              className="flex shrink-0 items-center gap-1"
+              className="col-span-2 flex min-w-0 shrink-0 items-center justify-end gap-1 sm:col-auto sm:justify-start"
               onClick={(e) => e.stopPropagation()}
             >
+              <UnitEmblem subject={person} />
               {canEdit && canMutate ? (
                 <button
                   type="button"
@@ -162,7 +162,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
           </div>
 
           {expanded && (
-            <div className="border-t border-orbit-border px-3 pb-3 sm:px-4 sm:pb-4">
+            <div className="border-t border-orbit-border px-2 pb-2 sm:px-4 sm:pb-4">
               {node.children.length === 0 ? (
                 <div className="py-4 text-sm text-orbit-muted">
                   <p>Este líder aún no tiene colaboradores asignados.</p>

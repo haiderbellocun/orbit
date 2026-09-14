@@ -160,7 +160,7 @@ export const OrganizationHierarchy: React.FC<OrganizationHierarchyProps> = ({
               return (
                 <div
                   key={school.key}
-                  className="space-y-3 rounded-2xl border p-3 sm:p-4"
+                  className="space-y-3 rounded-2xl border p-2 sm:p-4"
                   style={{
                     borderColor: tone.border,
                     borderLeftWidth: 4,
