@@ -56,7 +56,7 @@ export default function MarioPage({ onExit }: MarioPageProps) {
           onLoad={() => setReady(true)}
         />
       </div>
-      <footer className="mario-help">ARROWS = MOVE &nbsp;·&nbsp; X = JUMP &nbsp;·&nbsp; Z = RUN / FIRE</footer>
+      <footer className="mario-help">A / D OR ARROWS = MOVE &nbsp;·&nbsp; X = JUMP &nbsp;·&nbsp; Z = RUN / FIRE</footer>
     </section>
   );
 }
