@@ -102,6 +102,10 @@ export function unitEmblem(subject: UnitSubject): string | null {
   if (DIRECCION_OPERACIONES.test(role)) return 'DirectorOp.png';
   if (/COORDINA(?:CION|DOR|DORA) GENERAL/.test(role)) return 'CoordinacionGeneral.png';
   const area = fold(subject.area);
+  // La coordinación de Fábrica usa la identidad general del área.
+  if (/COORDINA(?:CION|DOR|DORA).*FABRICA/.test(role) && /FABRICA/.test(area)) {
+    return 'fabrica/Fabrica.png';
+  }
   // Sara Juliana: identidad de Contenidos, aunque su escuela figure como Desarrollo.
   if (subject.document?.trim() === '1019117022' && /FABRICA/.test(area)) {
     return 'fabrica/FOCA_GIF.png';

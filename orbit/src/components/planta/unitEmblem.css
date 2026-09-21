@@ -65,13 +65,13 @@
     filter: contrast(var(--emblem-contrast, 1)) brightness(var(--emblem-brightness, 1));
   }
 
-  .unit-card-header:hover > .unit-emblem img,
-  .unit-card-header:focus-within > .unit-emblem img {
+  .unit-card-header:hover .unit-emblem img,
+  .unit-card-header:focus-within .unit-emblem img {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-  .unit-card-header:hover > .unit-emblem::before,
-  .unit-card-header:focus-within > .unit-emblem::before {
+  .unit-card-header:hover .unit-emblem::before,
+  .unit-card-header:focus-within .unit-emblem::before {
     opacity: 1;
   }
   @media (hover: none) {
