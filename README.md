@@ -549,7 +549,8 @@ npm run dev   # → :3000
 |:-----:|-----------|------|
 | 🔐 | [auth-google.md](orbit-api/docs/auth-google.md) | Login, JWT, capabilities |
 | 🎓 | [carga-academica.md](orbit-api/docs/carga-academica.md) | Modelo BI carga |
-| 👥 | [README_SEGUNDOS_AL_MANDO.md](README_SEGUNDOS_AL_MANDO.md) | Segundos al mando · avance 75% |
+| 📊 | [ESTADO_PROYECTO.md](ESTADO_PROYECTO.md) | Estado general y porcentaje de avance |
+| 👥 | [second-in-command.md](orbit-api/docs/second-in-command.md) | Segundos al mando |
 | 📋 | [ANS-vacantes.md](docs/ANS-vacantes.md) | ANS vacantes |
 | ☁️ | [README_DEPLOY.md](orbit-api/README_DEPLOY.md) | Deploy Cloud Run |
 | 🔗 | [LOGIN_APPS_INTEGRATION.md](LOGIN_APPS_INTEGRATION.md) | Logins centrales |
