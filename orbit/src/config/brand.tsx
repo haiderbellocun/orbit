@@ -26,13 +26,13 @@ export const BRAND_CONFIG: BrandConfig = {
   // LOGO PARA PANTALLA DE INICIO (LOGIN)
   logoLogin: {
     type: 'png',
-    content: 'https://i.ibb.co/4nd5Tt7q/LOGO-ORBIT-BLANCO-512-Mesa-de-trabajo-1-Mesa-de-trabajo-1.png'
+    content: '/brand/orbit-logo-white.png'
   },
 
   // LOGO PARA EL MENÚ Y BARRA LATERAL
   logoMenu: {
     type: 'png',
-    content: 'https://i.ibb.co/1SR92PZ/LOGO-ORBIT-512-Mesa-de-trabajo-1-02-02.png'
+    content: '/brand/orbit-logo.png'
   },
 
   // PALETA DE COLORES
