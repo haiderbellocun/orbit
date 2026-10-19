@@ -1,0 +1,116 @@
+{
+  "committed": true,
+  "before": [
+    {
+      "id": "1795",
+      "document": "1019075871",
+      "full_name": "ANA MARIA ZAPATA FRAILE",
+      "is_active": true,
+      "program_id": null
+    },
+    {
+      "id": "1796",
+      "document": "1069463998",
+      "full_name": "LUCIA YANINA RESTAN DIAZ",
+      "is_active": true,
+      "program_id": null
+    },
+    {
+      "id": "1644",
+      "document": "14398814",
+      "full_name": "MIGUEL ALFONSO MARTINEZ",
+      "is_active": false,
+      "program_id": "9"
+    },
+    {
+      "id": "1015",
+      "document": "11036209",
+      "full_name": "IVAN EUSEBIO HERRERA SUAREZ",
+      "is_active": false,
+      "program_id": "24"
+    },
+    {
+      "id": "1060",
+      "document": "1023932846",
+      "full_name": "MICHAEL ALBERTO LEON YAS",
+      "is_active": false,
+      "program_id": "25"
+    },
+    {
+      "id": "1353",
+      "document": "1010178247",
+      "full_name": "JUAN SEBASTIAN HOYOS BUCHELI",
+      "is_active": false,
+      "program_id": "6"
+    },
+    {
+      "id": "1070",
+      "document": "1073233411",
+      "full_name": "LEIDY MILENA SUESCA VILLAMIL",
+      "is_active": false,
+      "program_id": "39"
+    },
+    {
+      "id": "1350",
+      "document": "1072896519",
+      "full_name": "LINDA GISSELA AGUILERA DOMINGUEZ",
+      "is_active": false,
+      "program_id": null
+    }
+  ],
+  "program": {
+    "id": "168",
+    "school_id": "7",
+    "name": "ESPECIALIZACION DERECHOS HUMANOS"
+  },
+  "verified": [
+    {
+      "document": "1010178247",
+      "full_name": "JUAN SEBASTIAN HOYOS BUCHELI",
+      "is_active": true,
+      "program_id": "6"
+    },
+    {
+      "document": "1019075871",
+      "full_name": "ANA MARIA ZAPATA FRAILE",
+      "is_active": true,
+      "program_id": "168"
+    },
+    {
+      "document": "1023932846",
+      "full_name": "MICHAEL ALBERTO LEON YAS",
+      "is_active": true,
+      "program_id": "25"
+    },
+    {
+      "document": "1069463998",
+      "full_name": "LUCIA YANINA RESTAN DIAZ",
+      "is_active": true,
+      "program_id": "168"
+    },
+    {
+      "document": "1072896519",
+      "full_name": "LINDA GISELL AGUILERA DOMINGUEZ",
+      "is_active": true,
+      "program_id": null
+    },
+    {
+      "document": "1073233411",
+      "full_name": "LEIDY MILENA SUESCA VILLAMIL",
+      "is_active": true,
+      "program_id": "39"
+    },
+    {
+      "document": "11036209",
+      "full_name": "IVAN EUSEBIO HERRERA SUAREZ",
+      "is_active": true,
+      "program_id": "24"
+    },
+    {
+      "document": "14398814",
+      "full_name": "MIGUEL ALFONSO MARTINEZ",
+      "is_active": true,
+      "program_id": "9"
+    }
+  ]
+}

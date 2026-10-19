@@ -1,0 +1,31 @@
+import fs from 'node:fs/promises';
+import {FileBlob,SpreadsheetFile} from '@oai/artifact-tool';
+const root='C:/Users/camil/Desktop/orbit/';
+const dir=root+'outputs/planta-2026-10-16/';
+const wb=await SpreadsheetFile.importXlsx(await FileBlob.load(root+'Planta Activa Facilitadores - Lite 16 oct.xlsx'));
+console.log((await wb.inspect({kind:'sheet',include:'id,name',maxChars:1000})).ndjson);
+const preview=await wb.render({sheetName:'Hoja1',range:'P1:U6',scale:1.5,format:'png'});
+await fs.writeFile(dir+'before-emails.png',new Uint8Array(await preview.arrayBuffer()));
+if(!process.argv.includes('--edit'))process.exit(0);
+const sheet=wb.worksheets.getItem('Hoja1');
+const people=JSON.parse(await fs.readFile(dir+'emails-db.json','utf8'));
+const byDoc=new Map();
+const norm=v=>String(v??'').replace(/\D/g,'');
+for(const p of people){const k=norm(p.document);if(byDoc.has(k))throw Error('Documento duplicado '+k);byDoc.set(k,p);}
+const rows=sheet.getRange('A2:U1080').values;
+const valid=v=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v||'').trim())?String(v).trim().toLowerCase():null;
+function emails(id){const p=byDoc.get(norm(id));if(!p)throw Error('Persona faltante '+id);return [valid(p.edu_email),valid(p.email)];}
+const matrix=rows.map(r=>[...emails(r[0]),...emails(r[16])]);
+sheet.getRange('V1:Y1').copyFrom(sheet.getRange('R1:U1'),'all');
+sheet.getRange('V1:Y1').values=[['Correo institucional docente','Otro correo registrado docente','Correo institucional LITE','Otro correo registrado LITE']];
+sheet.getRange('V2:Y1080').values=matrix;
+sheet.getRange('V1:Y1080').format.columnWidth=48;
+sheet.getRange('V1:Y1').format.wrapText=true;
+wb.recalculate();
+console.log((await wb.inspect({kind:'table',range:'Hoja1!V1:Y4',tableMaxRows:4,tableMaxCols:4,maxChars:1600})).ndjson);
+const after=await wb.render({sheetName:'Hoja1',range:'V1:Y6',scale:1.3,format:'png'});
+await fs.writeFile(dir+'after-emails.png',new Uint8Array(await after.arrayBuffer()));
+await (await SpreadsheetFile.exportXlsx(wb)).save(dir+'Planta Activa Facilitadores - Lite 16 oct - con correos.xlsx');
+const uniqueLites=[...new Set(rows.map(r=>norm(r[16])))];
+const stats={docentes:rows.length,docentes_con_institucional:matrix.filter(r=>r[0]).length,docentes_con_algun_correo:matrix.filter(r=>r[0]||r[1]).length,lites:uniqueLites.length,lites_con_institucional:uniqueLites.filter(k=>emails(k)[0]).length,lites_con_algun_correo:uniqueLites.filter(k=>emails(k).some(Boolean)).length};
+await fs.writeFile(dir+'email-summary.json',JSON.stringify(stats,null,2));console.log(JSON.stringify(stats));

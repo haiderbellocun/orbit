@@ -1,0 +1,51 @@
+{
+  "source_teachers": 1079,
+  "source_lites": 57,
+  "missing_by_kind": {
+    "LITE": 1,
+    "DOCENTE": 84
+  },
+  "existing_inactive": 6,
+  "issues": [
+    {
+      "document": "1019075871",
+      "issue": "programa sin coincidencia unica",
+      "program": "ESPECIALIZACION DERECHOS HUMANOS"
+    },
+    {
+      "document": "1069463998",
+      "issue": "programa sin coincidencia unica",
+      "program": "ESPECIALIZACION DERECHOS HUMANOS"
+    },
+    {
+      "document": "14398814",
+      "name": "MIGUEL ALFONSO MARTINEZ BARRAGAN",
+      "issue": "existente inactivo"
+    },
+    {
+      "document": "1023932846",
+      "name": "MICHAEL ALBERTO LEON YAS",
+      "issue": "existente inactivo"
+    },
+    {
+      "document": "1073233411",
+      "name": "LEIDY MILENA SUESCA VILLAMIL",
+      "issue": "existente inactivo"
+    },
+    {
+      "document": "11036209",
+      "name": "IVAN EUSEBIO HERRERA SUAREZ",
+      "issue": "existente inactivo"
+    },
+    {
+      "document": "1010178247",
+      "name": "JUAN SEBASTIAN HOYOS BUCHELI",
+      "issue": "existente inactivo"
+    },
+    {
+      "document": "1072896519",
+      "name": "LINDA GISSELA AGUILERA DOMINGUEZ",
+      "issue": "existente inactivo"
+    }
+  ]
+}
