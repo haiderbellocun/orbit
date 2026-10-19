@@ -1,0 +1,35 @@
+import fs from 'node:fs';
+import dotenv from 'dotenv';
+import pg from 'pg';
+dotenv.config();
+const pool=new pg.Pool({host:process.env.DB_HOST,port:Number(process.env.DB_PORT||5432),user:process.env.DB_USERNAME||process.env.DB_USER,password:process.env.DB_PASSWORD,database:process.env.DB_NAME,ssl:/^(true|1)$/.test(process.env.DB_SSL||'')?{rejectUnauthorized:false}:undefined,connectionTimeoutMillis:15000});
+const c=await pool.connect();
+const docs=['14398814','1023932846','1073233411','11036209','1010178247','1072896519'];
+const teachers=['1019075871','1069463998'];
+const nd="regexp_replace(coalesce(document,''),'[^0-9]','','g')";
+const norm="upper(translate(name,'ÁÉÍÓÚÑáéíóúñ','AEIOUNaeioun'))";
+try{
+ await c.query('BEGIN');
+ await c.query("SET LOCAL lock_timeout='10s'");
+ await c.query('LOCK TABLE core.program IN SHARE ROW EXCLUSIVE MODE');
+ const before=(await c.query(`select id,document,full_name,is_active,program_id from core.person where ${nd}=any($1::text[]) for update`,[[...docs,...teachers]])).rows;
+ for(const doc of [...docs,...teachers])if(before.filter(x=>x.document.replace(/\D/g,'')===doc).length!==1)throw Error('Missing or duplicate document '+doc);
+ const schools=await c.query(`select id from core.school where ${norm}='ESPECIALIZACIONES'`);
+ if(schools.rowCount!==1)throw Error('School not unique');
+ const school=schools.rows[0].id;
+ let programs=await c.query(`select id,school_id,name from core.program where ${norm}='ESPECIALIZACION DERECHOS HUMANOS'`);
+ if(programs.rowCount>1)throw Error('Duplicate program');
+ let program=programs.rows[0];
+ if(program && program.school_id!==school)throw Error('Unexpected program school');
+ if(!program)program=(await c.query('insert into core.program(name,school_id,is_active) values($1,$2,true) returning id,school_id,name',['ESPECIALIZACION DERECHOS HUMANOS',school])).rows[0];
+ await c.query(`update core.person set is_active=true,updated_at=now(),full_name=case when ${nd}='1072896519' then 'LINDA GISELL AGUILERA DOMINGUEZ' else full_name end where ${nd}=any($1::text[])`,[docs]);
+ await c.query(`update core.person set program_id=$2,school_id=$3,updated_at=now() where ${nd}=any($1::text[])`,[teachers,program.id,school]);
+ const after=(await c.query(`select id,document,full_name,is_active,program_id from core.person where ${nd}=any($1::text[]) order by document`,[[...docs,...teachers]])).rows;
+ if(after.filter(x=>docs.includes(x.document.replace(/\D/g,''))).some(x=>!x.is_active))throw Error('Activation failed');
+ if(after.filter(x=>teachers.includes(x.document.replace(/\D/g,''))).some(x=>x.program_id!==program.id))throw Error('Assignment failed');
+ await c.query('COMMIT');
+ const verified=(await pool.query(`select document,full_name,is_active,program_id from core.person where ${nd}=any($1::text[]) order by document`,[[...docs,...teachers]])).rows;
+ const result={committed:true,before,program,verified};
+ fs.writeFileSync('../outputs/planta-2026-10-16/finalization.json',JSON.stringify(result,null,2));
+ console.log(JSON.stringify({committed:true,program,verified},null,2));
+}catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();await pool.end();}
