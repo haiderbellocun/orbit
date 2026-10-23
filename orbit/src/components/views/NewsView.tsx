@@ -18,6 +18,7 @@ import {
   getCatalogSchools,
   getStoredPlantaActivaAccess,
   getWorkforceEventTypes,
+  isStoredUserReadOnly,
   getWorkforceEvents,
   patchWorkforceEventStatus,
   type WorkforceEvent,
@@ -58,6 +59,7 @@ export const NewsView: React.FC<NewsViewProps> = ({
   searchResults,
 }) => {
   const plantaAccess = useMemo(() => getStoredPlantaActivaAccess(), []);
+  const readOnly = useMemo(() => isStoredUserReadOnly(), []);
   const lockedViewAreaIds = plantaAccess?.viewAreaIds ?? null;
   const lockedAreaId =
     lockedViewAreaIds != null && lockedViewAreaIds.length === 1
@@ -469,22 +471,24 @@ export const NewsView: React.FC<NewsViewProps> = ({
                           </p>
                         ) : null}
                       </div>
-                      <select
-                        className="glass-input shrink-0 py-1 text-xs max-w-[130px]"
-                        value={news.status}
-                        onChange={(e) =>
-                          void handleStatusChange(
-                            news.id,
-                            e.target.value as WorkforceEventStatus
-                          )
-                        }
-                      >
-                        {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
-                          <option key={st} value={st}>
-                            {WORKFORCE_EVENT_STATUS_LABELS[st]}
-                          </option>
-                        ))}
-                      </select>
+                      {!readOnly && (
+                        <select
+                          className="glass-input shrink-0 py-1 text-xs max-w-[130px]"
+                          value={news.status}
+                          onChange={(e) =>
+                            void handleStatusChange(
+                              news.id,
+                              e.target.value as WorkforceEventStatus
+                            )
+                          }
+                        >
+                          {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
+                            <option key={st} value={st}>
+                              {WORKFORCE_EVENT_STATUS_LABELS[st]}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                     <p className="text-sm text-orbit-text-secondary leading-relaxed font-medium">
                       {news.observation ?? '—'}
@@ -503,130 +507,132 @@ export const NewsView: React.FC<NewsViewProps> = ({
         </div>
 
         <div className="lg:col-span-4 space-y-6">
-          <div className="glass-panel p-6 bg-orbit-elevated border-orbit-border shadow-xl overflow-hidden relative">
-            <div className="relative z-10">
-              <h3 className="font-bold mb-4 font-display text-lg text-orbit-text">
-                Registrar Novedad
-              </h3>
-              <p className="text-xs text-orbit-muted mb-6 font-medium">
-                Busque la persona y complete el reporte.
-              </p>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
-                    Persona
-                  </label>
-                  <PersonSearchCombobox
-                    value={selectedPerson}
-                    onChange={setSelectedPerson}
-                    placeholder="Escriba nombre o documento…"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
-                    Tipo
-                  </label>
-                  <select
-                    className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
-                    value={formTypeId}
-                    onChange={(e) => setFormTypeId(e.target.value)}
+          {!readOnly && (
+            <div className="glass-panel p-6 bg-orbit-elevated border-orbit-border shadow-xl overflow-hidden relative">
+              <div className="relative z-10">
+                <h3 className="font-bold mb-4 font-display text-lg text-orbit-text">
+                  Registrar Novedad
+                </h3>
+                <p className="text-xs text-orbit-muted mb-6 font-medium">
+                  Busque la persona y complete el reporte.
+                </p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
+                      Persona
+                    </label>
+                    <PersonSearchCombobox
+                      value={selectedPerson}
+                      onChange={setSelectedPerson}
+                      placeholder="Escriba nombre o documento…"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
+                      Tipo
+                    </label>
+                    <select
+                      className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
+                      value={formTypeId}
+                      onChange={(e) => setFormTypeId(e.target.value)}
+                    >
+                      {eventTypes.map((t) => (
+                        <option key={t.id} value={String(t.id)}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
+                      Estado
+                    </label>
+                    <select
+                      className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
+                      value={formStatus}
+                      onChange={(e) =>
+                        setFormStatus(e.target.value as WorkforceEventStatus)
+                      }
+                    >
+                      {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
+                        <option key={st} value={st}>
+                          {WORKFORCE_EVENT_STATUS_LABELS[st]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
+                      Descripción
+                    </label>
+                    <textarea
+                      value={formDescription}
+                      onChange={(e) => setFormDescription(e.target.value)}
+                      className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-orbit-primary/50 h-24 resize-none"
+                      placeholder="Detalles de la novedad…"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
+                        Fecha inicio
+                      </label>
+                      <input
+                        type="date"
+                        value={formStartDate}
+                        onChange={(e) => setFormStartDate(e.target.value)}
+                        className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
+                        Fecha fin
+                      </label>
+                      <input
+                        type="date"
+                        value={formEndDate}
+                        onChange={(e) => setFormEndDate(e.target.value)}
+                        className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
+                        Hora inicio
+                      </label>
+                      <input
+                        type="time"
+                        value={formStartTime}
+                        onChange={(e) => setFormStartTime(e.target.value)}
+                        className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
+                        Hora fin
+                      </label>
+                      <input
+                        type="time"
+                        value={formEndTime}
+                        onChange={(e) => setFormEndTime(e.target.value)}
+                        className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                  {formMessage ? (
+                    <p className="text-xs text-orbit-primary font-medium">{formMessage}</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void handleSaveReport()}
+                    className="glass-button-primary w-full py-3 text-sm font-bold tracking-widest uppercase disabled:opacity-50"
                   >
-                    {eventTypes.map((t) => (
-                      <option key={t.id} value={String(t.id)}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
+                    {saving ? 'Guardando…' : 'Guardar reporte'}
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
-                    Estado
-                  </label>
-                  <select
-                    className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
-                    value={formStatus}
-                    onChange={(e) =>
-                      setFormStatus(e.target.value as WorkforceEventStatus)
-                    }
-                  >
-                    {WORKFORCE_EVENT_STATUS_OPTIONS.map((st) => (
-                      <option key={st} value={st}>
-                        {WORKFORCE_EVENT_STATUS_LABELS[st]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1 ml-1">
-                    Descripción
-                  </label>
-                  <textarea
-                    value={formDescription}
-                    onChange={(e) => setFormDescription(e.target.value)}
-                    className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-orbit-primary/50 h-24 resize-none"
-                    placeholder="Detalles de la novedad…"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
-                      Fecha inicio
-                    </label>
-                    <input
-                      type="date"
-                      value={formStartDate}
-                      onChange={(e) => setFormStartDate(e.target.value)}
-                      className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
-                      Fecha fin
-                    </label>
-                    <input
-                      type="date"
-                      value={formEndDate}
-                      onChange={(e) => setFormEndDate(e.target.value)}
-                      className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
-                      Hora inicio
-                    </label>
-                    <input
-                      type="time"
-                      value={formStartTime}
-                      onChange={(e) => setFormStartTime(e.target.value)}
-                      className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-orbit-muted uppercase tracking-widest mb-1">
-                      Hora fin
-                    </label>
-                    <input
-                      type="time"
-                      value={formEndTime}
-                      onChange={(e) => setFormEndTime(e.target.value)}
-                      className="w-full bg-orbit-bg-secondary border border-orbit-border rounded-xl px-3 py-2 text-sm"
-                    />
-                  </div>
-                </div>
-                {formMessage ? (
-                  <p className="text-xs text-orbit-primary font-medium">{formMessage}</p>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => void handleSaveReport()}
-                  className="glass-button-primary w-full py-3 text-sm font-bold tracking-widest uppercase disabled:opacity-50"
-                >
-                  {saving ? 'Guardando…' : 'Guardar reporte'}
-                </button>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="glass-panel p-6">
             <h3 className="font-bold text-orbit-text mb-4 flex items-center gap-2 font-display">

@@ -167,16 +167,19 @@ export const PLANTA_ACTIVA_ONLY_CAPABILITIES: readonly OrbitCapability[] = [
 ];
 
 export function resolvePlantaActivaGrantAccess(
-  grant: { extraCapabilities?: readonly string[] } | null | undefined
+  grant:
+    | { extraCapabilities?: readonly string[]; readOnly?: boolean }
+    | null
+    | undefined
 ): ResolvedOrbitAccess {
   const extra = (grant?.extraCapabilities ?? []).filter((c): c is OrbitCapability =>
     (Object.values(ORBIT_CAPABILITY) as string[]).includes(c)
   );
+  // Visualizador: solo los paneles de `extraCapabilities`, sin Planta Activa.
+  const base = grant?.readOnly === true ? [] : PLANTA_ACTIVA_ONLY_CAPABILITIES;
   return {
     orbitAccess: "full",
-    capabilities: [
-      ...new Set([...PLANTA_ACTIVA_ONLY_CAPABILITIES, ...extra]),
-    ],
+    capabilities: [...new Set([...base, ...extra])],
   };
 }
 

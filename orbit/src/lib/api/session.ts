@@ -389,6 +389,8 @@ export type GoogleAuthResponse = {
     areaName?: string | null;
     orbitAccess?: OrbitAccess;
     capabilities?: string[];
+    /** Visualizador: solo consultas, sin acciones de escritura. */
+    readOnly?: boolean;
     plantaActivaAccess?: {
       viewAreaIds: number[] | null;
       editAreaIds: number[] | null;
@@ -398,6 +400,19 @@ export type GoogleAuthResponse = {
     };
   };
 };
+
+/** Usuario visualizador (solo lectura): la UI oculta crear / editar / eliminar. */
+export function isStoredUserReadOnly(): boolean {
+  if (typeof localStorage === "undefined") return false;
+  try {
+    const raw = localStorage.getItem(ORBIT_USER_STORAGE_KEY);
+    if (!raw) return false;
+    const u = JSON.parse(raw) as { readOnly?: unknown };
+    return u.readOnly === true;
+  } catch {
+    return false;
+  }
+}
 
 export function persistOrbitSession(auth: GoogleAuthResponse): void {
   localStorage.removeItem(ORBIT_JWT_STORAGE_KEY);

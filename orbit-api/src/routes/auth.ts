@@ -16,7 +16,10 @@ import {
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
-import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
+import {
+  getPlantaActivaGrant,
+  isPlantaActivaGrantReadOnly,
+} from "../lib/plantaActivaAccess";
 import { recordAppLoginAsync } from "../lib/loginAppsLog";
 import { ORBIT_JWT_EXPIRES_IN } from "../lib/sessionPolicy";
 import { clearOrbitSessionCookie, setOrbitSessionCookie } from "../lib/sessionCookie";
@@ -475,6 +478,8 @@ type AuthSuccessBody = {
     areaName: string | null;
     orbitAccess: OrbitAccess;
     capabilities: OrbitCapability[];
+    /** Visualizador: la UI oculta acciones de escritura. */
+    readOnly: boolean;
     /** Presente en grants de Planta Activa; admin no lo necesita. */
     plantaActivaAccess?: {
       viewAreaIds: number[] | null;
@@ -582,6 +587,10 @@ async function buildTokenResponse(params: {
       areaName: person.area_name ?? null,
       orbitAccess,
       capabilities,
+      // Mismo criterio que `orbitAuthMiddleware` (email del JWT).
+      readOnly:
+        !isEmailOnOrbitAllowlist(email) &&
+        isPlantaActivaGrantReadOnly(getPlantaActivaGrant(email)),
       ...(plantaActivaAccess ? { plantaActivaAccess } : {}),
     },
   };
@@ -830,6 +839,7 @@ router.get("/auth/session", orbitAuthMiddleware, (req, res) => {
       areaName: (user as typeof user & { areaName?: string | null }).areaName ?? null,
       orbitAccess: user.orbitAccess,
       capabilities: user.capabilities,
+      readOnly: user.readOnly,
       plantaActivaAccess: {
         viewAreaIds: user.plantaViewAreaIds,
         editAreaIds: user.plantaEditAreaIds,

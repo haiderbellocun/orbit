@@ -21,6 +21,7 @@ import {
   getStoredCapabilities,
   deleteVacancy,
   downloadVacanciesExcel,
+  isStoredUserReadOnly,
 } from '@/src/lib/api';
 import {
   computeVacancyActiveDaysFromSent,
@@ -176,6 +177,7 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const isVacancyAdmin = canVacancyAdmin(getStoredCapabilities());
+  const readOnly = isStoredUserReadOnly();
 
   const selectClass =
     'w-full rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary px-3 py-2.5 text-sm text-orbit-text shadow-sm focus:outline-none focus:ring-2 focus:ring-orbit-primary/30';
@@ -481,18 +483,20 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                 <ArrowDownTrayIcon className="h-4 w-4" />
                 {exporting ? 'Generando…' : 'Descargar Excel'}
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSaveBanner(null);
-                  setManagePanel({ mode: 'create' });
-                }}
-                data-tutorial="vacancies-create"
-                className="glass-button-primary inline-flex items-center gap-1.5 px-4 py-2.5 text-sm whitespace-nowrap"
-              >
-                <PlusIcon className="h-4 w-4" />
-                <span>Nueva vacante</span>
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaveBanner(null);
+                    setManagePanel({ mode: 'create' });
+                  }}
+                  data-tutorial="vacancies-create"
+                  className="glass-button-primary inline-flex items-center gap-1.5 px-4 py-2.5 text-sm whitespace-nowrap"
+                >
+                  <PlusIcon className="h-4 w-4" />
+                  <span>Nueva vacante</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -838,30 +842,32 @@ export const VacanciesView: React.FC<VacanciesViewProps> = ({
                           >
                             <EyeIcon className="h-4 w-4" />
                           </button>
-                          <button
-                            type="button"
-                            title="Gestionar vacante y requisición"
-                            disabled={
-                              !canOpenVacancyManage(
-                                v.operationStatus,
-                                isVacancyAdmin
-                              )
-                            }
-                            onClick={() => {
-                              if (
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              title="Gestionar vacante y requisición"
+                              disabled={
                                 !canOpenVacancyManage(
                                   v.operationStatus,
                                   isVacancyAdmin
                                 )
-                              )
-                                return;
-                              openEdit(v);
-                            }}
-                            className="p-1.5 rounded-lg bg-orbit-elevated border border-orbit-border text-orbit-text-secondary hover:text-orbit-primary hover:border-orbit-primary/40 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:text-orbit-text-secondary disabled:hover:border-orbit-border"
-                          >
-                            <PencilSquareIcon className="h-4 w-4" />
-                          </button>
-                          {isVacancyAdmin && (
+                              }
+                              onClick={() => {
+                                if (
+                                  !canOpenVacancyManage(
+                                    v.operationStatus,
+                                    isVacancyAdmin
+                                  )
+                                )
+                                  return;
+                                openEdit(v);
+                              }}
+                              className="p-1.5 rounded-lg bg-orbit-elevated border border-orbit-border text-orbit-text-secondary hover:text-orbit-primary hover:border-orbit-primary/40 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:text-orbit-text-secondary disabled:hover:border-orbit-border"
+                            >
+                              <PencilSquareIcon className="h-4 w-4" />
+                            </button>
+                          )}
+                          {isVacancyAdmin && !readOnly && (
                             <button
                               type="button"
                               title="Eliminar vacante y requisición"

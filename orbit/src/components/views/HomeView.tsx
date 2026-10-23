@@ -19,6 +19,7 @@ import {
   getDashboardSummary,
   getPlantaActiva,
   getStoredCapabilities,
+  isStoredUserReadOnly,
   type DashboardSummaryMetric,
   type DashboardSummaryResponse,
 } from "@/src/lib/api";
@@ -364,7 +365,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   const periodLabel = formatPeriodLabel(summary?.updatedAt);
-  const canQuickCreate = canManageVacancies && !isLiteUser;
+  const canQuickCreate =
+    canManageVacancies && !isLiteUser && !isStoredUserReadOnly();
   const firstName = getFirstName(userProfile?.name);
   const greeting = `${getDayPeriodGreeting()}${firstName ? `, ${firstName}` : ""}`;
   const profileContext = getProfileContext(userProfile);
@@ -539,17 +541,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </p>
               )}
 
-              <button
-                type="button"
-                onClick={() => setView("planta-activa")}
-                className="flex w-full items-center justify-between rounded-[10px] px-3 py-2.5 text-left text-sm text-orbit-text-secondary transition-colors duration-150 hover:bg-orbit-interactive hover:text-orbit-text"
-              >
-                <span className="flex items-center gap-2.5">
-                  <UsersIcon className="h-4 w-4 text-orbit-muted" />
-                  Ir a Planta Activa
-                </span>
-                <ChevronRightIcon className="h-4 w-4 text-orbit-muted" />
-              </button>
+              {canPlanta && (
+                <button
+                  type="button"
+                  onClick={() => setView("planta-activa")}
+                  className="flex w-full items-center justify-between rounded-[10px] px-3 py-2.5 text-left text-sm text-orbit-text-secondary transition-colors duration-150 hover:bg-orbit-interactive hover:text-orbit-text"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <UsersIcon className="h-4 w-4 text-orbit-muted" />
+                    Ir a Planta Activa
+                  </span>
+                  <ChevronRightIcon className="h-4 w-4 text-orbit-muted" />
+                </button>
+              )}
 
               <button
                 type="button"

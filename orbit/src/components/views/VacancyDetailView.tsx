@@ -19,7 +19,11 @@ import {
 } from '@/src/lib/vacancyActiveDays';
 import { canOpenVacancyManage } from '@/src/lib/vacancyFormHelpers';
 import { canVacancyAdmin } from '@/src/lib/permissions';
-import { deleteVacancy, getStoredCapabilities } from '@/src/lib/api';
+import {
+  deleteVacancy,
+  getStoredCapabilities,
+  isStoredUserReadOnly,
+} from '@/src/lib/api';
 import { ConfirmTextModal } from '@/src/components/common/ConfirmTextModal';
 import { VacancyManageModal } from '@/src/components/views/VacancyManageModal';
 
@@ -73,6 +77,7 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const isVacancyAdmin = canVacancyAdmin(getStoredCapabilities());
+  const readOnly = isStoredUserReadOnly();
 
   useEffect(() => {
     let cancelled = false;
@@ -176,7 +181,7 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
           </div>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
-          {canOpenVacancyManage(v.operationStatus, isVacancyAdmin) && (
+          {!readOnly && canOpenVacancyManage(v.operationStatus, isVacancyAdmin) && (
             <button
               type="button"
               onClick={() => setEditOpen(true)}
@@ -185,7 +190,7 @@ export const VacancyDetailView: React.FC<VacancyDetailViewProps> = ({
               Gestionar
             </button>
           )}
-          {isVacancyAdmin && (
+          {isVacancyAdmin && !readOnly && (
             <button
               type="button"
               onClick={() => setDeleteOpen(true)}

@@ -24,6 +24,8 @@ import {
   canEditPlantaPerson,
   canViewPlantaArea,
   getPlantaActivaGrant,
+  isPlantaActivaGrantReadOnly,
+  READ_ONLY_VIEWER_EMAILS,
 } from "./plantaActivaAccess";
 
 function test(name: string, fn: () => void): void {
@@ -417,6 +419,45 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
   }
 
   assert.equal(getPlantaActivaGrant("camilo_quintero@cun.edu.co"), null);
+});
+
+test("read-only viewer grant: 4 paneles sin Planta Activa", () => {
+  const access = resolvePlantaActivaGrantAccess({
+    readOnly: true,
+    extraCapabilities: [
+      "view:home",
+      "view:vacancies",
+      "vacancies:informative_panel",
+      "view:news",
+      "roles:manage",
+    ],
+  });
+  assert.equal(access.orbitAccess, "full");
+  assert.deepEqual(access.capabilities, [
+    ORBIT_CAPABILITY.HOME,
+    ORBIT_CAPABILITY.VACANCIES,
+    ORBIT_CAPABILITY.VACANCIES_INFORMATIVE_PANEL,
+    ORBIT_CAPABILITY.NEWS,
+    ORBIT_CAPABILITY.ROLES_MANAGE,
+  ]);
+  assert.equal(
+    (access.capabilities as string[]).includes(ORBIT_CAPABILITY.VACANCIES_ADMIN),
+    false
+  );
+});
+
+test("read-only viewer emails resolve to read-only grant", () => {
+  for (const email of READ_ONLY_VIEWER_EMAILS) {
+    const grant = getPlantaActivaGrant(email);
+    assert.ok(grant, email);
+    assert.equal(isPlantaActivaGrantReadOnly(grant), true);
+    assert.equal(grant!.viewAreaIds, null);
+    assert.equal(isEmailAuthorizedForOrbit(email), true);
+  }
+  assert.equal(
+    isPlantaActivaGrantReadOnly(getPlantaActivaGrant("sara_murillofo@cun.edu.co")),
+    false
+  );
 });
 
 test("isEmailAuthorizedForOrbit includes planta grants", () => {

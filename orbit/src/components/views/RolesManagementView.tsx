@@ -9,6 +9,7 @@ import {
 import {
   createManagedRole,
   getManagedRoles,
+  isStoredUserReadOnly,
   updateManagedRole,
   updateManagedRoleStatus,
   type ManagedRole,
@@ -27,6 +28,7 @@ export const RolesManagementView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const readOnly = useMemo(() => isStoredUserReadOnly(), []);
 
   useEffect(() => {
     void getManagedRoles()
@@ -148,13 +150,15 @@ export const RolesManagementView: React.FC = () => {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="glass-button-primary inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm"
-        >
-          <PlusIcon className="h-4 w-4" /> Crear rol
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="glass-button-primary inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm"
+          >
+            <PlusIcon className="h-4 w-4" /> Crear rol
+          </button>
+        )}
       </div>
 
       <div className="glass-panel overflow-hidden">
@@ -187,22 +191,26 @@ export const RolesManagementView: React.FC = () => {
                     {assigned && status === "active" && (
                       <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-300">ROL ASIGNADO</span>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(role)}
-                      className="glass-button-secondary inline-flex items-center gap-2 px-3 py-2 text-xs"
-                    >
-                      <PencilSquareIcon className="h-4 w-4" /> Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void changeStatus(role)}
-                      disabled={saving || (status === "active" && assigned)}
-                      title={status === "active" && assigned ? "ROL ASIGNADO, NO SE PUEDE INHABILITAR" : undefined}
-                      className="inline-flex items-center gap-2 rounded-lg border border-orbit-border px-3 py-2 text-xs text-orbit-muted transition hover:bg-orbit-interactive hover:text-orbit-text disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <PowerIcon className="h-4 w-4" /> {status === "active" ? "Inhabilitar" : "Habilitar"}
-                    </button>
+                    {!readOnly && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(role)}
+                          className="glass-button-secondary inline-flex items-center gap-2 px-3 py-2 text-xs"
+                        >
+                          <PencilSquareIcon className="h-4 w-4" /> Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void changeStatus(role)}
+                          disabled={saving || (status === "active" && assigned)}
+                          title={status === "active" && assigned ? "ROL ASIGNADO, NO SE PUEDE INHABILITAR" : undefined}
+                          className="inline-flex items-center gap-2 rounded-lg border border-orbit-border px-3 py-2 text-xs text-orbit-muted transition hover:bg-orbit-interactive hover:text-orbit-text disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <PowerIcon className="h-4 w-4" /> {status === "active" ? "Inhabilitar" : "Habilitar"}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               );
@@ -211,7 +219,7 @@ export const RolesManagementView: React.FC = () => {
         )}
       </div>
 
-      {modalMode && (
+      {modalMode && !readOnly && (
         <div
           className="fixed inset-0 z-120 flex items-center justify-center bg-black/60 p-4"
           role="presentation"

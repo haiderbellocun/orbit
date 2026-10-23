@@ -20,6 +20,7 @@ export {
   getStoredSessionExpiresAt,
   getStoredUserEmail,
   isStoredJwtValid,
+  isStoredUserReadOnly,
   persistOrbitSession,
   ORBIT_JWT_STORAGE_KEY,
   ORBIT_USER_STORAGE_KEY,

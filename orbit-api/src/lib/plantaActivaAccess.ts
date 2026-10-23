@@ -34,6 +34,39 @@ export type PlantaActivaGrant = {
    * (p. ej. `view:vacancies`, `vacancies:informative_panel`).
    */
   extraCapabilities?: readonly string[];
+  /**
+   * Solo consulta: la API rechaza POST/PUT/PATCH/DELETE y no incluye
+   * `view:planta_activa` (solo las capabilities de `extraCapabilities`).
+   */
+  readOnly?: boolean;
+};
+
+/**
+ * Usuarios VISUALIZADORES (solo lectura): Command Center, Vacantes (+ bitácora),
+ * Novedades y Gestión de roles, con todos los datos. Pueden exportar Excel,
+ * pero no crear, editar ni eliminar nada.
+ *
+ * Agregar aquí el correo @cun.edu.co (minúsculas). Si el correo ya tiene otro
+ * grant en `GRANTS`, prevalece ese grant.
+ */
+export const READ_ONLY_VIEWER_EMAILS: readonly string[] = [
+  "coordinacion_tecnica_investigaciones@cun.edu.co",
+  "patricia_rodriguez@cun.edu.co",
+];
+
+const READ_ONLY_VIEWER_EXTRAS = [
+  "view:home",
+  "view:vacancies",
+  "vacancies:informative_panel",
+  "view:news",
+  "roles:manage",
+] as const;
+
+const READ_ONLY_VIEWER_GRANT: Omit<PlantaActivaGrant, "email"> = {
+  viewAreaIds: null,
+  editAreaIds: null,
+  readOnly: true,
+  extraCapabilities: READ_ONLY_VIEWER_EXTRAS,
 };
 
 const SARA_LEVEL_EXTRAS = [
@@ -143,6 +176,10 @@ const GRANTS: readonly PlantaActivaGrant[] = [
     email: "monica_pachon@cun.edu.co",
     ...RAUL_ANALYST_GRANT,
   },
+  ...READ_ONLY_VIEWER_EMAILS.map((email) => ({
+    email: email.trim().toLowerCase(),
+    ...READ_ONLY_VIEWER_GRANT,
+  })),
 ];
 
 function normEmail(email: string | null | undefined): string {
@@ -155,6 +192,13 @@ export function getPlantaActivaGrant(
   const e = normEmail(email);
   if (!e) return null;
   return GRANTS.find((g) => g.email === e) ?? null;
+}
+
+/** Visualizador de solo lectura (ver `READ_ONLY_VIEWER_EMAILS`). */
+export function isPlantaActivaGrantReadOnly(
+  grant: PlantaActivaGrant | null | undefined
+): boolean {
+  return grant?.readOnly === true;
 }
 
 export function isEmailOnPlantaActivaGrant(
@@ -213,7 +257,8 @@ export function canEditPlantaPerson(
 export function capabilitiesForPlantaActivaGrant(
   grant: PlantaActivaGrant
 ): string[] {
-  return ["view:planta_activa", ...(grant.extraCapabilities ?? [])];
+  const base = grant.readOnly === true ? [] : ["view:planta_activa"];
+  return [...base, ...(grant.extraCapabilities ?? [])];
 }
 
 /** Lista fija de grants (útil en tests / docs). */

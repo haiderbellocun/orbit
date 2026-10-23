@@ -16,7 +16,10 @@ import {
   type OrbitAccess,
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
-import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
+import {
+  getPlantaActivaGrant,
+  isPlantaActivaGrantReadOnly,
+} from "../lib/plantaActivaAccess";
 import { isOrbitSessionActive } from "../lib/sessionPolicy";
 import { ORBIT_SESSION_COOKIE } from "../lib/sessionCookie";
 export {
@@ -44,6 +47,8 @@ export type OrbitJwtUser = {
   plantaViewAreaIds: number[] | null;
   /** `null` = puede editar cualquier área (admin). */
   plantaEditAreaIds: number[] | null;
+  /** Visualizador: solo consultas (GET), sin escritura. */
+  readOnly: boolean;
   expiresAt: number;
 };
 
@@ -78,6 +83,15 @@ function extractBearerToken(req: Request): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Peticiones permitidas a un visualizador: lecturas y marcar sus propias
+ * notificaciones como leídas.
+ */
+function isReadOnlySafeRequest(req: Request): boolean {
+  if (req.method === "GET" || req.method === "HEAD") return true;
+  return req.method === "PATCH" && req.path.startsWith("/notifications/");
 }
 
 export function orbitAuthMiddleware(
@@ -157,6 +171,7 @@ export function orbitAuthMiddleware(
     let plantaViewAreaIds: number[] | null = null;
     let plantaEditAreaIds: number[] | null = null;
     let coordinationSchoolId: number | null = null;
+    let readOnly = false;
 
     if (isEmailOnOrbitAllowlist(email)) {
       // Allowlist admin = acceso total (ignora capabilities antiguas del JWT).
@@ -165,6 +180,7 @@ export function orbitAuthMiddleware(
       const grant = getPlantaActivaGrant(email);
       if (grant) {
         capabilities = resolvePlantaActivaGrantAccess(grant).capabilities;
+        readOnly = isPlantaActivaGrantReadOnly(grant);
         const decodedAreaId = asNum((decoded as { areaId?: unknown }).areaId, 0);
         plantaViewAreaIds =
           grant.hierarchyScoped === true && grant.viewAreaIds?.length === 0 && decodedAreaId > 0
@@ -247,8 +263,15 @@ export function orbitAuthMiddleware(
         : [],
       plantaViewAreaIds,
       plantaEditAreaIds,
+      readOnly,
       expiresAt: typeof decoded.exp === "number" ? decoded.exp * 1000 : 0,
     };
+    if (readOnly && !isReadOnlySafeRequest(req)) {
+      res.status(403).json({
+        error: "Tu perfil es de solo consulta. No puedes realizar cambios.",
+      });
+      return;
+    }
     next();
   } catch {
     res.status(401).json({ error: "Token inválido o expirado" });
