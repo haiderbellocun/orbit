@@ -5,7 +5,10 @@
  *
  * - viewAreaIds `null` → puede ver toda la planta.
  * - editAreaIds → áreas cuyo personal puede gestionar (PATCH).
+ * - excludeLiteAndDocenteRoles permite ocultar perfiles específicos cuando aplique.
  */
+
+import { isLiteOrDocenteRole } from "./orbitRoles";
 
 export type PlantaActivaGrant = {
   email: string;
@@ -13,6 +16,7 @@ export type PlantaActivaGrant = {
   viewAreaIds: number[] | null;
   /** Áreas que puede editar. */
   editAreaIds: number[];
+  excludeLiteAndDocenteRoles?: boolean;
   /**
    * Capabilities adicionales a `view:planta_activa`
    * (p. ej. `view:vacancies`, `vacancies:informative_panel`).
@@ -98,6 +102,29 @@ export function canEditPlantaArea(
   if (grant == null) return true;
   if (areaId == null || !Number.isFinite(areaId)) return false;
   return grant.editAreaIds.includes(areaId);
+}
+
+export function shouldExcludeLiteAndDocenteFromPlantaView(
+  grant: PlantaActivaGrant | null | undefined
+): boolean {
+  return grant?.excludeLiteAndDocenteRoles === true;
+}
+
+export function canEditPlantaPerson(
+  grant: PlantaActivaGrant | null | undefined,
+  areaId: number | null,
+  role?: {
+    roleId?: number | null;
+    roleCode?: string | null;
+    roleName?: string | null;
+  }
+): boolean {
+  if (!canEditPlantaArea(grant, areaId)) return false;
+  return !(
+    shouldExcludeLiteAndDocenteFromPlantaView(grant) &&
+    role != null &&
+    isLiteOrDocenteRole(role)
+  );
 }
 
 /** Capabilities efectivas del grant (planta + extras). */

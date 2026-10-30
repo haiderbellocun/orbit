@@ -9,6 +9,7 @@ export type PlantaActivaAccess = {
   viewAreaIds: number[] | null;
   /** `null` = editar cualquier área (admin). Array = solo esas áreas. */
   editAreaIds: number[] | null;
+  excludeLiteAndDocenteRoles?: boolean;
 };
 
 const SARA_LEVEL_ACCESS: PlantaActivaAccess = {
@@ -18,6 +19,7 @@ const SARA_LEVEL_ACCESS: PlantaActivaAccess = {
 
 const GRANTS: Readonly<Record<string, PlantaActivaAccess>> = {
   "sara_murillofo@cun.edu.co": SARA_LEVEL_ACCESS,
+  "lorena_gomez@cun.edu.co": SARA_LEVEL_ACCESS,
   "cindy_russi@cun.edu.co": SARA_LEVEL_ACCESS,
   "leidy_bernal@cun.edu.co": {
     viewAreaIds: [1],
@@ -33,6 +35,32 @@ function normEmail(email: string | null | undefined): string {
   return (email ?? "").trim().toLowerCase();
 }
 
+function normalizeRoleLabel(s: string | null | undefined): string {
+  return (s ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+}
+
+export function isLiteOrDocenteRoleName(roleName: string | undefined): boolean {
+  const normalized = normalizeRoleLabel(roleName);
+  if (!normalized) return false;
+  if (normalized === "LITE" || normalized === "LIDER") return true;
+  return (
+    normalized === "DOCENTE" ||
+    normalized === "DOCENTES" ||
+    normalized.startsWith("DOCENTES ")
+  );
+}
+
+export function shouldExcludeLiteAndDocenteFromPlantaView(
+  access: PlantaActivaAccess | null | undefined
+): boolean {
+  return access?.excludeLiteAndDocenteRoles === true;
+}
+
 export function getPlantaActivaGrantByEmail(
   email: string | null | undefined
 ): PlantaActivaAccess | null {
@@ -43,9 +71,14 @@ export function getPlantaActivaGrantByEmail(
 
 export function canEditPlantaPersonArea(
   access: PlantaActivaAccess | null | undefined,
-  areaId: number | null | undefined
+  areaId: number | null | undefined,
+  roleName?: string | null
 ): boolean {
   if (access == null || access.editAreaIds == null) return true;
   if (areaId == null || !Number.isFinite(areaId)) return false;
-  return access.editAreaIds.includes(areaId);
+  if (!access.editAreaIds.includes(areaId)) return false;
+  return !(
+    shouldExcludeLiteAndDocenteFromPlantaView(access) &&
+    isLiteOrDocenteRoleName(roleName ?? undefined)
+  );
 }

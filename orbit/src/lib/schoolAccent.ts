@@ -15,6 +15,7 @@ export type AccentSubject = {
 type CatalogRow = {
   accent: string;
   soft: string;
+  border: string;
   match: (ctx: FoldedCtx) => boolean;
 };
 
