@@ -243,7 +243,7 @@ test("vacancy admin allowlist: camilo, yesid, sara, cindy", () => {
   }
 });
 
-test("planta activa grants: sara/cindy/leidy/tania", () => {
+test("planta activa grants: sara/lorena/cindy/leidy/tania", () => {
   const sara = getPlantaActivaGrant("sara_murillofo@cun.edu.co");
   assert.ok(sara);
   assert.equal(sara!.viewAreaIds, null);
@@ -271,6 +271,14 @@ test("planta activa grants: sara/cindy/leidy/tania", () => {
     saraAccess.capabilities.includes(ORBIT_CAPABILITY.VACANCIES_ADMIN),
     true
   );
+
+  const lorena = getPlantaActivaGrant("lorena_gomez@cun.edu.co");
+  assert.ok(lorena);
+  assert.deepEqual(lorena!.viewAreaIds, sara!.viewAreaIds);
+  assert.deepEqual(lorena!.editAreaIds, sara!.editAreaIds);
+  assert.deepEqual(lorena!.extraCapabilities, sara!.extraCapabilities);
+  const lorenaAccess = resolvePlantaActivaGrantAccess(lorena);
+  assert.deepEqual(lorenaAccess, saraAccess);
 
   const cindy = getPlantaActivaGrant("cindy_russi@cun.edu.co");
   assert.ok(cindy);
