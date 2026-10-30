@@ -7,6 +7,7 @@ export type SchoolAccent = {
 export type AccentSubject = {
   schoolId?: number | null;
   schoolName?: string | null;
+  programName?: string | null;
   areaName?: string | null;
   roleName?: string | null;
   personName?: string | null;
@@ -28,12 +29,16 @@ type FoldedCtx = {
 
 const NEUTRAL: SchoolAccent = {
   accent: '#8B8B9A',
-  soft: '#F1F1F5',
-  border: 'rgba(139, 139, 154, 0.35)',
+  soft: 'color-mix(in srgb, var(--orbit-surface) 90%, #8B8B9A 10%)',
+  border: 'color-mix(in srgb, var(--orbit-border) 65%, #8B8B9A 35%)',
 };
 
-function tone(accent: string, soft: string): SchoolAccent {
-  return { accent, soft, border: hexToRgba(accent, 0.38) };
+function tone(accent: string, _soft: string): SchoolAccent {
+  return {
+    accent,
+    soft: `color-mix(in srgb, var(--orbit-surface) 86%, ${accent} 14%)`,
+    border: `color-mix(in srgb, var(--orbit-border) 55%, ${accent} 45%)`,
+  };
 }
 
 function hexToRgba(hex: string, alpha: number): string {

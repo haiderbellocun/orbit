@@ -13,6 +13,7 @@ import {
 } from '@/src/lib/organizationTree';
 import { LeaderNode } from '@/src/components/planta/LeaderNode';
 import { CollaboratorTable } from '@/src/components/planta/CollaboratorTable';
+import { UnitEmblem } from '@/src/components/planta/UnitEmblem';
 
 type CoordinatorNodeProps = {
   node: OrganizationNode;
@@ -51,7 +52,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
     return (
       <article
         className={cn(
-          'overflow-hidden rounded-2xl border',
+          'unit-card overflow-hidden rounded-2xl border',
           isApex ? 'p-1' : 'bg-orbit-surface'
         )}
         style={{
@@ -63,7 +64,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
       >
         <div
           className={cn(
-            'flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:gap-4 sm:p-5',
+            'unit-card-header flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:gap-4 sm:p-5',
             isApex && 'rounded-xl bg-orbit-surface m-3 mb-0',
             canExpand && !isApex && 'cursor-pointer',
             node.isContextOnly && 'opacity-80'
@@ -142,6 +143,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
               </span>
             </div>
           </div>
+          <UnitEmblem subject={person} />
           <div
             className="flex shrink-0 items-center gap-2 self-end sm:self-start"
             onClick={(e) => e.stopPropagation()}

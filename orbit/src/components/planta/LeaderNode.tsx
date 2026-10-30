@@ -12,6 +12,7 @@ import {
   type OrganizationNode,
 } from '@/src/lib/organizationTree';
 import { CollaboratorTable } from '@/src/components/planta/CollaboratorTable';
+import { UnitEmblem } from '@/src/components/planta/UnitEmblem';
 
 type LeaderNodeProps = {
   node: OrganizationNode;
@@ -41,7 +42,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
       <div className="relative">
         <div
           className={cn(
-            'rounded-xl border bg-orbit-surface',
+            'unit-card rounded-xl border bg-orbit-surface',
             node.isContextOnly && 'opacity-80'
           )}
           style={{
@@ -52,7 +53,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
         >
           <div
             className={cn(
-              'flex items-start gap-3 p-3 sm:p-4',
+              'unit-card-header flex items-start gap-3 p-3 sm:p-4',
               canExpand && 'cursor-pointer'
             )}
             onClick={() => {
@@ -106,6 +107,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
               className="flex shrink-0 items-center gap-1"
               onClick={(e) => e.stopPropagation()}
             >
+              <UnitEmblem subject={person} />
               {canEdit ? (
                 <button
                   type="button"
