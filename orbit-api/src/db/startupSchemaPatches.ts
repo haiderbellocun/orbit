@@ -1,4 +1,5 @@
 import { pool } from "./connection";
+import { migrateInformationManagement } from "./migrate_information_management";
 
 /**
  * Parches idempotentes al arrancar (p. ej. Cloud Run tras deploy).
@@ -88,6 +89,7 @@ export async function runStartupSchemaPatches(): Promise<void> {
   }
 
   await ensureCoreUserIdSequence();
+  await migrateInformationManagement();
 }
 
 /** `core.user.id` es NOT NULL sin DEFAULT ni sequence en algunas bases. */

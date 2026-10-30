@@ -13,6 +13,7 @@ import personalRouter from "./routes/personal";
 import plantaActivaRouter from "./routes/plantaActiva";
 import workforceEventsRouter from "./routes/workforce_events";
 import notificationsRouter from "./routes/notifications";
+import informationManagementRouter from "./routes/information_management";
 import {
   orbitAuthMiddleware,
   orbitCapabilityByPathMiddleware,
@@ -37,6 +38,7 @@ app.use("/api", vacanciesRouter);
 app.use("/api", reinstatementsRouter);
 app.use("/api", academicLoadRouter);
 app.use("/api", substantiveHoursRouter);
+app.use("/api", informationManagementRouter);
 
 app.get("/health", async (_req, res) => {
   try {

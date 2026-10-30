@@ -17,6 +17,7 @@ import { SubstantiveHoursView } from "./components/views/SubstantiveHoursView";
 import { AuditView } from "./components/views/AuditView";
 import { ProgramsView } from "./components/views/ProgramsView";
 import { PlantaActivaView } from "./components/views/PlantaActivaView";
+import { InformationManagementView } from "./components/views/InformationManagementView";
 import { View, Vacancy, NAV_ITEMS } from "./types";
 import { VacancyDetailView } from "./components/views/VacancyDetailView";
 import { VacancyInformativePanelView } from "./components/views/VacancyInformativePanelView";
@@ -134,6 +135,8 @@ function AppShell({
         return <ProgramsView setView={setView} {...notifProps} />;
       case "planta-activa":
         return <PlantaActivaView {...notifProps} />;
+      case "information-management":
+        return <InformationManagementView />;
       default:
         return <HomeView setView={setView} {...notifProps} />;
     }

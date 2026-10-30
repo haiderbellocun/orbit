@@ -165,7 +165,22 @@ export function getStoredCapabilities(): string[] {
       ]),
     ];
   }
+  if (isStoredEmailInformationManagementUser()) {
+    return [...new Set([...base, "view:information_management", "manage:information_management"])];
+  }
   return base;
+}
+
+const DEFAULT_INFORMATION_MANAGEMENT_ALLOWLIST = [
+  "sara_murillofo@cun.edu.co",
+  "lorena_gomez@cun.edu.co",
+  "camilo_quintero@cun.edu.co",
+  "sara_martinezl@cun.edu.co",
+];
+
+function isStoredEmailInformationManagementUser(): boolean {
+  const email = getStoredUserEmail();
+  return email != null && DEFAULT_INFORMATION_MANAGEMENT_ALLOWLIST.includes(email);
 }
 
 /** Email de sesiÃ³n (orbit_user o JWT). */
@@ -266,6 +281,8 @@ const ORBIT_ALLOWLIST_ADMIN_CAPABILITIES: readonly string[] = [
   "vacancies:admin",
   "view:planta_activa",
   "view:news",
+  "view:information_management",
+  "manage:information_management",
 ];
 
 export function getStoredOrbitAccess(): OrbitAccess | null {
@@ -1041,6 +1058,99 @@ export async function getCatalogAcademicLines(): Promise<string[]> {
     headers: jsonHeaders,
   });
   return handleJson(response);
+}
+
+export type InformationProject = {
+  id: string; zoho_project_id: string | null; name: string; description: string | null;
+  area_id: number; area_name?: string; zoho_owner_name: string | null;
+  status: "pending" | "in_progress" | "completed" | "cancelled";
+  start_date: string | null; end_date: string | null; archived_at: string | null;
+  task_count?: number; pending_task_count?: number; created_at: string; updated_at: string;
+};
+export type InformationTask = {
+  id: string; project_id: string; parent_task_id: string | null; zoho_task_id: string | null;
+  name: string; description: string | null; zoho_owner_name: string | null;
+  zoho_status: InformationProject["status"]; review_status: "unreviewed" | "pending_correction" | "correct";
+  completion_percentage: number; priority: "low" | "medium" | "high" | "critical";
+  start_date: string | null; due_date: string | null; archived_at: string | null;
+  subtask_count?: number; active_incident_count?: number; created_at: string; updated_at: string;
+};
+export type InformationIncident = {
+  id: string; task_id: string; description: string; status: "active" | "resolved";
+  observed_at: string; resolution_note: string | null; resolved_at: string | null;
+  evidence_count?: number; created_at: string; updated_at: string;
+};
+export type InformationEvidence = {
+  id: string; incident_id: string; original_filename: string; mime_type: string; file_size: number;
+  file_hash: string; description: string | null; evidence_at: string; uploaded_at: string;
+  voided_at: string | null; void_reason: string | null;
+};
+export type InformationTaskDetail = InformationTask & {
+  project_name: string; area_id: number; inherited_owner_name: string | null;
+  subtasks: InformationTask[]; incidents: InformationIncident[];
+};
+export type InformationAuditEntry = {
+  id: number; entity_type: string; entity_id: string; action: string;
+  changes: Record<string, unknown>; performed_by_email: string; performed_at: string;
+};
+
+export async function getInformationProjects(params: { page?: number; limit?: number; search?: string; status?: string; area_id?: number; archived?: boolean } = {}): Promise<PaginatedResponse<InformationProject>> {
+  const url = new URL(`${BASE_URL}/information-management/projects`);
+  Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== "") url.searchParams.set(key, String(value)); });
+  return handleJson(await authFetch(url, { headers: jsonHeaders }));
+}
+export async function createInformationProject(data: Partial<InformationProject>): Promise<InformationProject> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/projects`, { method: "POST", headers: jsonHeaders, body: JSON.stringify(data) }));
+}
+export async function updateInformationProject(id: string, data: Partial<InformationProject>): Promise<InformationProject> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/projects/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(data) }));
+}
+export async function archiveInformationProject(id: string, reason: string, restore = false): Promise<InformationProject> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/projects/${id}/archive`, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ reason, restore }) }));
+}
+export async function getInformationProject(id: string): Promise<InformationProject> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/projects/${id}`, { headers: jsonHeaders }));
+}
+export async function getInformationTasks(projectId: string, params: { page?: number; limit?: number; search?: string; review_status?: string } = {}): Promise<PaginatedResponse<InformationTask>> {
+  const url = new URL(`${BASE_URL}/information-management/projects/${projectId}/tasks`);
+  Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== "") url.searchParams.set(key, String(value)); });
+  return handleJson(await authFetch(url, { headers: jsonHeaders }));
+}
+export async function createInformationTask(projectId: string, data: Partial<InformationTask>): Promise<InformationTask> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/projects/${projectId}/tasks`, { method: "POST", headers: jsonHeaders, body: JSON.stringify(data) }));
+}
+export async function getInformationTask(id: string): Promise<InformationTaskDetail> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/tasks/${id}`, { headers: jsonHeaders }));
+}
+export async function updateInformationTask(id: string, data: Partial<InformationTask>): Promise<InformationTask> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/tasks/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(data) }));
+}
+export async function archiveInformationTask(id: string, reason: string, restore = false): Promise<InformationTask> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/tasks/${id}/archive`, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ reason, restore }) }));
+}
+export async function createInformationIncident(taskId: string, data: { description: string; observed_at: string }): Promise<InformationIncident> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/tasks/${taskId}/incidents`, { method: "POST", headers: jsonHeaders, body: JSON.stringify(data) }));
+}
+export async function updateInformationIncident(id: string, data: Partial<InformationIncident>): Promise<InformationIncident> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/incidents/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(data) }));
+}
+export async function getInformationEvidence(incidentId: string): Promise<InformationEvidence[]> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/incidents/${incidentId}/evidence`, { headers: jsonHeaders }));
+}
+export async function uploadInformationEvidence(incidentId: string, files: File[], evidenceAt: string, description?: string): Promise<InformationEvidence[]> {
+  const body = new FormData(); files.forEach((file) => body.append("files", file)); body.append("evidence_at", evidenceAt); if (description) body.append("description", description);
+  return handleJson(await authFetch(`${BASE_URL}/information-management/incidents/${incidentId}/evidence`, { method: "POST", body }));
+}
+export async function downloadInformationEvidence(evidence: InformationEvidence): Promise<void> {
+  const response = await authFetch(`${BASE_URL}/information-management/evidence/${evidence.id}/download`);
+  if (!response.ok) throw new Error("No fue posible descargar la evidencia");
+  const href = URL.createObjectURL(await response.blob()); const anchor = document.createElement("a"); anchor.href = href; anchor.download = evidence.original_filename; anchor.click(); URL.revokeObjectURL(href);
+}
+export async function voidInformationEvidence(id: string, reason: string): Promise<InformationEvidence> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/evidence/${id}/void`, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ reason }) }));
+}
+export async function getInformationAudit(entityType: string, entityId: string): Promise<InformationAuditEntry[]> {
+  return handleJson(await authFetch(`${BASE_URL}/information-management/audit/${entityType}/${entityId}`, { headers: jsonHeaders }));
 }
 
 // Carga académica

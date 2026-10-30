@@ -19,6 +19,8 @@ export const ORBIT_CAPABILITY = {
   VACANCIES_ADMIN: "vacancies:admin",
   PLANTA_ACTIVA: "view:planta_activa",
   NEWS: "view:news",
+  INFORMATION_MANAGEMENT: "view:information_management",
+  INFORMATION_MANAGEMENT_MANAGE: "manage:information_management",
 } as const;
 
 export type OrbitCapability =
@@ -42,7 +44,39 @@ export const SUPER_ADMIN_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.VACANCIES_ADMIN,
   ORBIT_CAPABILITY.PLANTA_ACTIVA,
   ORBIT_CAPABILITY.NEWS,
+  ORBIT_CAPABILITY.INFORMATION_MANAGEMENT,
+  ORBIT_CAPABILITY.INFORMATION_MANAGEMENT_MANAGE,
 ];
+
+const DEFAULT_INFORMATION_MANAGEMENT_ALLOWLIST = [
+  "sara_murillofo@cun.edu.co",
+  "lorena_gomez@cun.edu.co",
+  "camilo_quintero@cun.edu.co",
+  "sara_martinezl@cun.edu.co",
+] as const;
+
+export function getInformationManagementAllowlist(): string[] {
+  const raw = (process.env.INFORMATION_MANAGEMENT_ALLOWED_EMAILS ?? "").trim();
+  if (!raw) return [...DEFAULT_INFORMATION_MANAGEMENT_ALLOWLIST];
+  return [...new Set(raw.split(/[,;\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean))];
+}
+
+export function isInformationManagementUser(email: string | null | undefined): boolean {
+  const normalized = (email ?? "").trim().toLowerCase();
+  return normalized.length > 0 && getInformationManagementAllowlist().includes(normalized);
+}
+
+export function ensureInformationManagementCapabilities(
+  capabilities: readonly OrbitCapability[],
+  email: string | null | undefined
+): OrbitCapability[] {
+  if (!isInformationManagementUser(email)) return [...capabilities];
+  return [...new Set([
+    ...capabilities,
+    ORBIT_CAPABILITY.INFORMATION_MANAGEMENT,
+    ORBIT_CAPABILITY.INFORMATION_MANAGEMENT_MANAGE,
+  ])];
+}
 
 /**
  * Allowlist temporal de acceso a ORBIT (reborn).
@@ -115,6 +149,7 @@ export function isEmailAuthorizedForOrbit(
     isEmailOnOrbitAllowlist(email) ||
     isEmailOnPlantaActivaGrant(email) ||
     isEmailVacancyAdmin(email)
+    || isInformationManagementUser(email)
   );
 }
 

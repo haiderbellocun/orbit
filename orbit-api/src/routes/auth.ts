@@ -4,9 +4,11 @@ import { OAuth2Client } from "google-auth-library";
 import { pool } from "../db/connection";
 import {
   ensureVacancyAdminCapabilities,
+  ensureInformationManagementCapabilities,
   isEmailAuthorizedForOrbit,
   isEmailOnOrbitAllowlist,
   isEmailVacancyAdmin,
+  isInformationManagementUser,
   resolveAllowlistAdminAccess,
   resolvePlantaActivaGrantAccess,
   VACANCIES_ADMIN_CAPABILITIES,
@@ -217,8 +219,8 @@ async function gateOrbitRoleAndLite(
     return {
       ok: true,
       orbitAccess,
-      capabilities: ensureVacancyAdminCapabilities(
-        capabilities,
+      capabilities: ensureInformationManagementCapabilities(
+        ensureVacancyAdminCapabilities(capabilities, emailNorm || personEmailNorm),
         emailNorm || personEmailNorm
       ),
       schoolId: null,
@@ -236,8 +238,8 @@ async function gateOrbitRoleAndLite(
     return {
       ok: true,
       orbitAccess,
-      capabilities: ensureVacancyAdminCapabilities(
-        capabilities,
+      capabilities: ensureInformationManagementCapabilities(
+        ensureVacancyAdminCapabilities(capabilities, emailNorm || personEmailNorm),
         emailNorm || personEmailNorm
       ),
       schoolId: null,
@@ -253,10 +255,23 @@ async function gateOrbitRoleAndLite(
     return {
       ok: true,
       orbitAccess: "full",
-      capabilities: ensureVacancyAdminCapabilities(
-        [...VACANCIES_ADMIN_CAPABILITIES],
+      capabilities: ensureInformationManagementCapabilities(
+        ensureVacancyAdminCapabilities([...VACANCIES_ADMIN_CAPABILITIES], emailNorm || personEmailNorm),
         emailNorm || personEmailNorm
       ),
+      schoolId: null,
+      areaId: null,
+      programIds: [],
+      plantaViewAreaIds: null,
+      plantaEditAreaIds: null,
+    };
+  }
+
+  if (isInformationManagementUser(emailNorm) || isInformationManagementUser(personEmailNorm)) {
+    return {
+      ok: true,
+      orbitAccess: "full",
+      capabilities: ensureInformationManagementCapabilities([], emailNorm || personEmailNorm),
       schoolId: null,
       areaId: null,
       programIds: [],

@@ -15,6 +15,8 @@ import {
   isEmailVacancyAdmin,
   canVacancyAdmin,
   ensureVacancyAdminCapabilities,
+  ensureInformationManagementCapabilities,
+  isInformationManagementUser,
   resolveAllowlistAdminAccess,
   resolveOrbitAccess,
   resolvePlantaActivaGrantAccess,
@@ -337,6 +339,22 @@ test("isEmailAuthorizedForOrbit includes planta grants", () => {
   assert.equal(isEmailAuthorizedForOrbit("otro@cun.edu.co"), false);
   assert.equal(isEmailAuthorizedForOrbit("camilo_quintero@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("zuany_acuna@cun.edu.co"), true);
+});
+
+test("information management allowlist and capabilities", () => {
+  for (const email of [
+    "sara_murillofo@cun.edu.co",
+    "lorena_gomez@cun.edu.co",
+    "camilo_quintero@cun.edu.co",
+    "sara_martinezl@cun.edu.co",
+  ]) {
+    assert.equal(isInformationManagementUser(email), true);
+    const capabilities = ensureInformationManagementCapabilities([], email);
+    assert.equal(capabilities.includes(ORBIT_CAPABILITY.INFORMATION_MANAGEMENT), true);
+    assert.equal(capabilities.includes(ORBIT_CAPABILITY.INFORMATION_MANAGEMENT_MANAGE), true);
+    assert.equal(isEmailAuthorizedForOrbit(email), true);
+  }
+  assert.equal(isInformationManagementUser("otro@cun.edu.co"), false);
 });
 
 console.log("orbitCapabilities tests passed");

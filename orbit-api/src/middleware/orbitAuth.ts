@@ -2,10 +2,12 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import {
   ensureVacancyAdminCapabilities,
+  ensureInformationManagementCapabilities,
   hasCapability,
   isEmailAuthorizedForOrbit,
   isEmailOnOrbitAllowlist,
   isEmailVacancyAdmin,
+  isInformationManagementUser,
   ORBIT_CAPABILITY,
   resolvePlantaActivaGrantAccess,
   SUPER_ADMIN_CAPABILITIES,
@@ -138,6 +140,8 @@ export function orbitAuthMiddleware(
         plantaEditAreaIds = [...grant.editAreaIds];
       } else if (isEmailVacancyAdmin(email)) {
         capabilities = [...VACANCIES_ADMIN_CAPABILITIES];
+      } else if (isInformationManagementUser(email)) {
+        capabilities = [];
       } else {
         res.status(401).json({
           error:
@@ -148,6 +152,7 @@ export function orbitAuthMiddleware(
     }
 
     capabilities = ensureVacancyAdminCapabilities(capabilities, email);
+    capabilities = ensureInformationManagementCapabilities(capabilities, email);
 
     const roleIdRaw = decoded.roleId;
     const roleId =
@@ -257,6 +262,8 @@ export function orbitCapabilityByPathMiddleware(
   else if (path.startsWith("/substantive-hours"))
     required = ORBIT_CAPABILITY.SUBSTANTIVE_HOURS;
   else if (path.startsWith("/workforce-events")) required = ORBIT_CAPABILITY.NEWS;
+  else if (path.startsWith("/information-management"))
+    required = ORBIT_CAPABILITY.INFORMATION_MANAGEMENT;
 
   if (required == null) {
     next();
