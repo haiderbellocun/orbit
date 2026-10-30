@@ -1061,14 +1061,14 @@ export async function getCatalogAcademicLines(): Promise<string[]> {
 }
 
 export type InformationProject = {
-  id: string; zoho_project_id: string | null; name: string; description: string | null;
+  id: string; public_id: number; zoho_project_id: string | null; name: string; description: string | null;
   area_id: number; area_name?: string; zoho_owner_name: string | null;
   status: "pending" | "in_progress" | "completed" | "cancelled";
   start_date: string | null; end_date: string | null; archived_at: string | null;
   task_count?: number; pending_task_count?: number; created_at: string; updated_at: string;
 };
 export type InformationTask = {
-  id: string; project_id: string; parent_task_id: string | null; zoho_task_id: string | null;
+  id: string; public_id: number; project_id: string; parent_task_id: string | null; zoho_task_id: string | null;
   name: string; description: string | null; zoho_owner_name: string | null;
   zoho_status: InformationProject["status"]; review_status: "unreviewed" | "pending_correction" | "correct";
   completion_percentage: number; priority: "low" | "medium" | "high" | "critical";
@@ -1076,12 +1076,12 @@ export type InformationTask = {
   subtask_count?: number; active_incident_count?: number; created_at: string; updated_at: string;
 };
 export type InformationIncident = {
-  id: string; task_id: string; description: string; status: "active" | "resolved";
+  id: string; public_id: number; task_id: string; description: string; status: "active" | "resolved";
   observed_at: string; resolution_note: string | null; resolved_at: string | null;
   evidence_count?: number; created_at: string; updated_at: string;
 };
 export type InformationEvidence = {
-  id: string; incident_id: string; original_filename: string; mime_type: string; file_size: number;
+  id: string; public_id: number; incident_id: string; original_filename: string; mime_type: string; file_size: number;
   file_hash: string; description: string | null; evidence_at: string; uploaded_at: string;
   voided_at: string | null; void_reason: string | null;
 };

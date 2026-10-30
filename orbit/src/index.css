@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
@@ -49,10 +51,73 @@
     --orbit-warning: #D97706;
     --orbit-danger: #E11D48;
     --orbit-info: #0284C7;
+    --orbit-login-veil: rgba(248, 250, 252, 0.85);
     --orbit-rail-collapsed: 76px;
     --orbit-rail-expanded: 232px;
     --orbit-topbar: 64px;
     color-scheme: light;
+  }
+
+  :root[data-theme="dark"] {
+    --color-orbit-bg: #0F1115;
+    --color-orbit-bg-secondary: #15181E;
+    --color-orbit-surface: #1A1E26;
+    --color-orbit-elevated: #20252E;
+    --color-orbit-interactive: #262C36;
+    --color-orbit-border: #2A303A;
+    --color-orbit-text: #F3F4F6;
+    --color-orbit-text-secondary: #C7CBD1;
+    --color-orbit-muted: #9299A3;
+    --color-orbit-primary: #A855F7;
+    --color-orbit-primary-hover: #BC7DF9;
+    --color-orbit-accent: #9F67F5;
+    --color-orbit-success: #34D07A;
+    --color-orbit-warning: #F0A73B;
+    --color-orbit-danger: #F4667F;
+    --color-orbit-info: #45B6F2;
+    --color-glass-bg: #1A1E26;
+    --color-glass-border: #2A303A;
+
+    --orbit-bg: #0F1115;
+    --orbit-bg-secondary: #15181E;
+    --orbit-surface: #1A1E26;
+    --orbit-elevated: #20252E;
+    --orbit-interactive: #262C36;
+    --orbit-border: #2A303A;
+    --orbit-text: #F3F4F6;
+    --orbit-text-secondary: #C7CBD1;
+    --orbit-muted: #9299A3;
+    --orbit-primary: #A855F7;
+    --orbit-primary-hover: #BC7DF9;
+    --orbit-accent: #9F67F5;
+    --orbit-success: #34D07A;
+    --orbit-warning: #F0A73B;
+    --orbit-danger: #F4667F;
+    --orbit-info: #45B6F2;
+    --orbit-login-veil: rgba(15, 17, 21, 0.88);
+    color-scheme: dark;
+  }
+
+  /* Compatibilidad para vistas antiguas que todavía usan colores Tailwind
+     literales en lugar de los tokens semánticos de Orbit. */
+  :root[data-theme="dark"] .bg-white {
+    background-color: var(--orbit-surface) !important;
+  }
+
+  :root[data-theme="dark"] .bg-slate-50,
+  :root[data-theme="dark"] .bg-slate-100 {
+    background-color: var(--orbit-interactive) !important;
+  }
+
+  :root[data-theme="dark"] .text-slate-900,
+  :root[data-theme="dark"] .text-slate-800,
+  :root[data-theme="dark"] .text-slate-700 {
+    color: var(--orbit-text) !important;
+  }
+
+  :root[data-theme="dark"] .text-slate-600,
+  :root[data-theme="dark"] .text-slate-500 {
+    color: var(--orbit-muted) !important;
   }
 
   * {
@@ -97,7 +162,7 @@
   input:not([type="checkbox"]):not([type="radio"]),
   select,
   textarea {
-    color-scheme: light;
+    color-scheme: inherit;
   }
 }
 

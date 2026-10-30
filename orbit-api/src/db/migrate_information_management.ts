@@ -102,6 +102,76 @@ CREATE TABLE IF NOT EXISTS information_management.evidence (
 CREATE INDEX IF NOT EXISTS ix_information_evidence_incident
   ON information_management.evidence (incident_id, uploaded_at DESC);
 
+-- Identificadores consecutivos para UI, reportes y tableros. Los UUID se
+-- conservan como claves internas para no romper relaciones ni objetos de GCS.
+CREATE SEQUENCE IF NOT EXISTS information_management.project_public_id_seq;
+ALTER TABLE information_management.project
+  ADD COLUMN IF NOT EXISTS public_id BIGINT;
+ALTER TABLE information_management.project
+  ALTER COLUMN public_id SET DEFAULT nextval('information_management.project_public_id_seq');
+UPDATE information_management.project
+SET public_id = nextval('information_management.project_public_id_seq')
+WHERE public_id IS NULL;
+SELECT setval(
+  'information_management.project_public_id_seq',
+  GREATEST(COALESCE((SELECT MAX(public_id) FROM information_management.project), 0), 1),
+  EXISTS (SELECT 1 FROM information_management.project)
+);
+ALTER TABLE information_management.project ALTER COLUMN public_id SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_information_project_public_id
+  ON information_management.project (public_id);
+
+CREATE SEQUENCE IF NOT EXISTS information_management.task_public_id_seq;
+ALTER TABLE information_management.task
+  ADD COLUMN IF NOT EXISTS public_id BIGINT;
+ALTER TABLE information_management.task
+  ALTER COLUMN public_id SET DEFAULT nextval('information_management.task_public_id_seq');
+UPDATE information_management.task
+SET public_id = nextval('information_management.task_public_id_seq')
+WHERE public_id IS NULL;
+SELECT setval(
+  'information_management.task_public_id_seq',
+  GREATEST(COALESCE((SELECT MAX(public_id) FROM information_management.task), 0), 1),
+  EXISTS (SELECT 1 FROM information_management.task)
+);
+ALTER TABLE information_management.task ALTER COLUMN public_id SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_information_task_public_id
+  ON information_management.task (public_id);
+
+CREATE SEQUENCE IF NOT EXISTS information_management.incident_public_id_seq;
+ALTER TABLE information_management.incident
+  ADD COLUMN IF NOT EXISTS public_id BIGINT;
+ALTER TABLE information_management.incident
+  ALTER COLUMN public_id SET DEFAULT nextval('information_management.incident_public_id_seq');
+UPDATE information_management.incident
+SET public_id = nextval('information_management.incident_public_id_seq')
+WHERE public_id IS NULL;
+SELECT setval(
+  'information_management.incident_public_id_seq',
+  GREATEST(COALESCE((SELECT MAX(public_id) FROM information_management.incident), 0), 1),
+  EXISTS (SELECT 1 FROM information_management.incident)
+);
+ALTER TABLE information_management.incident ALTER COLUMN public_id SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_information_incident_public_id
+  ON information_management.incident (public_id);
+
+CREATE SEQUENCE IF NOT EXISTS information_management.evidence_public_id_seq;
+ALTER TABLE information_management.evidence
+  ADD COLUMN IF NOT EXISTS public_id BIGINT;
+ALTER TABLE information_management.evidence
+  ALTER COLUMN public_id SET DEFAULT nextval('information_management.evidence_public_id_seq');
+UPDATE information_management.evidence
+SET public_id = nextval('information_management.evidence_public_id_seq')
+WHERE public_id IS NULL;
+SELECT setval(
+  'information_management.evidence_public_id_seq',
+  GREATEST(COALESCE((SELECT MAX(public_id) FROM information_management.evidence), 0), 1),
+  EXISTS (SELECT 1 FROM information_management.evidence)
+);
+ALTER TABLE information_management.evidence ALTER COLUMN public_id SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_information_evidence_public_id
+  ON information_management.evidence (public_id);
+
 CREATE TABLE IF NOT EXISTS information_management.audit_log (
   id BIGSERIAL PRIMARY KEY,
   entity_type VARCHAR(24) NOT NULL,

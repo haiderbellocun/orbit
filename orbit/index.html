@@ -7,6 +7,15 @@
     <link rel="icon" type="image/png" href="https://i.ibb.co/1SR92PZ/LOGO-ORBIT-512-Mesa-de-trabajo-1-02-02.png" />
   </head>
   <body>
+    <script>
+      // Aplica el tema antes del primer render para evitar un destello claro.
+      try {
+        var orbitTheme = localStorage.getItem('orbit_theme');
+        document.documentElement.dataset.theme = orbitTheme === 'light' ? 'light' : 'dark';
+      } catch (error) {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
