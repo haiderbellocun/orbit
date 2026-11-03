@@ -89,9 +89,28 @@ export async function runStartupSchemaPatches(): Promise<void> {
   }
 
   await ensurePersonManagerId();
+  await ensureSecondInCommandScopes();
   await ensurePlantaOrgOverride();
   await ensureCoreUserIdSequence();
   await migrateInformationManagement();
+}
+
+async function ensureSecondInCommandScopes(): Promise<void> {
+  await pool.query(`
+    DO $do$
+    DECLARE sch text;
+    BEGIN
+      FOREACH sch IN ARRAY ARRAY['public', 'core'] LOOP
+        IF to_regclass(sch || '.person') IS NOT NULL THEN
+          EXECUTE format(
+            'ALTER TABLE %I.person ADD COLUMN IF NOT EXISTS second_in_command_scopes text[] NOT NULL DEFAULT ''{}''',
+            sch
+          );
+        END IF;
+      END LOOP;
+    END
+    $do$;
+  `);
 }
 
 /** Responsable directo: `person.manager_id` → `person.id` (auto-FK). */

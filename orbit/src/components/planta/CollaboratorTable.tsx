@@ -3,6 +3,7 @@ import { PencilSquareIcon } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
 import type { OrganizationNode } from '@/src/lib/organizationTree';
 import { schoolAccent } from '@/src/lib/schoolAccent';
+import { SecondInCommandBadges } from '@/src/components/planta/SecondInCommandBadges';
 
 type CollaboratorTableProps = {
   nodes: OrganizationNode[];
@@ -51,6 +52,7 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
                   <p className="font-semibold text-orbit-text truncate max-w-[16rem]">
                     {person.name || '—'}
                   </p>
+                  <SecondInCommandBadges person={person} />
                   {person.school ? (
                     <p
                       className="mt-0.5 flex items-center gap-1.5 text-[11px] font-semibold truncate max-w-[16rem]"

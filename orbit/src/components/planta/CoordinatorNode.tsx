@@ -14,6 +14,7 @@ import {
 import { LeaderNode } from '@/src/components/planta/LeaderNode';
 import { CollaboratorTable } from '@/src/components/planta/CollaboratorTable';
 import { UnitEmblem } from '@/src/components/planta/UnitEmblem';
+import { SecondInCommandBadges } from '@/src/components/planta/SecondInCommandBadges';
 
 type CoordinatorNodeProps = {
   node: OrganizationNode;
@@ -86,6 +87,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
             <h3 className="font-display text-lg font-semibold tracking-tight text-orbit-text">
               {person.name}
             </h3>
+            <SecondInCommandBadges person={person} />
             {node.assignmentLabel ? (
               <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-orbit-warning">
                 {node.assignmentLabel}

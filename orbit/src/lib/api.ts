@@ -894,6 +894,7 @@ export type PlantaActivaFilters = {
 };
 
 export type UpdatePlantaPersonPayload = {
+  second_in_command_scopes?: string[];
   full_name?: string;
   document?: string;
   email?: string | null;

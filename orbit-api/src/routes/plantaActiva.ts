@@ -40,6 +40,7 @@ import {
   sqlPersonIsInactive,
   sqlPersonStatusText,
 } from "../sql/personActive";
+import { normalizeSecondInCommandScopes } from "../lib/secondInCommand";
 
 const router = Router();
 
@@ -80,6 +81,7 @@ const PLANTA_PERSON_SELECT = `
          p.id,
          p.document,
          p.type_document,
+         p.second_in_command_scopes,
          p.full_name AS name,
          NULLIF(TRIM(p.email), '') AS email,
          NULLIF(TRIM(p.edu_email), '') AS edu_email,
@@ -354,6 +356,7 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
          p.id,
          p.document,
          p.type_document,
+         p.second_in_command_scopes,
          p.full_name AS name,
          NULLIF(TRIM(p.email), '') AS email,
          NULLIF(TRIM(p.edu_email), '') AS edu_email,
@@ -1023,6 +1026,18 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
     const sets: string[] = [];
     const values: unknown[] = [];
     let i = 1;
+
+    if ("second_in_command_scopes" in b) {
+      try {
+        const scopes = normalizeSecondInCommandScopes(b.second_in_command_scopes);
+        sets.push(`second_in_command_scopes = $${i}::text[]`);
+        values.push(scopes);
+        i++;
+      } catch (error) {
+        res.status(400).json({ error: (error as Error).message });
+        return;
+      }
+    }
 
     const fullName =
       typeof b.full_name === "string"

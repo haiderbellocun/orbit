@@ -9,6 +9,9 @@ function numOrNull(v: unknown): number | null {
 export function mapPlantaFromApi(row: Record<string, unknown>): PlantaPerson {
   const st = String(row.status ?? 'active');
   return {
+    second_in_command_scopes: Array.isArray(row.second_in_command_scopes)
+      ? row.second_in_command_scopes.map(String)
+      : [],
     id: String(row.id ?? ''),
     document: String(row.document ?? ''),
     type_document: row.type_document ? String(row.type_document) : undefined,

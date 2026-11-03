@@ -15,6 +15,7 @@ export type View =
   | 'information-management';
 
 export interface PlantaPerson {
+  second_in_command_scopes?: string[];
   id: string;
   document: string;
   type_document?: string;
