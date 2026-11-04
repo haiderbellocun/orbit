@@ -92,7 +92,33 @@ export async function runStartupSchemaPatches(): Promise<void> {
   await ensureSecondInCommandScopes();
   await ensurePlantaOrgOverride();
   await ensureCoreUserIdSequence();
+  await normalizeOperationalAnalystRoleName();
   await migrateInformationManagement();
+}
+
+/** Corrige una etiqueta histórica del catálogo sin cambiar el rol ni sus relaciones. */
+async function normalizeOperationalAnalystRoleName(): Promise<void> {
+  const result = await pool.query(`
+    DO $do$
+    DECLARE sch text;
+    BEGIN
+      FOREACH sch IN ARRAY ARRAY['public', 'core'] LOOP
+        IF to_regclass(sch || '.role') IS NOT NULL THEN
+          EXECUTE format(
+            'UPDATE %I.role
+             SET name = $1, updated_at = NOW()
+             WHERE upper(btrim(name)) = $2',
+            sch
+          )
+          USING 'ANALISTA OPERATIVO', 'ANALISTA OPERATIVO - SALUD';
+        END IF;
+      END LOOP;
+    END
+    $do$;
+  `);
+  if (result.rowCount !== 0) {
+    console.log("startupSchemaPatches: etiqueta ANALISTA OPERATIVO normalizada");
+  }
 }
 
 async function ensureSecondInCommandScopes(): Promise<void> {
