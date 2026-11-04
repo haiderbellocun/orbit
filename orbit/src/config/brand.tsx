@@ -11,6 +11,7 @@ import {
   BuildingOffice2Icon,
   ClockIcon,
   CircleStackIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/solid';
 import { BrandConfig } from '../types';
 
@@ -78,4 +79,5 @@ export const APP_ICONS = {
   'substantive-hours': ClockIcon,
   'planta-activa': BuildingOffice2Icon,
   'information-management': CircleStackIcon,
+  roles: UserGroupIcon,
 };

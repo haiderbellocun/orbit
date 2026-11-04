@@ -15,7 +15,7 @@ export type PlantaActivaGrant = {
   /** `null` = ver todas las áreas. */
   viewAreaIds: number[] | null;
   /** Áreas que puede editar. */
-  editAreaIds: number[];
+  editAreaIds: number[] | null;
   excludeLiteAndDocenteRoles?: boolean;
   /**
    * Capabilities adicionales a `view:planta_activa`
@@ -32,25 +32,25 @@ const SARA_LEVEL_EXTRAS = [
   "view:news",
 ] as const;
 
-const SARA_LEVEL_EDIT_AREA_IDS = [2, 3, 4, 5, 6, 7, 8];
+const CINDY_LEVEL_EDIT_AREA_IDS = [2, 3, 4, 5, 6, 7, 8];
 
 const GRANTS: readonly PlantaActivaGrant[] = [
   {
     email: "sara_murillofo@cun.edu.co",
     viewAreaIds: null,
-    editAreaIds: SARA_LEVEL_EDIT_AREA_IDS,
+    editAreaIds: null,
     extraCapabilities: SARA_LEVEL_EXTRAS,
   },
   {
     email: "lorena_gomez@cun.edu.co",
     viewAreaIds: null,
-    editAreaIds: SARA_LEVEL_EDIT_AREA_IDS,
+    editAreaIds: null,
     extraCapabilities: SARA_LEVEL_EXTRAS,
   },
   {
     email: "cindy_russi@cun.edu.co",
     viewAreaIds: null,
-    editAreaIds: SARA_LEVEL_EDIT_AREA_IDS,
+    editAreaIds: CINDY_LEVEL_EDIT_AREA_IDS,
     extraCapabilities: SARA_LEVEL_EXTRAS,
   },
   {
@@ -100,6 +100,7 @@ export function canEditPlantaArea(
   areaId: number | null
 ): boolean {
   if (grant == null) return true;
+  if (grant.editAreaIds == null) return true;
   if (areaId == null || !Number.isFinite(areaId)) return false;
   return grant.editAreaIds.includes(areaId);
 }

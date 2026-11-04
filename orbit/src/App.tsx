@@ -18,6 +18,7 @@ import { AuditView } from "./components/views/AuditView";
 import { ProgramsView } from "./components/views/ProgramsView";
 import { PlantaActivaView } from "./components/views/PlantaActivaView";
 import { InformationManagementView } from "./components/views/InformationManagementView";
+import { RolesManagementView } from "./components/views/RolesManagementView";
 import { View, Vacancy, NAV_ITEMS } from "./types";
 import { VacancyDetailView } from "./components/views/VacancyDetailView";
 import { VacancyInformativePanelView } from "./components/views/VacancyInformativePanelView";
@@ -137,6 +138,8 @@ function AppShell({
         return <PlantaActivaView {...notifProps} />;
       case "information-management":
         return <InformationManagementView />;
+      case "roles":
+        return <RolesManagementView />;
       default:
         return <HomeView setView={setView} {...notifProps} />;
     }

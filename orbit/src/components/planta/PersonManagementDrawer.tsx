@@ -305,6 +305,11 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                     disabled={!canEditPerson}
                   >
                     {showEmptyAreaOption && <option value="">Sin área</option>}
+                    {!showEmptyAreaOption && (
+                      <option value="" disabled>
+                        Seleccione área
+                      </option>
+                    )}
                     {areas.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name}

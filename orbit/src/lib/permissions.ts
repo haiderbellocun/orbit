@@ -10,6 +10,7 @@ export const ORBIT_CAPABILITY = {
   PLANTA_ACTIVA: "view:planta_activa",
   NEWS: "view:news",
   INFORMATION_MANAGEMENT: "view:information_management",
+  ROLES_MANAGE: "roles:manage",
 } as const;
 
 export type OrbitCapability =
@@ -24,6 +25,7 @@ const NAV_ID_TO_CAPABILITY: Record<string, OrbitCapability> = {
   "planta-activa": ORBIT_CAPABILITY.PLANTA_ACTIVA,
   news: ORBIT_CAPABILITY.NEWS,
   "information-management": ORBIT_CAPABILITY.INFORMATION_MANAGEMENT,
+  roles: ORBIT_CAPABILITY.ROLES_MANAGE,
 };
 
 const VIEW_TO_CAPABILITY: Partial<Record<View, OrbitCapability>> = {
@@ -36,6 +38,7 @@ const VIEW_TO_CAPABILITY: Partial<Record<View, OrbitCapability>> = {
   reinstatements: ORBIT_CAPABILITY.VACANCIES,
   news: ORBIT_CAPABILITY.NEWS,
   "information-management": ORBIT_CAPABILITY.INFORMATION_MANAGEMENT,
+  roles: ORBIT_CAPABILITY.ROLES_MANAGE,
   audit: ORBIT_CAPABILITY.HOME,
   programs: ORBIT_CAPABILITY.HOME,
   "planta-activa": ORBIT_CAPABILITY.PLANTA_ACTIVA,
@@ -77,6 +80,8 @@ export function filterNavItems(
   capabilities: readonly string[]
 ): NavItem[] {
   return items.filter((item) => {
+    // El catálogo de roles está habilitado para todo usuario autenticado.
+    if (item.id === "roles") return true;
     if (item.id === "vacancy-informative-panel") {
       return canAccessVacancyInformativePanel(capabilities);
     }
@@ -91,6 +96,7 @@ export function canAccessView(
   capabilities: readonly string[]
 ): boolean {
   if (view === "login") return true;
+  if (view === "roles") return true;
   if (view === "vacancy-informative-panel") {
     return canAccessVacancyInformativePanel(capabilities);
   }

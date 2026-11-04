@@ -247,7 +247,7 @@ test("planta activa grants: sara/lorena/cindy/leidy/tania", () => {
   const sara = getPlantaActivaGrant("sara_murillofo@cun.edu.co");
   assert.ok(sara);
   assert.equal(sara!.viewAreaIds, null);
-  assert.deepEqual(sara!.editAreaIds, [2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(sara!.editAreaIds, null);
   assert.deepEqual(sara!.extraCapabilities, [
     "view:home",
     "view:vacancies",
@@ -256,7 +256,7 @@ test("planta activa grants: sara/lorena/cindy/leidy/tania", () => {
     "view:news",
   ]);
   assert.equal(canViewPlantaArea(sara, 1), true);
-  assert.equal(canEditPlantaArea(sara, 1), false);
+  assert.equal(canEditPlantaArea(sara, 1), true);
   assert.equal(canEditPlantaArea(sara, 3), true);
   const saraAccess = resolvePlantaActivaGrantAccess(sara);
   assert.equal(saraAccess.capabilities.includes(ORBIT_CAPABILITY.PLANTA_ACTIVA), true);
@@ -283,7 +283,7 @@ test("planta activa grants: sara/lorena/cindy/leidy/tania", () => {
   const cindy = getPlantaActivaGrant("cindy_russi@cun.edu.co");
   assert.ok(cindy);
   assert.deepEqual(cindy!.viewAreaIds, sara!.viewAreaIds);
-  assert.deepEqual(cindy!.editAreaIds, sara!.editAreaIds);
+  assert.deepEqual(cindy!.editAreaIds, [2, 3, 4, 5, 6, 7, 8]);
   assert.deepEqual(cindy!.extraCapabilities, sara!.extraCapabilities);
   const cindyAccess = resolvePlantaActivaGrantAccess(cindy);
   assert.deepEqual(cindyAccess, saraAccess);

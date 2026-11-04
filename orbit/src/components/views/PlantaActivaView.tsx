@@ -185,17 +185,21 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const [a, r] = await Promise.all([getCatalogAreas(), getCatalogRoles()]);
-        if (!cancelled) {
-          setAreas(Array.isArray(a) ? a : []);
-          setRoles(Array.isArray(r) ? r : []);
-        }
-      } catch {
-        if (!cancelled) {
-          setAreas([]);
-          setRoles([]);
-        }
+      const [areasResult, rolesResult] = await Promise.allSettled([
+        getCatalogAreas(),
+        getCatalogRoles(),
+      ]);
+      if (!cancelled) {
+        setAreas(
+          areasResult.status === 'fulfilled' && Array.isArray(areasResult.value)
+            ? areasResult.value
+            : []
+        );
+        setRoles(
+          rolesResult.status === 'fulfilled' && Array.isArray(rolesResult.value)
+            ? rolesResult.value
+            : []
+        );
       }
     })();
     return () => {
@@ -470,7 +474,9 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
 
   const areasForEdit = useMemo(() => {
     if (editableAreaIds == null) return areas;
-    return areas.filter((a) => editableAreaIds.includes(a.id));
+    return areas.filter((area) =>
+      editableAreaIds.some((allowedId) => String(allowedId) === String(area.id))
+    );
   }, [areas, editableAreaIds]);
 
   const areasForFilter = useMemo(() => {

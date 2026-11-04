@@ -8,6 +8,14 @@ import { schoolScopeFromRequest } from "../middleware/orbitAuth";
 
 const router = Router();
 
+// Los catálogos dependen de la sesión y pueden cambiar entre despliegues.
+// Evitar respuestas 304 que reutilicen listas vacías guardadas por el navegador.
+router.use((_req, res, next) => {
+  res.set("Cache-Control", "no-store, max-age=0");
+  res.set("Pragma", "no-cache");
+  next();
+});
+
 router.get("/catalog/areas", async (_req, res) => {
   try {
     const coreMode = await resolveCoreSchemaMode();

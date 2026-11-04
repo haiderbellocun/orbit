@@ -12,7 +12,8 @@ export type View =
   | 'export'
   | 'programs'
   | 'planta-activa'
-  | 'information-management';
+  | 'information-management'
+  | 'roles';
 
 export interface PlantaPerson {
   second_in_command_scopes?: string[];
@@ -301,6 +302,7 @@ export const NAV_ITEMS = [
   },
   { id: 'news', label: 'Novedades', iconKey: 'news' },
   { id: 'information-management', label: 'Gestión de información', iconKey: 'information-management' },
+  { id: 'roles', label: 'Gestión de roles', iconKey: 'roles' },
 ] as const;
 
 export type NavItem = (typeof NAV_ITEMS)[number];

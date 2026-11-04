@@ -332,17 +332,19 @@ export function getStoredPlantaActivaAccess(): {
             editAreaIds?: number[] | null;
           };
         };
+        // Los grants conocidos son la fuente de verdad para estos usuarios.
+        // Esto evita que una sesión creada antes de ampliar el acceso conserve
+        // `editAreaIds: []` y deje vacíos los selectores de Planta Activa.
+        const grant = getPlantaActivaGrantByEmail(
+          typeof u.email === "string" ? u.email : getStoredUserEmail()
+        );
+        if (grant) return grant;
         if (u.plantaActivaAccess) {
           return {
             viewAreaIds: u.plantaActivaAccess.viewAreaIds ?? null,
             editAreaIds: u.plantaActivaAccess.editAreaIds ?? null,
           };
         }
-        // Fallback por email (misma tabla que el API) si el JWT es anterior.
-        const grant = getPlantaActivaGrantByEmail(
-          typeof u.email === "string" ? u.email : getStoredUserEmail()
-        );
-        if (grant) return grant;
       }
     } catch {
       /* ignore */
@@ -1035,12 +1037,49 @@ export type CatalogArea = { id: number; name: string };
 export type CatalogSchool = { id: number; name: string; area_id: number | null };
 export type CatalogProgram = { id: number; name: string; school_id: number | null };
 export type CatalogRole = { id: number; name: string };
+export type ManagedRole = {
+  id: number;
+  code: string | null;
+  name: string;
+  description: string | null;
+  category: string | null;
+  is_active: boolean;
+  assigned_count: number;
+};
+
+export async function getManagedRoles(): Promise<ManagedRole[]> {
+  const response = await authFetch(`${BASE_URL}/roles`, { headers: jsonHeaders });
+  return handleJson(response);
+}
+
+export async function createManagedRole(name: string, code: string): Promise<ManagedRole> {
+  const response = await authFetch(`${BASE_URL}/roles`, {
+    method: "POST", headers: jsonHeaders, body: JSON.stringify({ name, code }),
+  });
+  return handleJson(response);
+}
+
+export async function updateManagedRole(id: number, name: string, code: string): Promise<ManagedRole> {
+  const response = await authFetch(`${BASE_URL}/roles/${id}`, {
+    method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ name, code }),
+  });
+  return handleJson(response);
+}
+
+export async function updateManagedRoleStatus(id: number, isActive: boolean): Promise<ManagedRole> {
+  const response = await authFetch(`${BASE_URL}/roles/${id}/status`, {
+    method: "PATCH", headers: jsonHeaders, body: JSON.stringify({ is_active: isActive }),
+  });
+  return handleJson(response);
+}
 
 export async function getCatalogAreas(): Promise<CatalogArea[]> {
   const response = await authFetch(`${BASE_URL}/catalog/areas`, {
     headers: jsonHeaders,
+    cache: "no-store",
   });
-  return handleJson(response);
+  const rows = await handleJson<Array<{ id: number | string; name: string }>>(response);
+  return rows.map((row) => ({ ...row, id: Number(row.id) }));
 }
 
 export async function getCatalogSchools(params?: {
@@ -1052,15 +1091,29 @@ export async function getCatalogSchools(params?: {
   }
   const response = await authFetch(url.toString(), {
     headers: jsonHeaders,
+    cache: "no-store",
   });
-  return handleJson(response);
+  const rows = await handleJson<
+    Array<{
+      id: number | string;
+      name: string;
+      area_id: number | string | null;
+    }>
+  >(response);
+  return rows.map((row) => ({
+    ...row,
+    id: Number(row.id),
+    area_id: row.area_id == null ? null : Number(row.area_id),
+  }));
 }
 
 export async function getCatalogRoles(): Promise<CatalogRole[]> {
   const response = await authFetch(`${BASE_URL}/catalog/roles`, {
     headers: jsonHeaders,
+    cache: "no-store",
   });
-  return handleJson(response);
+  const rows = await handleJson<Array<{ id: number | string; name: string }>>(response);
+  return rows.map((row) => ({ ...row, id: Number(row.id) }));
 }
 
 export async function getCatalogPrograms(params?: {
@@ -1072,8 +1125,22 @@ export async function getCatalogPrograms(params?: {
     url.searchParams.set("school_id", String(params.school_id));
   if (params?.area_id != null)
     url.searchParams.set("area_id", String(params.area_id));
-  const response = await authFetch(url.toString(), { headers: jsonHeaders });
-  return handleJson(response);
+  const response = await authFetch(url.toString(), {
+    headers: jsonHeaders,
+    cache: "no-store",
+  });
+  const rows = await handleJson<
+    Array<{
+      id: number | string;
+      name: string;
+      school_id: number | string | null;
+    }>
+  >(response);
+  return rows.map((row) => ({
+    ...row,
+    id: Number(row.id),
+    school_id: row.school_id == null ? null : Number(row.school_id),
+  }));
 }
 
 /** LÃ­neas acadÃ©micas ya usadas en `person_program_assignments` (sugerencias). */
