@@ -213,13 +213,14 @@ test("allowlist env override", () => {
   }
 });
 
-test("vacancy admin allowlist: camilo, yesid, sara, cindy", () => {
+test("vacancy admin allowlist: camilo, yesid, sara, maria, cindy", () => {
   const prev = process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST;
   delete process.env.ORBIT_VACANCY_ADMIN_ALLOWLIST;
   try {
     assert.equal(isEmailVacancyAdmin("camilo_quintero@cun.edu.co"), true);
     assert.equal(isEmailVacancyAdmin("yesid_rocha@cun.edu.co"), true);
     assert.equal(isEmailVacancyAdmin("sara_murillofo@cun.edu.co"), true);
+    assert.equal(isEmailVacancyAdmin("maria_ballen@cun.edu.co"), true);
     assert.equal(isEmailVacancyAdmin("cindy_russi@cun.edu.co"), true);
     assert.equal(isEmailVacancyAdmin("otro@cun.edu.co"), false);
     assert.equal(isEmailAuthorizedForOrbit("yesid_rocha@cun.edu.co"), true);
@@ -243,7 +244,7 @@ test("vacancy admin allowlist: camilo, yesid, sara, cindy", () => {
   }
 });
 
-test("planta activa grants: sara/lorena/cindy/leidy/tania", () => {
+test("planta activa grants: sara/lorena/maria/cindy/leidy/tania", () => {
   const sara = getPlantaActivaGrant("sara_murillofo@cun.edu.co");
   assert.ok(sara);
   assert.equal(sara!.viewAreaIds, null);
@@ -279,6 +280,13 @@ test("planta activa grants: sara/lorena/cindy/leidy/tania", () => {
   assert.deepEqual(lorena!.extraCapabilities, sara!.extraCapabilities);
   const lorenaAccess = resolvePlantaActivaGrantAccess(lorena);
   assert.deepEqual(lorenaAccess, saraAccess);
+
+  const maria = getPlantaActivaGrant("maria_ballen@cun.edu.co");
+  assert.ok(maria);
+  assert.deepEqual(maria!.viewAreaIds, sara!.viewAreaIds);
+  assert.deepEqual(maria!.editAreaIds, sara!.editAreaIds);
+  assert.deepEqual(maria!.extraCapabilities, sara!.extraCapabilities);
+  assert.deepEqual(resolvePlantaActivaGrantAccess(maria), saraAccess);
 
   const cindy = getPlantaActivaGrant("cindy_russi@cun.edu.co");
   assert.ok(cindy);
@@ -341,6 +349,7 @@ test("planta activa grants: sara/lorena/cindy/leidy/tania", () => {
 
 test("isEmailAuthorizedForOrbit includes planta grants", () => {
   assert.equal(isEmailAuthorizedForOrbit("sara_murillofo@cun.edu.co"), true);
+  assert.equal(isEmailAuthorizedForOrbit("maria_ballen@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("cindy_russi@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("leidy_bernal@cun.edu.co"), true);
   assert.equal(isEmailAuthorizedForOrbit("tania_rocha@cun.edu.co"), true);
@@ -353,6 +362,7 @@ test("information management allowlist and capabilities", () => {
   for (const email of [
     "sara_murillofo@cun.edu.co",
     "lorena_gomez@cun.edu.co",
+    "maria_ballen@cun.edu.co",
     "camilo_quintero@cun.edu.co",
     "sara_martinezl@cun.edu.co",
   ]) {

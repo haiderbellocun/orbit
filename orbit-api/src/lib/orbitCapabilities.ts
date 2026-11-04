@@ -51,6 +51,7 @@ export const SUPER_ADMIN_CAPABILITIES: readonly OrbitCapability[] = [
 const DEFAULT_INFORMATION_MANAGEMENT_ALLOWLIST = [
   "sara_murillofo@cun.edu.co",
   "lorena_gomez@cun.edu.co",
+  "maria_ballen@cun.edu.co",
   "camilo_quintero@cun.edu.co",
   "sara_martinezl@cun.edu.co",
 ] as const;
@@ -99,6 +100,7 @@ const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
   "camilo_quintero@cun.edu.co",
   "yesid_rocha@cun.edu.co",
   "sara_murillofo@cun.edu.co",
+  "maria_ballen@cun.edu.co",
   "cindy_russi@cun.edu.co",
 ] as const;
 

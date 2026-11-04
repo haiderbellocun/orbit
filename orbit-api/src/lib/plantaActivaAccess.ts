@@ -48,6 +48,12 @@ const GRANTS: readonly PlantaActivaGrant[] = [
     extraCapabilities: SARA_LEVEL_EXTRAS,
   },
   {
+    email: "maria_ballen@cun.edu.co",
+    viewAreaIds: null,
+    editAreaIds: null,
+    extraCapabilities: SARA_LEVEL_EXTRAS,
+  },
+  {
     email: "cindy_russi@cun.edu.co",
     viewAreaIds: null,
     editAreaIds: CINDY_LEVEL_EDIT_AREA_IDS,
