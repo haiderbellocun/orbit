@@ -46,7 +46,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     setError(null);
     try {
       const auth = await loginWithLocalEmail(trimmed);
-      localStorage.setItem("orbit_jwt", auth.token);
       localStorage.setItem("orbit_user", JSON.stringify(auth.user));
       onLogin(auth);
     } catch (err) {
@@ -65,7 +64,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     setError(null);
     try {
       const auth = await loginWithGoogleIdToken(credential);
-      localStorage.setItem("orbit_jwt", auth.token);
       localStorage.setItem("orbit_user", JSON.stringify(auth.user));
       onLogin(auth);
     } catch (e) {

@@ -70,11 +70,7 @@ export function clearOrbitSession(): void {
 
 function withAuth(init: RequestInit = {}): RequestInit {
   const headers = new Headers(init.headers ?? undefined);
-  const token = getStoredJwt();
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-  return { ...init, headers };
+  return { ...init, headers, credentials: "include" };
 }
 
 function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -452,7 +448,6 @@ export type AuthUser = {
 };
 
 export type GoogleAuthResponse = {
-  token: string;
   user: {
     id: number;
     personId: number | null;
@@ -470,6 +465,23 @@ export type GoogleAuthResponse = {
     };
   };
 };
+
+export async function getCurrentSession(): Promise<GoogleAuthResponse> {
+  // Elimina sesiones heredadas: el JWT ya solo vive en una cookie HttpOnly.
+  if (typeof localStorage !== "undefined") {
+    localStorage.removeItem(ORBIT_JWT_STORAGE_KEY);
+  }
+  const response = await authFetch(`${BASE_URL}/auth/session`);
+  return handleJson(response);
+}
+
+export async function logoutOrbitSession(): Promise<void> {
+  try {
+    await authFetch(`${BASE_URL}/auth/logout`, { method: "POST" });
+  } finally {
+    clearOrbitSession();
+  }
+}
 
 export async function loginWithGoogleIdToken(
   idToken: string

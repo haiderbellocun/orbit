@@ -11,7 +11,7 @@ $REGION = "us-central1"
 $SERVICE = "orbit-frontend"
 $VITE_API_URL = "https://orbit-backend-526995286786.us-central1.run.app/api"
 $VITE_GOOGLE_CLIENT_ID = "526995286786-c292djsqta9pgassddcrlecocpf2rgfo.apps.googleusercontent.com"
-$VITE_ALLOW_LOCAL_EMAIL_LOGIN = "true"
+$VITE_ALLOW_LOCAL_EMAIL_LOGIN = "false"
 # Usar ; (no ,): --set-build-env-vars separa variables por coma.
 $VITE_ORBIT_ACCESS_ALLOWLIST = "camilo_quintero@cun.edu.co;haider_bello@cun.edu.co;raul_valencia@cun.edu.co;zuany_acuna@cun.edu.co"
 

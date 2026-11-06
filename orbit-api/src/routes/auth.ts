@@ -17,6 +17,7 @@ import {
 } from "../lib/orbitCapabilities";
 import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
 import { recordAppLoginAsync } from "../lib/loginAppsLog";
+import { orbitAuthMiddleware } from "../middleware/orbitAuth";
 
 const router = Router();
 
@@ -62,9 +63,37 @@ function sendGisCallbackHtml(res: Response, status: number, title: string, bodyH
 <body style="font-family:system-ui,sans-serif;padding:2rem;">${bodyHtml}</body></html>`);
 }
 
+function sessionCookieOptions(): {
+  httpOnly: true;
+  secure: boolean;
+  sameSite: "lax" | "strict" | "none";
+  path: string;
+} {
+  const isProduction =
+    (process.env.NODE_ENV ?? "").trim().toLowerCase() === "production";
+  const configured = (process.env.SESSION_COOKIE_SAME_SITE ?? "lax")
+    .trim()
+    .toLowerCase();
+  const sameSite =
+    configured === "strict" || configured === "none" ? configured : "lax";
+  return { httpOnly: true, secure: isProduction, sameSite, path: "/" };
+}
+
+function setSessionCookie(res: Response, token: string): void {
+  res.cookie("orbit_session", token, sessionCookieOptions());
+}
+
+function clearSessionCookie(res: Response): void {
+  res.clearCookie("orbit_session", sessionCookieOptions());
+}
+
+function publicAuthBody(auth: AuthSuccessBody): { user: AuthSuccessBody["user"] } {
+  return { user: auth.user };
+}
+
 function sendGisSuccessRedirect(res: Response, auth: AuthSuccessBody): void {
   const target = `${getOrbitFrontendBaseUrl().replace(/\/$/, "")}/`;
-  const tokenJs = JSON.stringify(auth.token);
+  setSessionCookie(res, auth.token);
   res
     .status(200)
     .type("html")
@@ -72,7 +101,6 @@ function sendGisSuccessRedirect(res: Response, auth: AuthSuccessBody): void {
 <html lang="es"><head><meta charset="utf-8"/><title>Entrando…</title></head>
 <body>
 <script>
-  localStorage.setItem("orbit_jwt", ${tokenJs});
   localStorage.setItem("orbit_user", ${JSON.stringify(JSON.stringify(auth.user))});
   location.replace(${JSON.stringify(target)});
 </script>
@@ -658,7 +686,8 @@ router.post("/auth/google", async (req, res) => {
       res.status(result.status).json({ error: result.error });
       return;
     }
-    res.json(result.body);
+    setSessionCookie(res, result.body.token);
+    res.json(publicAuthBody(result.body));
   } catch (e: unknown) {
     console.error("POST /auth/google failed:", e);
     const message = e instanceof Error ? e.message : String(e);
@@ -729,13 +758,49 @@ router.post("/auth/local-email", async (req, res) => {
       sub: localSub,
       userId,
     });
-    res.json(bodyOut);
+    setSessionCookie(res, bodyOut.token);
+    res.json(publicAuthBody(bodyOut));
   } catch (e: unknown) {
     console.error("POST /auth/local-email failed:", e);
     const message = e instanceof Error ? e.message : String(e);
     const isProd = (process.env.NODE_ENV ?? "").trim().toLowerCase() === "production";
     res.status(500).json(isProd ? { error: "Internal server error" } : { error: "Internal server error", message });
   }
+});
+
+router.get("/auth/session", orbitAuthMiddleware, (req, res) => {
+  const user = req.orbitUser;
+  if (!user) {
+    res.status(401).json({ error: "Se requiere autenticación" });
+    return;
+  }
+  res.json({
+    user: {
+      id: user.userId,
+      personId: user.personId,
+      email: user.email,
+      name: user.name,
+      picture: user.picture,
+      roleId: user.roleId,
+      roleCode: user.role,
+      roleName: user.role,
+      orbitAccess: user.orbitAccess,
+      capabilities: user.capabilities,
+      ...(user.plantaEditAreaIds != null
+        ? {
+            plantaActivaAccess: {
+              viewAreaIds: user.plantaViewAreaIds,
+              editAreaIds: user.plantaEditAreaIds,
+            },
+          }
+        : {}),
+    },
+  });
+});
+
+router.post("/auth/logout", (_req, res) => {
+  clearSessionCookie(res);
+  res.status(204).end();
 });
 
 export default router;

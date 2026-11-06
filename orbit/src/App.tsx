@@ -24,10 +24,11 @@ import { VacancyDetailView } from "./components/views/VacancyDetailView";
 import { VacancyInformativePanelView } from "./components/views/VacancyInformativePanelView";
 import {
   clearOrbitSession,
+  getCurrentSession,
   getStoredCapabilities,
   getStoredOrbitAccess,
   getVacancy,
-  isStoredJwtValid,
+  logoutOrbitSession,
   type GoogleAuthResponse,
   type OrbitAccess,
 } from "./lib/api";
@@ -228,18 +229,15 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const jwtPresent =
-      typeof localStorage !== "undefined" &&
-      Boolean(localStorage.getItem("orbit_jwt")?.trim());
-    if (jwtPresent && !isStoredJwtValid()) {
-      clearOrbitSession();
-      return;
-    }
-    if (!isStoredJwtValid()) return;
-    const caps = getStoredCapabilities();
-    setOrbitAccess(getStoredOrbitAccess() ?? "full");
-    setCapabilities(caps);
-    setView(getDefaultView(caps));
+    void getCurrentSession()
+      .then((auth) => {
+        localStorage.setItem("orbit_user", JSON.stringify(auth.user));
+        const caps = auth.user.capabilities ?? [];
+        setOrbitAccess(auth.user.orbitAccess ?? "full");
+        setCapabilities(caps);
+        setView(getDefaultView(caps));
+      })
+      .catch(() => clearOrbitSession());
   }, []);
 
   useEffect(() => {
@@ -251,7 +249,7 @@ export default function App() {
 
   const handleLogout = useCallback(() => {
     clearTutorialSession();
-    clearOrbitSession();
+    void logoutOrbitSession();
     setOrbitAccess(null);
     setCapabilities([]);
     setSelectedVacancy(null);

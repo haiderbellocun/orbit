@@ -1,1 +1,6 @@
 node_modules/
+
+# Datos personales y artefactos generados por importaciones/exportaciones.
+*.xlsx
+!orbit-api/templates/plantilla_carga_personal.xlsx
+outputs/

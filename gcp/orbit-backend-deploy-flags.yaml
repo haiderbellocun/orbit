@@ -2,7 +2,7 @@
 # Ver: gcloud topic flags-file
 --update-env-vars:
   CORS_ORIGIN: https://orbit-frontend-526995286786.us-central1.run.app
-  ALLOW_LOCAL_EMAIL_AUTH: "1"
+  ALLOW_LOCAL_EMAIL_AUTH: "0"
   ORBIT_FRONTEND_URL: https://orbit-frontend-526995286786.us-central1.run.app
   ORBIT_ACCESS_ALLOWLIST: "camilo_quintero@cun.edu.co,haider_bello@cun.edu.co,raul_valencia@cun.edu.co,zuany_acuna@cun.edu.co"
   SMTP_SERVICE: gmail

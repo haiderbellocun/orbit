@@ -63,6 +63,15 @@ function extractBearerToken(req: Request): string | null {
     const t = auth.slice(prefix.length).trim();
     if (t) return t;
   }
+  const rawCookie = req.headers.cookie;
+  if (rawCookie) {
+    for (const part of rawCookie.split(";")) {
+      const [name, ...valueParts] = part.trim().split("=");
+      if (name !== "orbit_session") continue;
+      const value = valueParts.join("=").trim();
+      if (value) return decodeURIComponent(value);
+    }
+  }
   /** EventSource no puede enviar cabeceras; el cliente envía el JWT en query. */
   if (req.method === "GET") {
     const q = req.query.access_token;
