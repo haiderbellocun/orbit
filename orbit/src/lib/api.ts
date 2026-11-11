@@ -970,13 +970,16 @@ export async function getPlantaActiva(
     response
   );
   payload.data = payload.data.filter((person) => {
-    const area = String(person.area ?? "")
-      .trim()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toUpperCase()
-      .replace(/\s+/g, " ");
-    return area !== "INVESTIGACION CUN";
+    const normalizeAffiliation = (value: unknown) =>
+      String(value ?? "")
+        .trim()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toUpperCase()
+        .replace(/\s+/g, " ");
+    return ![person.area, person.school].some(
+      (value) => normalizeAffiliation(value) === "INVESTIGACION CUN"
+    );
   });
   return payload;
 }
