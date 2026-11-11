@@ -61,20 +61,6 @@ function roleInput(person: PlantaPerson) {
   return { roleName: person.role_name, roleCode: person.role_code };
 }
 
-function belongsToInvestigacionCun(person: PlantaPerson): boolean {
-  const area = person.area
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/\s+/g, ' ');
-  return area === 'INVESTIGACION CUN';
-}
-
-function canAppearAsUnassigned(person: PlantaPerson): boolean {
-  return !belongsToInvestigacionCun(person);
-}
-
 export function orgNodeKey(
   personId: string,
   relationId: number | null,
@@ -396,11 +382,9 @@ export function buildOrganizationHierarchy(
   };
 
   if (graph == null || graph.relations.length === 0) {
-    const unassigned = people
-      .filter(canAppearAsUnassigned)
-      .sort((a, b) =>
-        a.name.localeCompare(b.name, 'es', { sensitivity: 'base' })
-      );
+    const unassigned = [...people].sort((a, b) =>
+      a.name.localeCompare(b.name, 'es', { sensitivity: 'base' })
+    );
     return { areas: [], unassigned, counts: { ...emptyCounts, unassigned: unassigned.length } };
   }
 
@@ -501,7 +485,7 @@ export function buildOrganizationHierarchy(
   roots.sort(sortNodes);
   reached = collectReachableIds(roots);
   const unassigned = people
-    .filter((p) => !reached.has(p.id) && canAppearAsUnassigned(p))
+    .filter((p) => !reached.has(p.id))
     .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
 
   return {

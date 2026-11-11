@@ -966,7 +966,19 @@ export async function getPlantaActiva(
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   if (params?.include_org) url.searchParams.set("include_org", "1");
   const response = await authFetch(url.toString(), { headers: jsonHeaders });
-  return handleJson(response);
+  const payload = await handleJson<PaginatedResponse<Record<string, unknown>>>(
+    response
+  );
+  payload.data = payload.data.filter((person) => {
+    const area = String(person.area ?? "")
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase()
+      .replace(/\s+/g, " ");
+    return area !== "INVESTIGACION CUN";
+  });
+  return payload;
 }
 
 export async function getPlantaPerson(id: number): Promise<unknown> {

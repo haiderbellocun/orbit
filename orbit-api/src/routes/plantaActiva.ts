@@ -270,6 +270,7 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
       statusFilter === "inactive"
         ? sqlPersonIsInactive("p")
         : sqlPersonIsActive("p"),
+      `UPPER(TRANSLATE(TRIM(COALESCE(a.name, '')), 'ÁÉÍÓÚÜÑ', 'AEIOUUN')) <> 'INVESTIGACION CUN'`,
     ];
     const values: unknown[] = [];
     let i = 1;
