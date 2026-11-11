@@ -138,12 +138,26 @@ function childrenFor(
   if (parentRelationId != null) {
     const byPos = index.byParentRelation.get(parentRelationId);
     if (byPos && byPos.length > 0) {
-      return byPos.map((row) => ({
+      const positionChildren = byPos.map((row) => ({
         personId: row.child_person_id,
         relationId: null,
         visualLevel: row.visual_level,
         parentRelationId,
       }));
+
+      // Los overrides de Planta Activa se serializan como aristas sintéticas
+      // (id negativo). Una posición conserva prioridad sobre las aristas normales
+      // del organigrama, pero no debe ocultar colaboradores asignados desde Planta.
+      const plantaChildren = (index.byParentPerson.get(parentPersonId) ?? [])
+        .filter((edge) => edge.id < 0)
+        .map((edge) => ({
+          personId: edge.child_person_id,
+          relationId: edge.id,
+          visualLevel: edge.visual_level,
+          parentRelationId: null,
+        }));
+
+      return [...positionChildren, ...plantaChildren];
     }
   }
   const byPerson = index.byParentPerson.get(parentPersonId) ?? [];
