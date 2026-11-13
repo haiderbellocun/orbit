@@ -76,6 +76,7 @@ import { AssignCollaboratorModal } from '@/src/components/planta/AssignCollabora
 import { ChangeManagerModal } from '@/src/components/planta/ChangeManagerModal';
 
 const EMPTY_EDIT_FORM: PlantaEditForm = {
+  second_in_command_scopes: [],
   full_name: '',
   document: '',
   email: '',
@@ -830,6 +831,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     setEditing(person);
     setFormMode('edit');
     setEditForm({
+      second_in_command_scopes: person.second_in_command_scopes ?? [],
       full_name: person.name,
       document: person.document,
       email: person.email,
@@ -855,6 +857,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         manager_role_name: person.manager_role_name,
       });
       setEditForm({
+        second_in_command_scopes: mapped.second_in_command_scopes ?? [],
         full_name: mapped.name,
         document: mapped.document,
         email: mapped.email,
@@ -974,6 +977,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       const wasActive = editing.status === 'active';
       const becameInactive = wasActive && !editForm.is_active;
       const result = (await updatePlantaPerson(Number(editing.id), {
+        second_in_command_scopes: editForm.second_in_command_scopes,
         full_name: editForm.full_name.trim(),
         document: editForm.document.trim() || undefined,
         email: editForm.email.trim() || null,
