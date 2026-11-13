@@ -98,19 +98,6 @@ export function isBranchNode(node: OrganizationNode): boolean {
   );
 }
 
-export function splitReports(node: OrganizationNode): {
-  nested: OrganizationNode[];
-  collaborators: OrganizationNode[];
-} {
-  const nested: OrganizationNode[] = [];
-  const collaborators: OrganizationNode[] = [];
-  for (const child of node.children) {
-    if (isBranchNode(child)) nested.push(child);
-    else collaborators.push(child);
-  }
-  return { nested, collaborators };
-}
-
 function childIndex(graph: OrgChartGraphPayload) {
   const byParentPerson = new Map<number, OrgChartGraphPayload['relations']>();
   for (const edge of graph.relations) {
@@ -552,24 +539,6 @@ export function filterOrganizationForest(
   }
   const unassigned = forest.unassigned.filter(pred);
   return { ...forest, areas, unassigned };
-}
-
-export function collectExpandableIds(
-  forest: OrganizationForest
-): Set<string> {
-  const ids = new Set<string>();
-  const walk = (node: OrganizationNode) => {
-    if (node.children.length > 0) {
-      ids.add(node.nodeKey);
-      for (const child of node.children) walk(child);
-    }
-  };
-  for (const area of forest.areas) {
-    for (const school of area.schools) {
-      for (const root of school.roots) walk(root);
-    }
-  }
-  return ids;
 }
 
 export function collectDescendantIds(

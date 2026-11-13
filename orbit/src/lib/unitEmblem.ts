@@ -78,7 +78,7 @@ export type UnitEmblemAssets = {
 /**
  * Devuelve el arte por tema. Se resuelven los dos a la vez (y CSS elige cual
  * se muestra) para que el emblema siga al tema sin depender de un re-render:
- * CoordinatorNode y LeaderNode estan memoizados.
+ * los componentes que lo usan pueden estar memoizados.
  */
 export function unitEmblemAssets(subject: UnitSubject): UnitEmblemAssets | null {
   const identity = unitEmblem(subject);

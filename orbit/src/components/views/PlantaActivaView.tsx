@@ -1,14 +1,24 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   MagnifyingGlassIcon,
   FunnelIcon,
   XMarkIcon,
   ChevronDownIcon,
   PlusIcon,
+  UsersIcon,
+  UserGroupIcon,
+  StarIcon,
+  BuildingOffice2Icon,
 } from '@heroicons/react/24/solid';
-import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
 import type { OrgChartGraphPayload, PlantaPerson, Vacancy, Teacher, Coordinator } from '@/src/types';
 import {
@@ -39,13 +49,25 @@ import {
 import { mapPlantaFromApi, PLANTA_SELECT_CLASS } from '@/src/lib/plantaMappers';
 import {
   buildOrganizationHierarchy,
-  collectExpandableIds,
   filterOrganizationForest,
   overlayOrgParents,
   parseOrgChartGraph,
   personMatchesQuery,
 } from '@/src/lib/organizationTree';
-import { OrganizationHierarchy } from '@/src/components/planta/OrganizationHierarchy';
+import {
+  buildOrgIndex,
+  clampAnchor,
+  flattenSubtree,
+  overviewChain,
+  overviewItems,
+  pathTo,
+} from '@/src/lib/orgChartNavigation';
+import { OrgSpiderChart } from '@/src/components/planta/OrgSpiderChart';
+import { OrgNodeDetailPanel } from '@/src/components/planta/OrgNodeDetailPanel';
+import {
+  TeamListView,
+  type TeamListRow,
+} from '@/src/components/planta/TeamListView';
 import {
   PersonManagementDrawer,
   type PlantaEditForm,
@@ -69,6 +91,22 @@ const EMPTY_EDIT_FORM: PlantaEditForm = {
 };
 
 const HIERARCHY_PAGE_SIZE = 5000;
+const OVERVIEW_ANCHOR = '__overview';
+/** Ancho mínimo de la vista para acoplar el detalle a la derecha. */
+const DOCKED_DETAIL_MIN_WIDTH = 1100;
+
+type ListScope =
+  | { kind: 'team'; key: string | null }
+  | { kind: 'unassigned'; query?: string };
+
+type SearchResult = {
+  id: string;
+  personId: string;
+  nodeKey: string | null;
+  name: string;
+  detail: string;
+  context: string;
+};
 
 interface PlantaActivaViewProps {
   searchQuery?: string;
@@ -111,6 +149,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   onOpenVacancyFromNotification,
 }) => {
   const plantaAccess = useMemo(() => getStoredPlantaActivaAccess(), []);
+  const reduceMotion = useReducedMotion();
   const editableAreaIds = plantaAccess?.editAreaIds ?? null;
   const viewableAreaIds = plantaAccess?.viewAreaIds ?? null;
   const catalogAreaIds = viewableAreaIds;
@@ -147,7 +186,29 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [userExpanded, setUserExpanded] = useState<Set<string>>(new Set());
+
+  // Navegación por ramas
+  const [focusPath, setFocusPath] = useState<string[]>([]);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [anchors, setAnchors] = useState<Record<string, number>>({});
+  const [capacity, setCapacity] = useState(0);
+  const [focusToken, setFocusToken] = useState(0);
+  const [listScope, setListScope] = useState<ListScope | null>(null);
+  const [detailOpen, setDetailOpen] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth >= 1280
+  );
+  const [rootWidth, setRootWidth] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1366
+  );
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [activeResult, setActiveResult] = useState(-1);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const searchBoxRef = useRef<HTMLDivElement | null>(null);
+  const filtersRef = useRef<HTMLDivElement | null>(null);
+  const detailOpenerRef = useRef<HTMLElement | null>(null);
+  const detailCloseRef = useRef<HTMLButtonElement | null>(null);
+  const initialSelectionDone = useRef(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [areas, setAreas] = useState<CatalogArea[]>([]);
   const [schools, setSchools] = useState<CatalogSchool[]>([]);
@@ -372,16 +433,11 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     });
   }, [rows]);
 
-  useEffect(() => {
-    if (filters.search === applied.search) return;
-    const t = setTimeout(() => {
-      setApplied((prev) => ({ ...prev, search: filters.search }));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [filters.search, applied.search]);
-
+  // La búsqueda de texto funciona como salto directo (combobox). Solo se
+  // aplica como filtro del árbol al pulsar Buscar / Enter sin resultado activo.
   const applyFilters = () => {
     setApplied({ ...filters });
+    setSearchOpen(false);
   };
 
   const clearFilters = () => {
@@ -444,33 +500,286 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     });
   }, [forest, applied, hasActiveQuery]);
 
-  const autoExpanded = useMemo(
-    () => (hasActiveQuery ? collectExpandableIds(visibleForest) : new Set<string>()),
-    [hasActiveQuery, visibleForest]
+  /* ---------------- Índices y estado derivado de la navegación ------------- */
+
+  const fullIndex = useMemo(() => buildOrgIndex(forest), [forest]);
+  const index = useMemo(
+    () => (hasActiveQuery ? buildOrgIndex(visibleForest) : fullIndex),
+    [hasActiveQuery, visibleForest, fullIndex]
   );
 
-  const expandedIds = useMemo(() => {
-    const next = new Set(userExpanded);
-    for (const id of autoExpanded) next.add(id);
-    return next;
-  }, [userExpanded, autoExpanded]);
+  // Si un filtro elimina la rama enfocada, se vuelve al ancestro visible más cercano.
+  const focusKey = useMemo(() => {
+    for (let i = focusPath.length - 1; i >= 0; i--) {
+      if (index.byKey.has(focusPath[i])) return focusPath[i];
+    }
+    return null;
+  }, [focusPath, index]);
 
-  const toggleExpanded = useCallback((id: string) => {
-    setUserExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  useEffect(() => {
+    const expected = focusKey ? pathTo(index, focusKey) : [];
+    if (expected.join('|') !== focusPath.join('|')) setFocusPath(expected);
+  }, [focusKey, index, focusPath]);
+
+  const focusNode = focusKey ? index.byKey.get(focusKey)?.node ?? null : null;
+  const chain = useMemo(() => overviewChain(index.roots), [index.roots]);
+  const currentItems = useMemo(
+    () => (focusNode ? focusNode.children : overviewItems(index.roots, chain)),
+    [focusNode, index.roots, chain]
+  );
+  const anchorKey = focusKey ?? OVERVIEW_ANCHOR;
+  const anchor = clampAnchor(anchors[anchorKey] ?? 0, currentItems.length);
+
+  const setAnchorFor = useCallback((key: string, value: number) => {
+    setAnchors((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
   }, []);
 
-  const expandAll = () => {
-    setUserExpanded(collectExpandableIds(visibleForest));
+  // Selección inicial y selección que deja de existir tras filtrar.
+  useEffect(() => {
+    if (loading) return;
+    if (selectedKey && index.byKey.has(selectedKey)) return;
+    if (selectedKey == null && initialSelectionDone.current) return;
+    initialSelectionDone.current = true;
+    const fallback =
+      focusKey ?? chain[chain.length - 1]?.nodeKey ?? index.roots[0]?.nodeKey ?? null;
+    setSelectedKey(fallback);
+  }, [loading, selectedKey, index, focusKey, chain]);
+
+  // Al cambiar la capacidad (panel, resize), conserva visible la selección.
+  const capacityRef = useRef(0);
+  useEffect(() => {
+    if (capacity === 0 || capacityRef.current === capacity) return;
+    capacityRef.current = capacity;
+    if (!selectedKey) return;
+    const idx = currentItems.findIndex((n) => n.nodeKey === selectedKey);
+    if (idx >= 0) setAnchorFor(anchorKey, idx);
+  }, [capacity, selectedKey, currentItems, anchorKey, setAnchorFor]);
+
+  // Mide el ancho de la vista: decide panel acoplado o superpuesto.
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const update = () => setRootWidth(Math.floor(el.getBoundingClientRect().width));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const dockedDetail = rootWidth >= DOCKED_DETAIL_MIN_WIDTH;
+  const prevDocked = useRef(dockedDetail);
+  useEffect(() => {
+    if (prevDocked.current && !dockedDetail) setDetailOpen(false);
+    prevDocked.current = dockedDetail;
+  }, [dockedDetail]);
+
+  const rememberOpener = () => {
+    const active = document.activeElement;
+    detailOpenerRef.current = active instanceof HTMLElement ? active : null;
   };
 
-  const collapseAll = () => {
-    setUserExpanded(new Set());
+  const handleSelect = useCallback(
+    (key: string) => {
+      if (!dockedDetail) rememberOpener();
+      setSelectedKey(key);
+      setDetailOpen(true);
+    },
+    [dockedDetail]
+  );
+
+  const handleExplore = useCallback(
+    (key: string) => {
+      const path = pathTo(index, key);
+      if (path.length === 0) return;
+      setFocusPath(path);
+      setSelectedKey(key);
+      setListScope(null);
+      setFocusToken((t) => t + 1);
+    },
+    [index]
+  );
+
+  const handleNavigate = useCallback(
+    (key: string | null) => {
+      setListScope(null);
+      setFocusToken((t) => t + 1);
+      if (key == null) {
+        setFocusPath([]);
+        setSelectedKey(chain[chain.length - 1]?.nodeKey ?? null);
+        return;
+      }
+      setFocusPath(pathTo(index, key));
+      setSelectedKey(key);
+    },
+    [index, chain]
+  );
+
+  /** Abre la rama donde está el nodo, en la página que lo contiene. */
+  const jumpToNode = useCallback(
+    (key: string) => {
+      const entry = index.byKey.get(key);
+      if (!entry) return;
+      setListScope(null);
+      if (entry.node.children.length > 0) {
+        setFocusPath(pathTo(index, key));
+      } else {
+        const parentKey = entry.parentKey;
+        const parentNode = parentKey ? index.byKey.get(parentKey)?.node : null;
+        const chainEnd = chain[chain.length - 1];
+        const showInOverview =
+          parentKey == null || (chainEnd != null && chainEnd.nodeKey === parentKey);
+        if (showInOverview) {
+          const siblings = overviewItems(index.roots, chain);
+          setFocusPath([]);
+          setAnchorFor(
+            OVERVIEW_ANCHOR,
+            Math.max(0, siblings.findIndex((n) => n.nodeKey === key))
+          );
+        } else if (parentKey && parentNode) {
+          setFocusPath(pathTo(index, parentKey));
+          setAnchorFor(
+            parentKey,
+            Math.max(0, parentNode.children.findIndex((n) => n.nodeKey === key))
+          );
+        }
+      }
+      if (!dockedDetail) detailOpenerRef.current = searchInputRef.current;
+      setSelectedKey(key);
+      setDetailOpen(true);
+      setFocusToken((t) => t + 1);
+    },
+    [index, chain, dockedDetail, setAnchorFor]
+  );
+
+  const closeDetail = useCallback(() => {
+    setDetailOpen(false);
+    if (!dockedDetail) {
+      const opener = detailOpenerRef.current;
+      requestAnimationFrame(() => opener?.focus());
+    }
+  }, [dockedDetail]);
+
+  // Panel superpuesto: foco inicial y Escape.
+  useEffect(() => {
+    if (dockedDetail || !detailOpen) return;
+    const id = requestAnimationFrame(() => detailCloseRef.current?.focus());
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeDetail();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      cancelAnimationFrame(id);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [dockedDetail, detailOpen, closeDetail]);
+
+  /* ---------------- Búsqueda como salto directo ---------------- */
+
+  const searchResults = useMemo<SearchResult[]>(() => {
+    const q = filters.search.trim();
+    if (q.length < 2) return [];
+    const out: SearchResult[] = [];
+    const seen = new Set<string>();
+    for (const [key, entry] of index.byKey) {
+      const p = entry.node.person;
+      if (entry.node.isContextOnly || seen.has(p.id)) continue;
+      if (!personMatchesQuery(p, q)) continue;
+      seen.add(p.id);
+      const parent = entry.parentKey ? index.byKey.get(entry.parentKey)?.node : null;
+      out.push({
+        id: `n:${key}`,
+        personId: p.id,
+        nodeKey: key,
+        name: p.name,
+        detail: p.role_name || 'Sin rol',
+        context:
+          entry.node.children.length > 0
+            ? `${entry.node.directReportsCount} reportes directos`
+            : parent
+              ? `Reporta a ${parent.person.name}`
+              : '',
+      });
+      if (out.length >= 8) break;
+    }
+    if (out.length < 8) {
+      for (const p of visibleForest.unassigned) {
+        if (seen.has(p.id) || !personMatchesQuery(p, q)) continue;
+        seen.add(p.id);
+        out.push({
+          id: `u:${p.id}`,
+          personId: p.id,
+          nodeKey: null,
+          name: p.name,
+          detail: p.role_name || 'Sin rol',
+          context: listStatus === 'active' ? 'Sin responsable asignado' : 'Inactivo',
+        });
+        if (out.length >= 8) break;
+      }
+    }
+    return out;
+  }, [filters.search, index, visibleForest.unassigned, listStatus]);
+
+  useEffect(() => setActiveResult(-1), [filters.search]);
+
+  const chooseResult = (r: SearchResult) => {
+    setSearchOpen(false);
+    setFilters((f) => ({ ...f, search: '' }));
+    if (r.nodeKey) {
+      jumpToNode(r.nodeKey);
+    } else {
+      setListScope({ kind: 'unassigned', query: r.name });
+    }
   };
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (searchBoxRef.current && !searchBoxRef.current.contains(t)) setSearchOpen(false);
+      if (filtersRef.current && !filtersRef.current.contains(t)) setFiltersOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  /* ---------------- Lista de equipo ---------------- */
+
+  const listRows = useMemo<TeamListRow[]>(() => {
+    if (listScope == null && listStatus === 'active') return [];
+    if (listStatus === 'inactive' || listScope?.kind === 'unassigned') {
+      return visibleForest.unassigned.map((p) => ({
+        key: p.id,
+        person: p,
+        managerName: p.manager_name ?? null,
+      }));
+    }
+    const scopeKey = listScope?.kind === 'team' ? listScope.key : null;
+    const nodes = scopeKey
+      ? (() => {
+          const n = index.byKey.get(scopeKey)?.node;
+          return n ? flattenSubtree(n) : [];
+        })()
+      : [...index.byKey.values()].map((e) => e.node);
+    const seen = new Set<string>();
+    const out: TeamListRow[] = [];
+    for (const n of nodes) {
+      if (seen.has(n.nodeKey)) continue;
+      seen.add(n.nodeKey);
+      const parentKey = index.byKey.get(n.nodeKey)?.parentKey;
+      const parent = parentKey ? index.byKey.get(parentKey)?.node : null;
+      out.push({
+        key: n.nodeKey,
+        person: n.person,
+        managerName: parent?.person.name ?? null,
+        nodeKey: n.nodeKey,
+        contextOnly: n.isContextOnly,
+      });
+    }
+    return out;
+  }, [listScope, listStatus, visibleForest.unassigned, index]);
+
+  const listScopeNode =
+    listScope?.kind === 'team' && listScope.key
+      ? index.byKey.get(listScope.key)?.node ?? null
+      : null;
 
   const areasForEdit = useMemo(() => {
     if (editableAreaIds == null) return areas;
@@ -614,7 +923,8 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     if (next === listStatus) return;
     setListStatus(next);
     setSaveNotice(null);
-    setUserExpanded(new Set());
+    setListScope(null);
+    setFocusPath([]);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -764,386 +1074,609 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   const personCanEditDrawer =
     formMode === 'create' || (editing != null && resolveCanEdit(editing));
 
+  const selectedEntry = selectedKey ? index.byKey.get(selectedKey) ?? null : null;
+  const selectedNode = selectedEntry?.node ?? null;
+  const selectedParent = selectedEntry?.parentKey
+    ? index.byKey.get(selectedEntry.parentKey)?.node ?? null
+    : null;
+  const selectedFull = selectedKey
+    ? fullIndex.byKey.get(selectedKey)?.node ?? null
+    : null;
+  const showList = listStatus === 'inactive' || listScope != null;
+  const graphError =
+    loadError ??
+    (listStatus === 'active' && !loading && orgGraph == null
+      ? 'No se pudo cargar el organigrama. Las personas aparecen en la lista «sin responsable».'
+      : null);
+
+  const kpis = [
+    {
+      key: 'total',
+      icon: UsersIcon,
+      value: total,
+      label: listStatus === 'active' ? 'personas activas' : 'personas inactivas',
+      color: 'var(--orbit-success)',
+    },
+    {
+      key: 'coordinators',
+      icon: BuildingOffice2Icon,
+      value: forest.counts.coordinators,
+      label: 'coordinadores',
+      color: 'var(--orbit-primary)',
+    },
+    {
+      key: 'leaders',
+      icon: StarIcon,
+      value: forest.counts.leaders,
+      label: 'líderes',
+      color: 'var(--orbit-info)',
+    },
+    {
+      key: 'collaborators',
+      icon: UserGroupIcon,
+      value: forest.counts.collaborators,
+      label: 'colaboradores',
+      color: '#14B8A6',
+    },
+  ];
+
+  const searchQuery = filters.search.trim();
+  const searchListVisible = searchOpen && searchQuery.length >= 2;
+
+  const detailPanel = (overlay: boolean) => (
+    <OrgNodeDetailPanel
+      node={selectedNode}
+      fullNode={selectedFull}
+      parent={selectedParent}
+      isFocused={selectedKey != null && selectedKey === focusKey}
+      filtersActive={hasActiveQuery}
+      canMutate={canMutateOrg}
+      overlay={overlay}
+      closeRef={overlay ? detailCloseRef : undefined}
+      onClose={closeDetail}
+      onExplore={() => selectedKey && handleExplore(selectedKey)}
+      onViewTeam={() => selectedKey && setListScope({ kind: 'team', key: selectedKey })}
+      onManage={() => selectedNode && void openEdit(selectedNode.person.id)}
+      onAssign={() => selectedNode && openAssign(selectedNode.person.id)}
+    />
+  );
+
+  const listTitle =
+    listStatus === 'inactive'
+      ? 'Personas inactivas'
+      : listScope?.kind === 'unassigned'
+        ? 'Sin responsable asignado'
+        : listScopeNode
+          ? `Equipo completo de ${listScopeNode.person.name}`
+          : 'Toda la estructura visible';
+
   return (
-    <div className="space-y-8 min-w-0">
-      <Header
-        title="Planta Activa"
-        subtitle={
-          listStatus === 'active'
-            ? 'Personas con estado activo en el sistema'
-            : 'Personas inactivas en el sistema'
-        }
-        onOpenVacancyFromNotification={onOpenVacancyFromNotification}
-      />
-
-      {listStatus === 'active' && orgGraph && (
-        <div className="rounded-2xl border border-orbit-border bg-orbit-surface px-4 py-3 text-sm text-orbit-text-secondary">
-          <p>
-            Árbol base:{' '}
-            <strong className="text-orbit-text">{orgGraph.version.name}</strong>
-            {orgGraph.version.period_label
-              ? ` · ${orgGraph.version.period_label}`
-              : ''}
-          </p>
-          <p className="mt-1 text-xs">
-            Puedes asignar y mover personas aquí. Esos cambios se guardan en
-            Planta Activa y no modifican el Organigrama.
-          </p>
-        </div>
-      )}
-
-      {listStatus === 'active' && !loading && orgGraph == null && (
-        <div className="rounded-2xl border border-orbit-warning/40 bg-orbit-warning/10 px-4 py-3 text-sm text-orbit-text">
-          No se pudo cargar el organigrama. Las personas aparecen sin
-          responsable visual.
-        </div>
-      )}
-
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div
-          data-tutorial="planta-status"
-          className="flex gap-1 p-1 rounded-2xl bg-orbit-interactive/80 w-fit"
-        >
-          {(
-            [
-              ['active', 'Activos'],
-              ['inactive', 'Inactivos'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => switchListStatus(key)}
-              className={cn(
-                'px-4 py-2 rounded-xl text-sm font-bold transition-colors',
-                listStatus === key
-                  ? 'bg-orbit-elevated text-orbit-text shadow-sm'
-                  : 'text-orbit-muted hover:text-orbit-text-secondary'
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {canCreate && (
-          <button
-            type="button"
-            onClick={openCreate}
-            data-tutorial="planta-create"
-            className="glass-button-primary inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold self-start sm:self-auto"
+    <div
+      ref={rootRef}
+      className="flex h-[calc(100dvh-var(--orbit-topbar)-2rem)] min-h-[34rem] min-w-0 flex-col gap-3 md:h-[calc(100dvh-var(--orbit-topbar)-2.5rem)]"
+    >
+      {/* Cabecera compacta */}
+      <header className="shrink-0 space-y-2.5 [@media(max-height:760px)]:space-y-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h1 className="w-full min-w-0 truncate font-display sm:w-auto sm:flex-1 text-xl font-semibold leading-tight tracking-tight text-orbit-text [@media(max-height:760px)]:text-lg">
+            <span className="font-medium text-orbit-muted">
+              Operaciones <span aria-hidden>/</span>
+              <span className="sr-only">:</span>
+            </span>{' '}
+            Planta activa
+          </h1>
+          <div
+            data-tutorial="planta-status"
+            role="group"
+            aria-label="Estado de la planta"
+            className="flex w-fit gap-1 rounded-xl bg-orbit-interactive/80 p-1"
           >
-            <PlusIcon className="h-4 w-4" />
-            Nueva persona
-          </button>
-        )}
-      </div>
-
-      {saveNotice && (
-        <div className="rounded-2xl border border-orbit-success/30 bg-orbit-success/10 px-5 py-3 text-sm text-orbit-success flex items-center justify-between gap-3">
-          <span>{saveNotice}</span>
-          <button
-            type="button"
-            onClick={() => setSaveNotice(null)}
-            className="text-orbit-success hover:text-orbit-success shrink-0"
-            aria-label="Cerrar aviso"
-          >
-            <XMarkIcon className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      <div data-tutorial="planta-filters" className="glass-panel p-4 space-y-3 min-w-0">
-        <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-          <div className="relative flex-1">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orbit-muted" />
-            <input
-              value={filters.search}
-              onChange={(e) =>
-                setFilters((f) => ({ ...f, search: e.target.value }))
-              }
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') applyFilters();
-              }}
-              placeholder="Buscar por nombre, correo o cédula…"
-              className={cn(PLANTA_SELECT_CLASS, 'pl-10')}
-            />
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setFiltersOpen((o) => !o)}
-              className={cn(
-                'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors',
-                filtersOpen || activeFilterCount > 0
-                  ? 'bg-orbit-primary/10 border-orbit-primary/30 text-orbit-primary'
-                  : 'bg-orbit-bg-secondary border-orbit-border/80 text-orbit-text-secondary hover:bg-orbit-bg-secondary'
-              )}
-              aria-expanded={filtersOpen}
-            >
-              <FunnelIcon className="h-4 w-4" />
-              Filtros
-              {activeFilterCount > 0 && (
-                <span className="min-w-5 h-5 px-1.5 rounded-md bg-orbit-primary text-white text-[10px] flex items-center justify-center">
-                  {activeFilterCount}
-                </span>
-              )}
-              <ChevronDownIcon
+            {(
+              [
+                ['active', 'Activos'],
+                ['inactive', 'Inactivos'],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={listStatus === key}
+                onClick={() => switchListStatus(key)}
                 className={cn(
-                  'h-4 w-4 transition-transform',
-                  filtersOpen && 'rotate-180'
+                  'rounded-lg px-3 py-1.5 text-xs font-bold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-orbit-primary',
+                  listStatus === key
+                    ? 'bg-orbit-elevated text-orbit-text shadow-sm'
+                    : 'text-orbit-muted hover:text-orbit-text-secondary'
                 )}
-              />
-            </button>
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {canCreate && (
             <button
               type="button"
-              onClick={applyFilters}
-              className="glass-button-primary px-4 py-2.5 text-sm font-bold"
+              onClick={openCreate}
+              data-tutorial="planta-create"
+              className="glass-button-primary px-3 py-2 text-xs font-bold"
             >
-              Buscar
+              <PlusIcon className="h-4 w-4" aria-hidden />
+              Nueva persona
             </button>
-          </div>
+          )}
         </div>
 
-        <AnimatePresence initial={false}>
-          {filtersOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden min-w-0"
-            >
-              <div className="pt-3 border-t border-orbit-border space-y-4 min-w-0">
-                <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-3 min-w-0">
-                  <label className="space-y-1.5 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Área
-                    </span>
-                    <select
-                      value={filters.areaId}
-                      onChange={(e) =>
-                        setFilters((f) => ({
-                          ...f,
-                          areaId: e.target.value,
-                          schoolId: '',
-                          programId: '',
-                        }))
-                      }
-                      disabled={Boolean(lockedAreaId)}
-                      className={cn(
-                        PLANTA_SELECT_CLASS,
-                        lockedAreaId && 'opacity-70 cursor-not-allowed'
-                      )}
-                    >
-                      {!lockedAreaId && <option value="">Todas</option>}
-                      {areasForFilter.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+          <ul
+            aria-label="Indicadores de Planta activa"
+            className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 lg:flex-1"
+          >
+            {kpis.map(({ key, icon: Icon, value, label, color }) => (
+              <li
+                key={key}
+                className="flex min-w-0 items-center gap-2.5 rounded-xl border border-orbit-border bg-orbit-surface px-2.5 py-2 sm:px-3 [@media(max-height:760px)]:py-1.5"
+                style={{
+                  backgroundColor: `color-mix(in srgb, var(--orbit-surface) 94%, ${color} 6%)`,
+                }}
+              >
+                <span
+                  className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:flex [@media(max-height:760px)]:!hidden"
+                  style={{
+                    backgroundColor: `color-mix(in srgb, var(--orbit-surface) 84%, ${color} 16%)`,
+                    color,
+                  }}
+                  aria-hidden
+                >
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-display text-base font-bold leading-none tabular-nums text-orbit-text sm:text-lg">
+                    {loading ? '—' : value.toLocaleString('es-CO')}
+                  </span>
+                  <span className="block truncate text-[10px] text-orbit-text-secondary sm:text-[11px]">
+                    {label}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
 
-                  <label className="space-y-1.5 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Escuela
-                    </span>
-                    <select
-                      value={filters.schoolId}
-                      onChange={(e) =>
-                        setFilters((f) => ({
-                          ...f,
-                          schoolId: e.target.value,
-                          programId: '',
-                        }))
-                      }
-                      className={PLANTA_SELECT_CLASS}
+          <div
+            data-tutorial="planta-filters"
+            className="flex min-w-0 items-center gap-2 lg:w-[min(32rem,45%)]"
+          >
+            <div ref={searchBoxRef} className="relative min-w-0 flex-1">
+              <MagnifyingGlassIcon
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-orbit-muted"
+                aria-hidden
+              />
+              <input
+                ref={searchInputRef}
+                role="combobox"
+                aria-label="Buscar personas en la estructura"
+                aria-expanded={searchListVisible}
+                aria-controls="planta-search-results"
+                aria-autocomplete="list"
+                aria-activedescendant={
+                  searchListVisible && activeResult >= 0
+                    ? `planta-sr-${activeResult}`
+                    : undefined
+                }
+                value={filters.search}
+                onChange={(e) => {
+                  setFilters((f) => ({ ...f, search: e.target.value }));
+                  setSearchOpen(true);
+                }}
+                onFocus={() => setSearchOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setSearchOpen(true);
+                    setActiveResult((i) => Math.min(i + 1, searchResults.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setActiveResult((i) => Math.max(i - 1, -1));
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const hit = searchListVisible ? searchResults[activeResult] : undefined;
+                    if (hit) chooseResult(hit);
+                    else applyFilters();
+                  } else if (e.key === 'Escape') {
+                    setSearchOpen(false);
+                  }
+                }}
+                placeholder="Buscar por nombre, correo o cédula…"
+                className={cn(PLANTA_SELECT_CLASS, 'py-2 pl-9')}
+              />
+              {searchListVisible && (
+                <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-orbit-border bg-orbit-elevated shadow-lg">
+                  {searchResults.length > 0 ? (
+                    <ul
+                      id="planta-search-results"
+                      role="listbox"
+                      aria-label="Resultados de búsqueda"
+                      className="max-h-80 overflow-y-auto p-1"
                     >
-                      <option value="">Todas</option>
-                      {schools.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
+                      {searchResults.map((r, i) => (
+                        <li
+                          key={r.id}
+                          id={`planta-sr-${i}`}
+                          role="option"
+                          aria-selected={i === activeResult}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onMouseEnter={() => setActiveResult(i)}
+                          onClick={() => chooseResult(r)}
+                          className={cn(
+                            'cursor-pointer rounded-lg px-3 py-2',
+                            i === activeResult ? 'bg-orbit-interactive' : 'hover:bg-orbit-interactive'
+                          )}
+                        >
+                          <p className="truncate text-sm font-semibold text-orbit-text">{r.name}</p>
+                          <p className="truncate text-[11px] text-orbit-muted">
+                            {r.detail}
+                            {r.context ? ` · ${r.context}` : ''}
+                          </p>
+                        </li>
                       ))}
-                    </select>
-                  </label>
-
-                  <label className="space-y-1.5 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Programa
-                    </span>
-                    <select
-                      value={filters.programId}
-                      onChange={(e) =>
-                        setFilters((f) => ({ ...f, programId: e.target.value }))
-                      }
-                      className={PLANTA_SELECT_CLASS}
-                    >
-                      <option value="">Todos</option>
-                      {programs.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="space-y-1.5 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Rol
-                    </span>
-                    <select
-                      value={filters.roleId}
-                      onChange={(e) =>
-                        setFilters((f) => ({ ...f, roleId: e.target.value }))
-                      }
-                      className={PLANTA_SELECT_CLASS}
-                    >
-                      <option value="">Todos</option>
-                      {rolesForPlanta.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    </ul>
+                  ) : (
+                    <p id="planta-search-results" className="px-3 py-2 text-sm text-orbit-muted">
+                      Sin coincidencias en tu alcance.
+                    </p>
+                  )}
+                  <p className="border-t border-orbit-border px-3 py-1.5 text-[11px] text-orbit-muted">
+                    Elige un resultado para ir a su rama · Enter sin selección filtra la estructura
+                  </p>
                 </div>
+              )}
+            </div>
 
-                <div className="flex flex-wrap gap-4">
-                  {(
-                    [
-                      ['withoutSchool', 'Sin escuela'],
-                      ['withoutProgram', 'Sin programa'],
-                      ['withoutRole', 'Sin rol'],
-                      ['withoutEduEmail', 'Sin correo CUN'],
-                      ['withoutDocument', 'Sin identificación'],
-                    ] as const
-                  ).map(([key, label]) => (
-                    <label
-                      key={key}
-                      className="inline-flex items-center gap-2 text-sm text-orbit-text-secondary cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filters[key]}
+            {applied.search.trim() && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilters((f) => ({ ...f, search: '' }));
+                  setApplied((a) => ({ ...a, search: '' }));
+                }}
+                className="hidden max-w-[9rem] shrink-0 items-center gap-1 truncate rounded-lg bg-orbit-primary/10 px-2 py-1.5 text-[11px] font-semibold text-orbit-primary hover:bg-orbit-primary/20 sm:inline-flex"
+                aria-label={`Quitar filtro de texto ${applied.search}`}
+              >
+                <span className="truncate">“{applied.search}”</span>
+                <XMarkIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              </button>
+            )}
+
+            <div ref={filtersRef} className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setFiltersOpen((o) => !o)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-orbit-primary',
+                  filtersOpen || activeFilterCount > 0
+                    ? 'border-orbit-primary/30 bg-orbit-primary/10 text-orbit-primary'
+                    : 'border-orbit-border/80 bg-orbit-bg-secondary text-orbit-text-secondary'
+                )}
+                aria-expanded={filtersOpen}
+                aria-controls="planta-filters-panel"
+              >
+                <FunnelIcon className="h-4 w-4" aria-hidden />
+                <span className="hidden sm:inline">Filtros</span>
+                {activeFilterCount > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-md bg-orbit-primary px-1.5 text-[10px] text-white">
+                    {activeFilterCount}
+                  </span>
+                )}
+                <ChevronDownIcon
+                  className={cn('h-3.5 w-3.5 transition-transform', filtersOpen && 'rotate-180')}
+                  aria-hidden
+                />
+              </button>
+              {filtersOpen && (
+                <div
+                  id="planta-filters-panel"
+                  role="dialog"
+                  aria-label="Filtros de Planta activa"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') setFiltersOpen(false);
+                  }}
+                  className="absolute right-0 top-full z-50 mt-2 max-h-[min(70vh,34rem)] w-[min(44rem,calc(100vw-2rem))] space-y-4 overflow-y-auto rounded-2xl border border-orbit-border bg-orbit-elevated p-4 shadow-xl"
+                >
+                  <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="min-w-0 space-y-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                        Área
+                      </span>
+                      <select
+                        value={filters.areaId}
                         onChange={(e) =>
-                          setFilters((f) => ({ ...f, [key]: e.target.checked }))
+                          setFilters((f) => ({
+                            ...f,
+                            areaId: e.target.value,
+                            schoolId: '',
+                            programId: '',
+                          }))
                         }
-                        className="rounded border-orbit-border text-orbit-primary focus:ring-violet-400"
-                      />
-                      {label}
+                        disabled={Boolean(lockedAreaId)}
+                        className={cn(
+                          PLANTA_SELECT_CLASS,
+                          lockedAreaId && 'cursor-not-allowed opacity-70'
+                        )}
+                      >
+                        {!lockedAreaId && <option value="">Todas</option>}
+                        {areasForFilter.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
                     </label>
-                  ))}
-                </div>
+                    <label className="min-w-0 space-y-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                        Escuela
+                      </span>
+                      <select
+                        value={filters.schoolId}
+                        onChange={(e) =>
+                          setFilters((f) => ({
+                            ...f,
+                            schoolId: e.target.value,
+                            programId: '',
+                          }))
+                        }
+                        className={PLANTA_SELECT_CLASS}
+                      >
+                        <option value="">Todas</option>
+                        {schools.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="min-w-0 space-y-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                        Programa
+                      </span>
+                      <select
+                        value={filters.programId}
+                        onChange={(e) =>
+                          setFilters((f) => ({ ...f, programId: e.target.value }))
+                        }
+                        className={PLANTA_SELECT_CLASS}
+                      >
+                        <option value="">Todos</option>
+                        {programs.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="min-w-0 space-y-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
+                        Rol
+                      </span>
+                      <select
+                        value={filters.roleId}
+                        onChange={(e) =>
+                          setFilters((f) => ({ ...f, roleId: e.target.value }))
+                        }
+                        className={PLANTA_SELECT_CLASS}
+                      >
+                        <option value="">Todos</option>
+                        {rolesForPlanta.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
 
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={applyFilters}
-                    className="glass-button-primary px-4 py-2 text-sm font-bold"
-                  >
-                    Aplicar filtros
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      clearFilters();
-                      setFiltersOpen(false);
-                    }}
-                    className="glass-button-secondary px-4 py-2 text-sm font-bold"
-                  >
-                    Limpiar
-                  </button>
+                  <fieldset className="flex flex-wrap gap-4">
+                    <legend className="sr-only">Datos faltantes</legend>
+                    {(
+                      [
+                        ['withoutSchool', 'Sin escuela'],
+                        ['withoutProgram', 'Sin programa'],
+                        ['withoutRole', 'Sin rol'],
+                        ['withoutEduEmail', 'Sin correo CUN'],
+                        ['withoutDocument', 'Sin identificación'],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <label
+                        key={key}
+                        className="inline-flex cursor-pointer items-center gap-2 text-sm text-orbit-text-secondary"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={filters[key]}
+                          onChange={(e) =>
+                            setFilters((f) => ({ ...f, [key]: e.target.checked }))
+                          }
+                          className="rounded border-orbit-border text-orbit-primary focus:ring-violet-400"
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </fieldset>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        applyFilters();
+                        setFiltersOpen(false);
+                      }}
+                      className="glass-button-primary px-4 py-2 text-sm font-bold"
+                    >
+                      Aplicar filtros
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearFilters();
+                        setFiltersOpen(false);
+                      }}
+                      className="glass-button-secondary px-4 py-2 text-sm font-bold"
+                    >
+                      Limpiar
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Organigrama + detalle: ocupan el resto de la pantalla */}
+      <div className="relative flex min-h-0 flex-1 gap-3">
+        <div className="min-h-0 min-w-0 flex-1">
+          {showList ? (
+            <TeamListView
+              title={listTitle}
+              subtitle={
+                hasActiveQuery && listStatus === 'active'
+                  ? 'Con los filtros activos'
+                  : undefined
+              }
+              rows={listRows}
+              emptyMessage={
+                loading
+                  ? 'Cargando…'
+                  : loadError ?? 'No hay personas que coincidan con los filtros.'
+              }
+              onBack={listStatus === 'active' ? () => setListScope(null) : undefined}
+              onManage={(id) => void openEdit(id)}
+              onShowInChart={listStatus === 'active' ? jumpToNode : undefined}
+              initialQuery={listScope?.kind === 'unassigned' ? listScope.query ?? '' : ''}
+            />
+          ) : (
+            <OrgSpiderChart
+              index={index}
+              fullIndex={fullIndex}
+              focusKey={focusKey}
+              selectedKey={selectedKey}
+              anchor={anchor}
+              loading={loading}
+              error={graphError}
+              filtersActive={hasActiveQuery}
+              unassignedCount={visibleForest.unassigned.length}
+              versionLabel={
+                orgGraph
+                  ? `${orgGraph.version.name}${
+                      orgGraph.version.period_label ? ` · ${orgGraph.version.period_label}` : ''
+                    }`
+                  : null
+              }
+              focusToken={focusToken}
+              onSelect={handleSelect}
+              onExplore={handleExplore}
+              onNavigate={handleNavigate}
+              onAnchorChange={(a) => setAnchorFor(anchorKey, a)}
+              onCapacityChange={setCapacity}
+              onRetry={() => void loadList()}
+              onOpenTeamList={() => setListScope({ kind: 'team', key: focusKey })}
+              onOpenUnassigned={() => setListScope({ kind: 'unassigned' })}
+            />
+          )}
+        </div>
+
+        {dockedDetail && detailOpen && !showList && (
+          <aside
+            aria-label="Detalle de la selección"
+            className="glass-panel min-h-0 w-[20rem] shrink-0 xl:w-[21.5rem]"
+          >
+            {detailPanel(false)}
+          </aside>
+        )}
+
+        <AnimatePresence>
+          {!dockedDetail && detailOpen && !showList && (
+            <>
+              <motion.div
+                key="detail-backdrop"
+                className="absolute inset-0 z-30 rounded-xl bg-black/30"
+                onClick={closeDetail}
+                aria-hidden
+                initial={reduceMotion ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              />
+              <motion.div
+                key="detail-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="org-detail-heading"
+                className="glass-panel absolute bottom-0 right-0 top-0 z-40 w-[min(22rem,100%)] shadow-2xl"
+                initial={reduceMotion ? false : { opacity: 0, x: 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: 24 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Tab') return;
+                  const focusables = Array.from(
+                    e.currentTarget.querySelectorAll<HTMLElement>(
+                      'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+                    )
+                  );
+                  if (focusables.length === 0) return;
+                  const first = focusables[0];
+                  const last = focusables[focusables.length - 1];
+                  if (e.shiftKey && document.activeElement === first) {
+                    e.preventDefault();
+                    last.focus();
+                  } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
+                  }
+                }}
+              >
+                {detailPanel(true)}
+              </motion.div>
+            </>
           )}
         </AnimatePresence>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <p className="text-sm text-orbit-muted">
-            {loading
-              ? 'Cargando…'
-              : listStatus === 'active'
-                ? `${total.toLocaleString('es-CO')} persona${total === 1 ? '' : 's'} activa${total === 1 ? '' : 's'}`
-                : `${total.toLocaleString('es-CO')} persona${total === 1 ? '' : 's'} inactiva${total === 1 ? '' : 's'}`}
-          </p>
-          {!loading && (
-            <p className="text-xs text-orbit-muted">
-              {forest.counts.coordinators} coordinadores · {forest.counts.leaders}{' '}
-              líderes · {forest.counts.collaborators} colaboradores
-            </p>
+      {/* Avisos flotantes: no alteran la altura de la vista */}
+      {(saveNotice || (formError && !formMode)) && (
+        <div className="pointer-events-none fixed bottom-4 right-4 z-[120] flex w-[min(26rem,calc(100vw-2rem))] flex-col gap-2">
+          {saveNotice && (
+            <div
+              role="status"
+              className="pointer-events-auto flex items-center justify-between gap-3 rounded-2xl border border-orbit-success/30 bg-orbit-surface px-4 py-3 text-sm text-orbit-success shadow-lg"
+            >
+              <span>{saveNotice}</span>
+              <button
+                type="button"
+                onClick={() => setSaveNotice(null)}
+                className="shrink-0"
+                aria-label="Cerrar aviso"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+          {formError && !formMode && (
+            <div
+              role="alert"
+              className="pointer-events-auto flex items-center justify-between gap-3 rounded-2xl border border-orbit-danger/40 bg-orbit-surface px-4 py-3 text-sm text-orbit-danger shadow-lg"
+            >
+              <span>{formError}</span>
+              <button
+                type="button"
+                onClick={() => setFormError(null)}
+                className="shrink-0"
+                aria-label="Cerrar error"
+              >
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
           )}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={expandAll}
-            disabled={loading}
-            className="glass-button-secondary px-3 py-1.5 text-xs font-bold disabled:opacity-40"
-          >
-            Expandir todos
-          </button>
-          <button
-            type="button"
-            onClick={collapseAll}
-            disabled={loading}
-            className="glass-button-secondary px-3 py-1.5 text-xs font-bold disabled:opacity-40"
-          >
-            Contraer todos
-          </button>
-        </div>
-      </div>
-
-      {loadError && (
-        <div className="rounded-2xl border border-orbit-danger/40 bg-orbit-danger/10 px-5 py-4 text-sm text-orbit-danger">
-          {loadError}
-        </div>
-      )}
-
-      {formError && !formMode && (
-        <div className="rounded-2xl border border-orbit-danger/40 bg-orbit-danger/10 px-5 py-4 text-sm text-orbit-danger">
-          {formError}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="space-y-3">
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="h-28 rounded-2xl border border-orbit-border bg-orbit-interactive/60 animate-pulse"
-            />
-          ))}
-        </div>
-      ) : (
-        <OrganizationHierarchy
-          forest={visibleForest}
-          expandedIds={expandedIds}
-          onToggle={toggleExpanded}
-          onManage={(id) => void openEdit(id)}
-          onAssign={openAssign}
-          canMutate={canMutateOrg}
-          emptyMessage="No hay personas que coincidan con los filtros."
-          openUnassigned={hasActiveQuery && visibleForest.unassigned.length > 0}
-          unassignedHeading={
-            listStatus === 'inactive'
-              ? 'Personas inactivas'
-              : 'Sin responsable asignado'
-          }
-          unassignedHint={
-            listStatus === 'inactive'
-              ? `${visibleForest.unassigned.length.toLocaleString('es-CO')} persona${
-                  visibleForest.unassigned.length === 1 ? '' : 's'
-                } inactivas · no participan en el árbol visual`
-              : undefined
-          }
-          unassignedTone={listStatus === 'inactive' ? 'muted' : 'warning'}
-        />
       )}
 
       {typeof document !== 'undefined' &&
