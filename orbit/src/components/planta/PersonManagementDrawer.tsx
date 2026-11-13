@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { XMarkIcon, PlusIcon } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
 import type { OrgChartGraphPayload, PlantaPerson } from '@/src/types';
@@ -16,6 +16,7 @@ import {
 import { findCoordinatorAndLeader, directReportsOf } from '@/src/lib/organizationTree';
 
 export type PlantaEditForm = {
+  second_in_command_scopes: string[];
   full_name: string;
   document: string;
   email: string;
@@ -79,6 +80,45 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
   graph,
   canMutateOrg,
 }) => {
+  const [scopeInput, setScopeInput] = useState('');
+  const [scopeMenuOpen, setScopeMenuOpen] = useState(false);
+  // Se guardan en may\u00fasculas y sin tildes: las opciones usan el mismo formato
+  // para no listar duplicados como \u00abDesarrollo\u00bb y \u00abDESARROLLO\u00bb.
+  const normalizeScope = (value: string) =>
+    value
+      .trim()
+      .replace(/\s+/g, ' ')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase();
+  const scopeOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          [
+            ...areas.map((a) => a.name),
+            ...schools.map((s) => s.name),
+            ...people.flatMap((p) => p.second_in_command_scopes ?? []),
+          ]
+            .map(normalizeScope)
+            .filter(Boolean)
+        ),
+      ].sort(),
+    [areas, schools, people]
+  );
+  const filteredScopeOptions = useMemo(() => {
+    const query = normalizeScope(scopeInput);
+    return scopeOptions.filter((scope) => !query || scope.includes(query));
+  }, [scopeInput, scopeOptions]);
+  const addScope = () => {
+    const scope = normalizeScope(scopeInput);
+    if (!scope || scope.length > 200) return;
+    setForm((f) => ({
+      ...f,
+      second_in_command_scopes: [...new Set([...f.second_in_command_scopes, scope])],
+    }));
+    setScopeInput('');
+  };
   const selectedRoleName = roles.find((r) => String(r.id) === form.role_id)?.name;
   const inactivating =
     mode === 'edit' && person?.status === 'active' && !form.is_active;
@@ -133,6 +173,100 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
 
         <form onSubmit={onSave} className="flex min-h-0 flex-1 flex-col">
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+            {mode === 'edit' && (
+              <section className="space-y-3">
+                <h4 className="text-sm font-semibold text-orbit-text">Segundo al mando</h4>
+                <p className="text-xs text-orbit-muted">
+                  Asigna las áreas o escuelas que representa. Cada área puede tener
+                  varias personas. Quita una asignación para dejar de ser segundo al
+                  mando de esa área.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {form.second_in_command_scopes.map((scope) => (
+                    <span
+                      key={scope}
+                      className="flex items-center gap-2 rounded-lg border border-amber-400/40 px-2 py-1 text-xs text-orbit-text"
+                    >
+                      {scope}
+                      <button
+                        type="button"
+                        disabled={!canEditPerson || saving}
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            second_in_command_scopes: f.second_in_command_scopes.filter(
+                              (s) => s !== scope
+                            ),
+                          }))
+                        }
+                        aria-label={`Quitar segundo al mando de ${scope}`}
+                      >
+                        <XMarkIcon className="h-4 w-4" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                {!form.second_in_command_scopes.length && (
+                  <p className="text-xs text-orbit-muted">Sin asignaciones</p>
+                )}
+                <div className="flex gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <input
+                      aria-label="Área de segundo al mando"
+                      value={scopeInput}
+                      maxLength={200}
+                      placeholder="Selecciona o escribe un área"
+                      disabled={!canEditPerson || saving}
+                      onFocus={() => setScopeMenuOpen(true)}
+                      onBlur={() => setScopeMenuOpen(false)}
+                      onChange={(e) => {
+                        setScopeInput(e.target.value);
+                        setScopeMenuOpen(true);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addScope();
+                          setScopeMenuOpen(false);
+                        }
+                        if (e.key === 'Escape') setScopeMenuOpen(false);
+                      }}
+                      className={cn(PLANTA_SELECT_CLASS, 'w-full')}
+                    />
+                    {scopeMenuOpen && filteredScopeOptions.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full z-[230] mt-1 max-h-56 overflow-y-auto rounded-xl border border-orbit-border bg-orbit-surface p-1 shadow-2xl dark:bg-orbit-elevated">
+                        {filteredScopeOptions.map((scope) => (
+                          <button
+                            key={scope}
+                            type="button"
+                            className="block w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-orbit-text transition-colors hover:bg-orbit-interactive"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setScopeInput(scope);
+                              setScopeMenuOpen(false);
+                            }}
+                          >
+                            {scope}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addScope}
+                    disabled={!canEditPerson || saving || !scopeInput.trim()}
+                    className="rounded-xl bg-orbit-primary px-3 text-sm text-white disabled:opacity-50"
+                  >
+                    Añadir
+                  </button>
+                </div>
+                <p className="text-xs text-orbit-muted">
+                  Los cambios se aplican al guardar. Las asignaciones de personas
+                  inactivas se conservan y vuelven a mostrarse al reactivarlas.
+                </p>
+              </section>
+            )}
             <section className="space-y-3">
               <h4 className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                 Información personal
