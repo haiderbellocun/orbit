@@ -148,6 +148,29 @@ export function canHaveDirectReports(input: {
   return band === 'coordinator' || band === 'leader';
 }
 
+/** Texto del equipo vacío, usando el mismo nombre del rol que se muestra en la ficha. */
+export function emptyTeamMessage(input: {
+  roleName?: string | null;
+  roleCode?: string | null;
+}): string {
+  switch (getRoleBand(input)) {
+    case 'coordinator':
+      return 'Este coordinador aún no tiene equipo asignado.';
+    case 'leader':
+      return 'Este líder aún no tiene colaboradores asignados.';
+    case 'professional':
+      return 'Este profesional no tiene personas a cargo.';
+    case 'analyst':
+      return 'Este analista no tiene personas a cargo.';
+    case 'auxiliary':
+      return 'Este auxiliar no tiene personas a cargo.';
+    case 'faculty':
+      return 'Este docente no tiene personas a cargo.';
+    default:
+      return 'Esta persona no tiene personas a cargo.';
+  }
+}
+
 export function personInitials(name: string | null | undefined): string {
   const parts = String(name ?? '')
     .trim()

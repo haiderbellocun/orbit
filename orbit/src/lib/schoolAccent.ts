@@ -75,7 +75,11 @@ const CATALOG: CatalogRow[] = [
     match: (c) =>
       has(c.hay, 'DIRECTOR DE OPERACIONES', 'DIRECTOR OPERACIONES') ||
       has(c.role, 'DIRECTOR DE OPERACIONES') ||
-      has(c.hay, 'IRON'),
+      has(c.hay, 'IRON') ||
+      (has(c.area, 'DIRECCION') &&
+        has(c.area, 'OPERACIONES') &&
+        !c.school &&
+        !has(c.role, 'COORDINADOR GENERAL', 'COORDINACION GENERAL')),
   },
   {
     ...tone('#F59E0B', '#FEF3C7'),
@@ -90,7 +94,10 @@ const CATALOG: CatalogRow[] = [
   },
   {
     ...tone('#F472B6', '#FCE7F3'),
-    match: (c) => has(c.hay, 'DESARROLLO PROFESIONAL'),
+    match: (c) =>
+      has(c.hay, 'DESARROLLO PROFESIONAL') ||
+      has(c.area, 'PRACTICA') ||
+      has(c.role, 'FACILITADOR DE PRACTICAS'),
   },
   {
     ...tone('#719475', '#DCFCE7'),
@@ -172,7 +179,8 @@ const CATALOG: CatalogRow[] = [
   },
   {
     ...tone('#F43F94', '#FCE7F3'),
-    match: (c) => has(c.area, 'SERVICIO') || c.school === 'SERVICIO',
+    match: (c) =>
+      has(c.area, 'SERVICIO', 'HOMOLOG') || c.school === 'SERVICIO',
   },
   {
     ...tone('#BC4C00', '#FFDCBE'),

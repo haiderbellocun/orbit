@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { XMarkIcon, PlusIcon } from '@heroicons/react/24/solid';
+import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import type { OrgChartGraphPayload, PlantaPerson } from '@/src/types';
 import type {
@@ -80,6 +81,8 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
   graph,
   canMutateOrg,
 }) => {
+  const reducedMotion = useReducedMotion();
+  const asideRef = useRef<HTMLElement>(null);
   const [scopeInput, setScopeInput] = useState('');
   const [scopeMenuOpen, setScopeMenuOpen] = useState(false);
   // Se guardan en may\u00fasculas y sin tildes: las opciones usan el mismo formato
@@ -137,23 +140,55 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
     canHaveDirectReports({ roleName: p.role_name, roleCode: p.role_code })
   ).length;
 
+  useEffect(() => {
+    asideRef.current?.focus();
+  }, []);
+
+  const fade = reducedMotion
+    ? { duration: 0 }
+    : { duration: 0.28, ease: 'easeInOut' as const };
+  const slide = reducedMotion
+    ? { duration: 0 }
+    : { duration: 0.32, ease: [0.4, 0, 0.2, 1] as const };
+
   return (
-    <div className="fixed inset-0 z-[200] flex justify-end">
+    <motion.div
+      className="fixed inset-0 z-[200] flex justify-end"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={fade}
+    >
       <button
         type="button"
         className="absolute inset-0 bg-black/50"
         aria-label="Cerrar"
         onClick={onClose}
       />
-      <aside
-        className="relative flex h-full w-full max-w-lg flex-col bg-orbit-surface shadow-xl border-l border-orbit-border"
+      <motion.aside
+        ref={asideRef}
+        tabIndex={-1}
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={slide}
+        className="relative flex h-full w-full flex-col border-l border-orbit-border bg-orbit-surface shadow-xl outline-none sm:max-w-lg"
         role="dialog"
         aria-modal="true"
+        aria-labelledby="planta-person-drawer-title"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || scopeMenuOpen) return;
+          event.preventDefault();
+          onClose();
+        }}
       >
         <div className="flex items-start justify-between gap-3 border-b border-orbit-border px-5 py-4">
           <div>
-            <h3 className="text-lg font-display font-bold text-orbit-text">
+            <h3
+              id="planta-person-drawer-title"
+              className="text-lg font-display font-bold text-orbit-text"
+            >
               {mode === 'create' ? 'Nueva persona' : 'Gestionar persona'}
             </h3>
             <p className="text-sm text-orbit-muted mt-0.5">
@@ -166,6 +201,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
             type="button"
             onClick={onClose}
             className="p-2 rounded-xl hover:bg-orbit-interactive text-orbit-muted"
+            aria-label="Cerrar"
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
@@ -229,7 +265,11 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                           addScope();
                           setScopeMenuOpen(false);
                         }
-                        if (e.key === 'Escape') setScopeMenuOpen(false);
+                        if (e.key === 'Escape' && scopeMenuOpen) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setScopeMenuOpen(false);
+                        }
                       }}
                       className={cn(PLANTA_SELECT_CLASS, 'w-full')}
                     />
@@ -661,7 +701,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
             )}
           </div>
         </form>
-      </aside>
-    </div>
+      </motion.aside>
+    </motion.div>
   );
 };

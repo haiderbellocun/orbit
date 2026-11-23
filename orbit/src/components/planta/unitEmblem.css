@@ -1,4 +1,20 @@
 .unit-card { container: unit-card / inline-size; }
+
+.person-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.person-mark img {
+  width: 78%;
+  height: 78%;
+  object-fit: contain;
+}
+.person-mark .emblem-night { display: none; }
+:root[data-theme="dark"] .person-mark .emblem-day { display: none; }
+:root[data-theme="dark"] .person-mark .emblem-night { display: block; }
 .unit-emblem { display: none; pointer-events: none; align-self: center; }
 @container unit-card (min-width: 760px) {
   .unit-emblem {

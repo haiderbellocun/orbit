@@ -80,8 +80,28 @@ export type UnitEmblemAssets = {
  * se muestra) para que el emblema siga al tema sin depender de un re-render:
  * los componentes que lo usan pueden estar memoizados.
  */
-export function unitEmblemAssets(subject: UnitSubject): UnitEmblemAssets | null {
-  const identity = unitEmblem(subject);
+/**
+ * Dentro de un área, quien no tiene escuela propia hereda la mascota del
+ * nivel en el que está. Si no, cae en la mascota genérica del área padre
+ * (el lobo de Operación Académica dentro de Transversales, por ejemplo).
+ */
+export function unitEmblemFor(subject: UnitSubject, host?: UnitSubject | null): string | null {
+  const own = unitEmblem(subject);
+  if (!host) return own;
+  const area = fold(subject.area);
+  const hostArea = fold(host.area);
+  if (!area || area !== hostArea) return own;
+  const hostMark = unitEmblem(host);
+  if (!hostMark || hostMark === own) return own;
+  const school = fold(subject.school);
+  if (school && units.some(([pattern]) => pattern.test(school))) return own;
+  const areaMark = unitEmblem({ area: subject.area });
+  if (own == null || own === areaMark) return hostMark;
+  return own;
+}
+
+export function unitEmblemAssets(subject: UnitSubject, host?: UnitSubject | null): UnitEmblemAssets | null {
+  const identity = unitEmblemFor(subject, host);
   if (!identity) return null;
   const day = DAY_VARIANTS[identity] ?? identity;
   const variant = DARK_VARIANTS[identity];
@@ -110,6 +130,21 @@ export function unitEmblem(subject: UnitSubject): string | null {
   if (subject.document?.trim() === '1019117022' && /FABRICA/.test(area)) {
     return 'fabrica/FOCA_GIF.png';
   }
+  // En Fábrica el rol nombra la escuela a la que produce (Negocios, Transversales…).
+  // Esa palabra no cambia su área: la mascota sigue siendo la de Fábrica.
+  if (/FABRICA/.test(area)) {
+    const hay = [fold(subject.school), fold(subject.program), role].filter(Boolean).join(' ');
+    if (/\bGIF\b/.test(hay)) return 'fabrica/FOCA_GIF.png';
+    if (/MARKETING/.test(hay)) return 'fabrica/FOCA_MARKETING.png';
+    if (/ANALISTA/.test(hay) || /DISEN/.test(hay)) return 'fabrica/FOCA_ANALISTAS.png';
+    if (
+      (/DESARROLLO/.test(fold(subject.school)) || /DESARROLL/.test(role)) &&
+      !/FABRICA Y DESARROLLO/.test(hay)
+    ) {
+      return 'fabrica/FOCA_DESARROLLO.png';
+    }
+    return 'fabrica/Fabrica.png';
+  }
   const specifics = [fold(subject.school), fold(subject.program), role];
   for (const value of specifics) {
     const unit = units.find(([pattern]) => pattern.test(value));
@@ -124,5 +159,9 @@ export function unitEmblem(subject: UnitSubject): string | null {
   const unit = units.find(([pattern]) => pattern.test(area));
   if (unit) return unit[1];
   if (/FABRICA/.test(area)) return 'fabrica/Fabrica.png';
+  if (/PRACTICA/.test(area) || /FACILITADOR DE PRACTICAS/.test(role)) {
+    return 'Desarrollo profesional.png';
+  }
+  if (/HOMOLOG/.test(area)) return 'Servicio.png';
   return null;
 }

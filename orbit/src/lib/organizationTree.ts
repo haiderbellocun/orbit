@@ -61,6 +61,89 @@ function roleInput(person: PlantaPerson) {
   return { roleName: person.role_name, roleCode: person.role_code };
 }
 
+function leafNode(person: PlantaPerson): OrganizationNode {
+  return {
+    person,
+    nodeKey: orgNodeKey(person.id, null),
+    relationId: null,
+    parentPersonId: null,
+    visualLevel: null,
+    assignmentStatus: null,
+    assignmentLabel: null,
+    hierarchyLevel: getRoleHierarchyLevel(roleInput(person)),
+    band: getRoleBand(roleInput(person)),
+    children: [],
+    directReportsCount: 0,
+    totalReportsCount: 0,
+    leaderCount: 0,
+  };
+}
+
+/** Sin aristas de organigrama: agrupa por el área (o la escuela) de cada persona. */
+function groupPeopleByArea(people: readonly PlantaPerson[]): {
+  areas: AreaGroup[];
+  unassigned: PlantaPerson[];
+} {
+  const unassigned: PlantaPerson[] = [];
+  const areaMap = new Map<string, AreaGroup>();
+  for (const person of people) {
+    const namedArea = person.area?.trim() || '';
+    const namedSchool = person.school?.trim() || '';
+    const areaName = namedArea || namedSchool;
+    if (!areaName) {
+      unassigned.push(person);
+      continue;
+    }
+    const areaKey = namedArea
+      ? person.area_id != null
+        ? `a-${person.area_id}`
+        : `a-${areaName}`
+      : person.school_id != null
+        ? `school-${person.school_id}`
+        : `school-${areaName}`;
+    let area = areaMap.get(areaKey);
+    if (!area) {
+      area = {
+        key: areaKey,
+        areaId: namedArea ? person.area_id : null,
+        areaName,
+        schools: [],
+      };
+      areaMap.set(areaKey, area);
+    }
+    const schoolName = namedSchool || 'Sin escuela';
+    const schoolKey =
+      person.school_id != null ? `s-${person.school_id}` : `s-${schoolName}`;
+    let school = area.schools.find((item) => item.key === schoolKey);
+    if (!school) {
+      school = {
+        key: schoolKey,
+        schoolId: person.school_id,
+        schoolName,
+        roots: [],
+      };
+      area.schools.push(school);
+    }
+    school.roots.push(leafNode(person));
+  }
+  unassigned.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+  const areas = [...areaMap.values()].sort((a, b) =>
+    a.areaName.localeCompare(b.areaName, 'es', { sensitivity: 'base' })
+  );
+  for (const area of areas) {
+    area.schools.sort((a, b) =>
+      a.schoolName.localeCompare(b.schoolName, 'es', { sensitivity: 'base' })
+    );
+    for (const school of area.schools) {
+      school.roots.sort((a, b) => {
+        if (b.hierarchyLevel !== a.hierarchyLevel) return b.hierarchyLevel - a.hierarchyLevel;
+        return a.person.name.localeCompare(b.person.name, 'es', { sensitivity: 'base' });
+      });
+    }
+  }
+  return { areas, unassigned };
+}
+
 export function orgNodeKey(
   personId: string,
   relationId: number | null,
@@ -96,6 +179,19 @@ export function isBranchNode(node: OrganizationNode): boolean {
   return (
     canHaveDirectReports(roleInput(node.person)) || node.children.length > 0
   );
+}
+
+export function splitReports(node: OrganizationNode): {
+  nested: OrganizationNode[];
+  collaborators: OrganizationNode[];
+} {
+  const nested: OrganizationNode[] = [];
+  const collaborators: OrganizationNode[] = [];
+  for (const child of node.children) {
+    if (isBranchNode(child)) nested.push(child);
+    else collaborators.push(child);
+  }
+  return { nested, collaborators };
 }
 
 function childIndex(graph: OrgChartGraphPayload) {
@@ -369,10 +465,12 @@ export function buildOrganizationHierarchy(
   };
 
   if (graph == null || graph.relations.length === 0) {
-    const unassigned = [...people].sort((a, b) =>
-      a.name.localeCompare(b.name, 'es', { sensitivity: 'base' })
-    );
-    return { areas: [], unassigned, counts: { ...emptyCounts, unassigned: unassigned.length } };
+    const grouped = groupPeopleByArea(people);
+    return {
+      areas: grouped.areas,
+      unassigned: grouped.unassigned,
+      counts: { ...emptyCounts, unassigned: grouped.unassigned.length },
+    };
   }
 
   const index = childIndex(graph);
@@ -539,6 +637,24 @@ export function filterOrganizationForest(
   }
   const unassigned = forest.unassigned.filter(pred);
   return { ...forest, areas, unassigned };
+}
+
+export function collectExpandableIds(
+  forest: OrganizationForest
+): Set<string> {
+  const ids = new Set<string>();
+  const walk = (node: OrganizationNode) => {
+    if (node.children.length > 0) {
+      ids.add(node.nodeKey);
+      for (const child of node.children) walk(child);
+    }
+  };
+  for (const area of forest.areas) {
+    for (const school of area.schools) {
+      for (const root of school.roots) walk(root);
+    }
+  }
+  return ids;
 }
 
 export function collectDescendantIds(

@@ -8,6 +8,28 @@ function assetUrl(asset: string): string {
   return `${import.meta.env.BASE_URL}${asset.split('/').map(encodeURIComponent).join('/')}`;
 }
 
+/** Mascota pequeña, siempre visible. Sin unidad, muestra el respaldo. */
+export function PersonMark({
+  subject,
+  fallback = null,
+}: {
+  subject: UnitSubject;
+  fallback?: React.ReactNode;
+}) {
+  const assets = unitEmblemAssets(subject);
+  if (!assets) return <>{fallback}</>;
+  return (
+    <span className="person-mark" aria-hidden>
+      <img
+        className={assets.night ? 'emblem-day' : undefined}
+        src={assetUrl(assets.day)}
+        alt=""
+      />
+      {assets.night ? <img className="emblem-night" src={assetUrl(assets.night)} alt="" /> : null}
+    </span>
+  );
+}
+
 export function UnitEmblem({ subject }: { subject: UnitSubject }) {
   const assets = unitEmblemAssets(subject);
   if (!assets) return null;
