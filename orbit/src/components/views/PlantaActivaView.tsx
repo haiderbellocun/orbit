@@ -52,6 +52,8 @@ import { OrganizationBreadcrumb } from '@/src/components/planta/radial/Organizat
 import { RadialNavigation } from '@/src/components/planta/radial/RadialNavigation';
 import { usePlantaRadial } from '@/src/components/planta/radial/usePlantaRadial';
 import { PlantaWheelProvider } from '@/src/components/planta/radial/PlantaWheelContext';
+import { TeamLevelView } from '@/src/components/planta/TeamLevelView';
+import { PlantaSearchResults } from '@/src/components/planta/PlantaSearchResults';
 import {
   PersonManagementDrawer,
   type PlantaEditForm,
@@ -1306,6 +1308,8 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
             </p>
           )}
         </div>
+        {/* En la vista por niveles no hay nada que expandir. */}
+        {!hasActiveQuery && !radial.displayedNode && (
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -1324,6 +1328,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
             Contraer todos
           </button>
         </div>
+        )}
       </div>
 
       {loadError && (
@@ -1377,6 +1382,25 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                     />
                   ))}
                 </div>
+              ) : hasActiveQuery ? (
+                // Con búsqueda o filtros: lista plana de mayor a menor jerarquía.
+                <PlantaSearchResults
+                  forest={forest}
+                  matches={matchesFilters}
+                  onManage={(id) => void openEdit(id)}
+                  onAssign={openAssign}
+                  onFocus={radial.focusNode}
+                  canMutate={canMutateOrg}
+                />
+              ) : radial.displayedNode ? (
+                // Sin búsqueda: solo el nivel que muestra la rueda, sin anidar.
+                <TeamLevelView
+                  node={radial.displayedNode}
+                  onManage={(id) => void openEdit(id)}
+                  onAssign={openAssign}
+                  onEnter={radial.focusNode}
+                  canMutate={canMutateOrg}
+                />
               ) : (
                 <PlantaWheelProvider value={wheelContext}>
                 <OrganizationHierarchy

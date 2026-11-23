@@ -165,3 +165,53 @@ export function unitEmblem(subject: UnitSubject): string | null {
   if (/HOMOLOG/.test(area)) return 'Servicio.png';
   return null;
 }
+
+/**
+ * Color dominante de cada arte (sacado de las imágenes en `public/`). La rueda
+ * de Planta Activa lo usa para pintarse del color del animal que se ve. Los
+ * logos muy oscuros se aclaran un poco para que el aro no quede casi negro.
+ */
+const EMBLEM_COLOR: Record<string, string> = {
+  'nuevos-logos/BELLAS ARTES.svg': '#E91E63',
+  'nuevos-logos/ESPECIALIZACIONES.svg': '#F5B700',
+  'nuevos-logos/INGENIERIAS.svg': '#2962FF',
+  'nuevos-logos/NEGOCIOS BLANCO.svg': '#0D47A1',
+  'nuevos-logos/TRANSFOR EMPRESARIAL.svg': '#0096C7',
+  'nuevos-logos/TRENSVERSALES.svg': '#16A34A',
+  'B2B.png': '#AB0819',
+  'Bellas Artes.png': '#5E3686',
+  'CoordinacionGeneral.png': '#F29C00',
+  'Desarrollo profesional.png': '#B15397',
+  'DirectorOp.png': '#1F6B47',
+  'Especializaciones.png': '#970200',
+  'Ingenierias.png': '#CC4600',
+  'Negocios.png': '#D9502C',
+  'Operacion Academica.png': '#373B74',
+  'Saber Pro .png': '#8FBA24',
+  'Servicio.png': '#CB1970',
+  'Transformacion Empresarial.png': '#5C0076',
+  'Transversales.png': '#F8C333',
+  'proyeccion social.png': '#328E32',
+  'fabrica/FOCA.png': '#53BDBF',
+  'fabrica/Fabrica.png': '#5CBCB7',
+  'fabrica/FOCA_ANALISTAS.png': '#B30FE9',
+  'fabrica/FOCA_DESARROLLO.png': '#2535CE',
+  'fabrica/FOCA_MARKETING.png': '#EA5A0B',
+  'darkmode/IRON ROJO.svg': '#C64A4A',
+  'darkmode/DESARROLLO.svg': '#2535CE',
+  'darkmode/OPERACION ACADEMICA.svg': '#5765AA',
+  'darkmode/TRNASFOR EMPRESARIAL.svg': '#7A00BA',
+};
+
+/** Color del animal que se muestra para esta persona/unidad en el tema dado. */
+export function unitEmblemColor(
+  subject: UnitSubject | null,
+  host: UnitSubject | null,
+  dark: boolean
+): string | null {
+  if (!subject) return null;
+  const assets = unitEmblemAssets(subject, host);
+  if (!assets) return null;
+  const shown = dark && assets.night ? assets.night : assets.day;
+  return EMBLEM_COLOR[shown] ?? null;
+}

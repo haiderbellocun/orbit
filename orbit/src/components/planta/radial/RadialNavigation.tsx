@@ -5,7 +5,7 @@ import { animate, motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import type { OrganizationNode } from '@/src/lib/organizationTree';
 import { schoolAccent } from '@/src/lib/schoolAccent';
-import { unitEmblemAssets } from '@/src/lib/unitEmblem';
+import { unitEmblemAssets, unitEmblemColor } from '@/src/lib/unitEmblem';
 import type { PlantaPerson } from '@/src/types';
 import type { WheelEntry } from '@/src/components/planta/radial/radialModel';
 import {
@@ -55,6 +55,23 @@ function accentOf(person: PlantaPerson | null | undefined): string {
   }).accent;
 }
 
+/** true cuando Orbit está en tema oscuro (`data-theme="dark"` en <html>). */
+function useIsDarkTheme(): boolean {
+  const read = () =>
+    typeof document !== 'undefined' &&
+    document.documentElement.getAttribute('data-theme') === 'dark';
+  const [dark, setDark] = useState(read);
+  useEffect(() => {
+    const observer = new MutationObserver(() => setDark(read()));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+    return () => observer.disconnect();
+  }, []);
+  return dark;
+}
+
 function assetUrl(asset: string): string {
   return `${import.meta.env.BASE_URL}${asset.split('/').map(encodeURIComponent).join('/')}`;
 }
@@ -100,7 +117,10 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
   const activeIndex = windowed.items.findIndex((entry) => entry.key === activeKey);
   const activeEntry = activeIndex >= 0 ? windowed.items[activeIndex] : null;
   const targetAngle = 0;
-  const accent = accentOf(centerNode?.person);
+  const dark = useIsDarkTheme();
+  const hostPerson = centerNode?.person ?? null;
+  const accent =
+    unitEmblemColor(emblemSubject(hostPerson), null, dark) ?? accentOf(hostPerson);
   const focusArea = centerArea ?? activeEntry?.areaName ?? null;
   const frontEntry = windowed.items.reduce<{ entry: WheelEntry; delta: number } | null>(
     (best, entry, index) => {
@@ -114,15 +134,16 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
   )?.entry;
   const catalogRing = !centerNode && !focusArea && windowed.items.length > 1;
   const ringAccent = activeEntry
-    ? entryAccent(activeEntry)
+    ? entryAccent(activeEntry, hostPerson, dark)
     : centerNode
       ? accent
       : focusArea
-        ? schoolAccent({ areaName: focusArea }).accent
+        ? unitEmblemColor(emblemSubject(null, focusArea), null, dark) ??
+          schoolAccent({ areaName: focusArea }).accent
         : catalogRing
           ? NEUTRAL
           : frontEntry
-            ? entryAccent(frontEntry)
+            ? entryAccent(frontEntry, hostPerson, dark)
             : NEUTRAL;
 
   useEffect(() => {
@@ -292,7 +313,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                       <path
                         key={`tone-${entry.key}`}
                         d={wedgePath(cx, cy, inner, outer, edge.start, edge.end)}
-                        fill={entryAccent(entry)}
+                        fill={entryAccent(entry, hostPerson, dark)}
                         pointerEvents="none"
                       />
                     );
@@ -367,7 +388,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                   areaName={entry.areaName}
                   label={entry.label}
                   size={iconSize}
-                  accent={accentOfEntry(entry, ringAccent)}
+                  accent={accentOfEntry(entry, ringAccent, hostPerson, dark)}
                   initialsOnly={entry.initials}
                 />
               </div>
@@ -451,7 +472,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                 {entry.canDrill && (
                   <p
                     className="mt-1 text-[10px] font-bold uppercase tracking-wide"
-                    style={{ color: accentOfEntry(entry, ringAccent) }}
+                    style={{ color: accentOfEntry(entry, ringAccent, hostPerson, dark) }}
                   >
                     {entry.childCount.toLocaleString('es-CO')} a cargo · clic para entrar
                   </p>
@@ -503,7 +524,24 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
   );
 };
 
-function entryAccent(entry: WheelEntry): string {
+/**
+ * Color del animal que se ve para esta opción; si la unidad no tiene logo,
+ * el color de su escuela o área.
+ */
+function entryAccent(
+  entry: WheelEntry,
+  host: PlantaPerson | null = null,
+  dark = false
+): string {
+  const fromEmblem = unitEmblemColor(
+    emblemSubject(entry.node?.person ?? null, entry.areaName),
+    host ? emblemSubject(host) : null,
+    dark
+  );
+  return fromEmblem ?? schoolEntryAccent(entry);
+}
+
+function schoolEntryAccent(entry: WheelEntry): string {
   const person = entry.node?.person;
   const areaFold = (person?.area ?? '')
     .normalize('NFD')
@@ -529,8 +567,13 @@ function entryAccent(entry: WheelEntry): string {
   }).accent;
 }
 
-function accentOfEntry(entry: WheelEntry, fallback: string): string {
-  const accent = entryAccent(entry);
+function accentOfEntry(
+  entry: WheelEntry,
+  fallback: string,
+  host: PlantaPerson | null = null,
+  dark = false
+): string {
+  const accent = entryAccent(entry, host, dark);
   return accent === NEUTRAL ? fallback : accent;
 }
 
