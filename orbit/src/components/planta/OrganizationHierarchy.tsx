@@ -1,3 +1,4 @@
+import { displayCase } from '@/src/lib/displayText';
 import React from 'react';
 import { getRoleBand } from '@/src/lib/roleHierarchy';
 import { isOrgApexPerson, schoolAccent } from '@/src/lib/schoolAccent';
@@ -23,6 +24,20 @@ type OrganizationHierarchyProps = {
   unassignedHint?: string;
   unassignedTone?: 'warning' | 'muted';
 };
+
+function normalizeLabel(value: string | null | undefined): string {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+function sameLabel(a: string | null | undefined, b: string | null | undefined): boolean {
+  const na = normalizeLabel(a);
+  return na !== '' && na === normalizeLabel(b);
+}
 
 function splitApex(forest: OrganizationForest): {
   apex: OrganizationNode[];
@@ -140,7 +155,7 @@ export const OrganizationHierarchy: React.FC<OrganizationHierarchyProps> = ({
                 className="font-display text-sm font-semibold uppercase tracking-widest"
                 style={{ color: areaTone.accent }}
               >
-                {area.areaName}
+                {displayCase(area.areaName)}
               </h2>
               <div
                 className="mb-1 h-px flex-1"
@@ -170,27 +185,25 @@ export const OrganizationHierarchy: React.FC<OrganizationHierarchyProps> = ({
                 schoolName: school.schoolName,
                 areaName: area.areaName,
               });
+              // Si el título repite el cargo de quien encabeza el grupo
+              // (p. ej. "COORDINADOR GENERAL OPERACIONES"), la tarjeta ya lo dice.
+              const redundantTitle = school.roots.every(
+                (node) => sameLabel(node.person.role_name, school.schoolName)
+              );
               return (
-                <div
-                  key={school.key}
-                  className="space-y-3 rounded-2xl border p-3 sm:p-4"
-                  style={{
-                    borderColor: tone.border,
-                    borderLeftWidth: 4,
-                    borderLeftColor: tone.accent,
-                    backgroundColor: tone.soft,
-                  }}
-                >
-                  <h3 className="flex items-center gap-2 text-xs font-semibold">
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: tone.accent }}
-                      aria-hidden
-                    />
-                    <span style={{ color: tone.accent }}>
-                      {school.schoolName}
-                    </span>
-                  </h3>
+                <div key={school.key} className="space-y-3">
+                  {!redundantTitle && (
+                    <h3 className="flex items-center gap-2 text-xs font-semibold">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: tone.accent }}
+                        aria-hidden
+                      />
+                      <span style={{ color: tone.accent }}>
+                        {displayCase(school.schoolName)}
+                      </span>
+                    </h3>
+                  )}
                   {school.roots.map((node) => (
                     <BranchNode
                       key={node.nodeKey}

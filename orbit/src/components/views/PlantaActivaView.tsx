@@ -45,11 +45,13 @@ import {
   overlayOrgParents,
   parseOrgChartGraph,
   personMatchesQuery,
+  teamComposition,
 } from '@/src/lib/organizationTree';
 import { OrganizationHierarchy } from '@/src/components/planta/OrganizationHierarchy';
 import { OrganizationBreadcrumb } from '@/src/components/planta/radial/OrganizationBreadcrumb';
 import { RadialNavigation } from '@/src/components/planta/radial/RadialNavigation';
 import { usePlantaRadial } from '@/src/components/planta/radial/usePlantaRadial';
+import { PlantaWheelProvider } from '@/src/components/planta/radial/PlantaWheelContext';
 import {
   PersonManagementDrawer,
   type PlantaEditForm,
@@ -493,8 +495,12 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       ].filter(Boolean);
       await downloadPlantaExcel({
         people,
+        forest,
         status: listStatus,
         filterNote: notes.length ? notes.join(' · ') : null,
+        versionLabel: orgGraph
+          ? `${orgGraph.version.name}${orgGraph.version.period_label ? ` (${orgGraph.version.period_label})` : ''}`
+          : null,
       });
     } catch (err) {
       setExportError(
@@ -520,6 +526,27 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   // Con búsqueda o filtros la lista muestra coincidencias en toda la planta;
   // sin ellos, la rama elegida en la rueda.
   const listForest = hasActiveQuery ? visibleForest : radial.panelForest;
+  const displayedTeamLabel = useMemo(() => {
+    const node = radial.displayedNode;
+    if (!node) return null;
+    const team = teamComposition(node);
+    if (team.total === 0) return null;
+    const parts = [
+      team.coordinators > 0 &&
+        `${team.coordinators} ${team.coordinators === 1 ? 'coordinación' : 'coordinaciones'}`,
+      team.leaders > 0 && `${team.leaders} ${team.leaders === 1 ? 'líder' : 'líderes'}`,
+      team.collaborators > 0 &&
+        `${team.collaborators.toLocaleString('es-CO')} ${team.collaborators === 1 ? 'colaborador' : 'colaboradores'}`,
+    ].filter(Boolean);
+    return `Equipo a cargo: ${parts.join(' · ')}`;
+  }, [radial.displayedNode]);
+  const wheelContext = useMemo(
+    () => ({
+      currentKey: radial.displayedNode?.nodeKey ?? null,
+      focus: radial.focusNode,
+    }),
+    [radial.displayedNode?.nodeKey, radial.focusNode]
+  );
   const reducedMotion = useReducedMotion();
 
   useEffect(() => {
@@ -926,7 +953,9 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         </div>
       )}
 
-      <div className="grid items-start gap-4 md:grid-cols-[minmax(320px,400px)_minmax(0,1fr)] lg:grid-cols-[minmax(380px,480px)_minmax(0,1fr)] xl:grid-cols-[minmax(420px,540px)_minmax(0,1fr)]">
+      {/* La columna de la rueda mide lo que ocupa el aro (≈1.1 × 0.44 × alto
+          + halo), así la tabla gana el espacio que antes quedaba en blanco. */}
+      <div className="grid items-start gap-3 md:grid-cols-[300px_minmax(0,1fr)] lg:grid-cols-[350px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(0,1fr)]">
         <div className="md:sticky md:top-4 md:self-start md:-ml-6 lg:-ml-8">
           <RadialNavigation
             entries={radial.entries}
@@ -1316,10 +1345,18 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                 Resultados en toda la planta
               </p>
             ) : (
-              <OrganizationBreadcrumb
-                crumbs={radial.crumbs}
-                onNavigate={radial.goToCrumb}
-              />
+              <>
+                <OrganizationBreadcrumb
+                  crumbs={radial.crumbs}
+                  onNavigate={radial.goToCrumb}
+                />
+                {/* Fijo arriba del scroll: de quién es el equipo que se ve abajo. */}
+                {displayedTeamLabel && (
+                  <p className="px-2 pt-0.5 text-[11px] text-orbit-muted">
+                    {displayedTeamLabel}
+                  </p>
+                )}
+              </>
             )}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4">
@@ -1341,6 +1378,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                   ))}
                 </div>
               ) : (
+                <PlantaWheelProvider value={wheelContext}>
                 <OrganizationHierarchy
                   forest={listForest}
                   expandedIds={expandedIds}
@@ -1367,6 +1405,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                   }
                   unassignedTone={listStatus === 'inactive' ? 'muted' : 'warning'}
                 />
+                </PlantaWheelProvider>
               )}
             </motion.div>
           </AnimatePresence>

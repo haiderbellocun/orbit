@@ -1,3 +1,4 @@
+import { displayCase } from '@/src/lib/displayText';
 import React from 'react';
 import {
   ChevronDownIcon,
@@ -7,6 +8,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { personInitials } from '@/src/lib/roleHierarchy';
 import { TeamSummary } from '@/src/components/planta/TeamSummary';
+import { FocusInWheelButton } from '@/src/components/planta/radial/PlantaWheelContext';
 import { schoolAccent } from '@/src/lib/schoolAccent';
 import {
   isBranchNode,
@@ -79,10 +81,10 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                {person.role_name || 'Líder'}
+                {displayCase(person.role_name) || 'Líder'}
               </p>
               <p className="font-semibold text-orbit-text truncate">
-                {person.name}
+                {displayCase(person.name)}
               </p>
               <SecondInCommandBadges person={person} />
               {node.assignmentLabel ? (
@@ -92,7 +94,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
               ) : null}
               <p className="text-xs truncate">
                 {person.program ? (
-                  <span className="text-orbit-muted">{person.program}</span>
+                  <span className="text-orbit-muted">{displayCase(person.program)}</span>
                 ) : null}
                 {person.school ? (
                   <span
@@ -100,7 +102,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
                     style={{ color: tone.accent }}
                   >
                     {person.program ? ' · ' : null}
-                    {person.school}
+                    {displayCase(person.school)}
                   </span>
                 ) : (
                   !person.program && (
@@ -121,6 +123,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
               onClick={(e) => e.stopPropagation()}
             >
               <UnitEmblem subject={person} />
+              <FocusInWheelButton nodeKey={node.nodeKey} />
               {canEdit ? (
                 <button
                   type="button"

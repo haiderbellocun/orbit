@@ -217,6 +217,29 @@ export function usePlantaRadial(forest: OrganizationForest) {
     });
   }, [activeKey, areaKey, clearDrill, current?.nodeKey, withFloor]);
 
+  /**
+   * Centra la rueda en un nodo elegido desde la lista. Si tiene equipo, entra
+   * a su nivel; si no, se queda en el nivel de su responsable y lo resalta.
+   */
+  const focusNode = useCallback(
+    (nodeKey: string) => {
+      const chain = chainTo(forest, nodeKey);
+      if (!chain) return;
+      clearDrill();
+      setAreaKey(null);
+      setMode('tree');
+      const target = chain[chain.length - 1];
+      if (target.children.length > 0) {
+        setPath(chain.map((node) => node.nodeKey));
+        setActiveKey(null);
+      } else {
+        setPath(chain.slice(0, -1).map((node) => node.nodeKey));
+        setActiveKey(target.nodeKey);
+      }
+    },
+    [clearDrill, forest]
+  );
+
   const reset = useCallback(() => {
     clearDrill();
     setAreaKey(null);
@@ -267,6 +290,32 @@ export function usePlantaRadial(forest: OrganizationForest) {
     highlightEntry,
     goToCrumb,
     goBack,
+    focusNode,
     reset,
   };
+}
+
+/** Nodos desde la raíz hasta `nodeKey` (incluido), o null si no está. */
+function chainTo(
+  forest: OrganizationForest,
+  nodeKey: string
+): OrganizationNode[] | null {
+  const walk = (node: OrganizationNode, trail: OrganizationNode[]): OrganizationNode[] | null => {
+    const next = [...trail, node];
+    if (node.nodeKey === nodeKey) return next;
+    for (const child of node.children) {
+      const found = walk(child, next);
+      if (found) return found;
+    }
+    return null;
+  };
+  for (const area of forest.areas) {
+    for (const school of area.schools) {
+      for (const root of school.roots) {
+        const found = walk(root, []);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
 }

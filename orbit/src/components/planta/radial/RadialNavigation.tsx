@@ -1,3 +1,4 @@
+import { displayCase } from '@/src/lib/displayText';
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 import { animate, motion, useReducedMotion } from 'motion/react';
@@ -88,6 +89,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
   const [box, setBox] = useState({ width: 320, height: 540 });
   const [page, setPage] = useState(0);
   const [deg, setDeg] = useState(0);
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
 
   const levelKey = entries.map((entry) => entry.key).join('|');
   const windowed = pageWindow(entries, page, WHEEL_PAGE_SIZE);
@@ -140,6 +142,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
 
   useEffect(() => {
     setPage(0);
+    setHoverKey(null);
   }, [levelKey]);
 
   useEffect(() => {
@@ -315,8 +318,17 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                           entry.canDrill ? `${entry.childCount} dependientes` : 'Sin dependientes'
                         }`}
                         aria-current={active ? 'true' : undefined}
+                        onMouseEnter={() => setHoverKey(entry.key)}
+                        onMouseLeave={() =>
+                          setHoverKey((key) => (key === entry.key ? null : key))
+                        }
+                        onFocus={() => setHoverKey(entry.key)}
+                        onBlur={() =>
+                          setHoverKey((key) => (key === entry.key ? null : key))
+                        }
                         onClick={(event) => {
                           event.currentTarget.blur();
+                          setHoverKey(null);
                           onSelect(entry);
                         }}
                         onKeyDown={(event) => {
@@ -327,7 +339,6 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                           }
                         }}
                       >
-                        <title>{`${entry.label} · ${entry.hint}`}</title>
                         <path
                           d={wedgePath(cx, cy, inner - 6, outer + 8, edge.start, edge.end)}
                           fill={ringAccent}
@@ -406,15 +417,48 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                 }
                 style={centerPerson || focusArea || activeEntry ? { color: ringAccent } : undefined}
               >
-                {centerLabel}
+                {displayCase(centerLabel)}
               </span>
               {centerPerson || focusArea || activeEntry ? null : (
                 <span className="mt-1 text-center text-[11px] font-medium text-orbit-muted">
-                  {centerSubtitle}
+                  {displayCase(centerSubtitle)}
                 </span>
               )}
             </motion.div>
           )}
+
+          {(() => {
+            const index = windowed.items.findIndex((entry) => entry.key === hoverKey);
+            const entry = index >= 0 ? windowed.items[index] : null;
+            const edge = index >= 0 ? edges[index] : null;
+            if (!entry || !edge) return null;
+            const spot = polar(cx, cy, midRadius, edge.mid + (deg * Math.PI) / 180);
+            const half = 112;
+            const left = Math.min(Math.max(spot.x, half + 4), box.width - half - 4);
+            const above = spot.y - iconSize / 2 - 8 > 48;
+            return (
+              <div
+                role="tooltip"
+                className="pointer-events-none absolute z-20 w-max max-w-[224px] rounded-xl border border-orbit-border bg-orbit-surface px-3 py-2 text-left shadow-lg"
+                style={{
+                  left,
+                  top: above ? spot.y - iconSize / 2 - 8 : spot.y + iconSize / 2 + 8,
+                  transform: `translate(-50%, ${above ? '-100%' : '0'})`,
+                }}
+              >
+                <p className="text-xs font-bold leading-tight text-orbit-text">{displayCase(entry.label)}</p>
+                <p className="mt-0.5 text-[11px] leading-tight text-orbit-muted">{displayCase(entry.hint)}</p>
+                {entry.canDrill && (
+                  <p
+                    className="mt-1 text-[10px] font-bold uppercase tracking-wide"
+                    style={{ color: accentOfEntry(entry, ringAccent) }}
+                  >
+                    {entry.childCount.toLocaleString('es-CO')} a cargo · clic para entrar
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {canGoBack && (
             <button
@@ -664,7 +708,7 @@ function CompactSegments({
               ) : (
                 <AreaMascot person={person} host={host} areaName={entry.areaName} size={22} />
               )}
-              {entry.label}
+              {displayCase(entry.label)}
             </button>
           );
         })}

@@ -1,3 +1,4 @@
+import { displayCase } from '@/src/lib/displayText';
 import React, { useEffect, useState } from 'react';
 import { PencilSquareIcon } from '@heroicons/react/24/solid';
 import { cn } from '@/src/lib/utils';
@@ -25,6 +26,8 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
   }, [signature]);
 
   if (nodes.length === 0) return null;
+  // Si nadie del grupo tiene programa, la columna solo mostraría "—".
+  const showProgram = nodes.some((node) => node.person.program?.trim());
   const visibleNodes = nodes.length > PAGE_SIZE ? nodes.slice(0, shown) : nodes;
   const remaining = nodes.length - visibleNodes.length;
 
@@ -35,11 +38,13 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
           <tr className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
             <th className="py-2 pr-3 font-bold">Persona</th>
             <th className="py-2 pr-3 font-bold">Identificación</th>
-            <th className="hidden py-2 pr-3 font-bold lg:table-cell">
-              Programa
-            </th>
+            {showProgram && (
+              <th className="hidden py-2 pr-3 font-bold lg:table-cell">
+                Programa
+              </th>
+            )}
             <th className="py-2 pr-3 font-bold">Rol</th>
-            <th className="hidden py-2 pr-3 font-bold sm:table-cell">Estado</th>
+            <th className="hidden py-2 pr-3 font-bold xl:table-cell">Correo CUN</th>
             <th className="py-2 text-right font-bold">Acciones</th>
           </tr>
         </thead>
@@ -58,9 +63,14 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
                 key={node.nodeKey}
                 className="border-t border-orbit-border/80 align-top"
               >
-                <td className="py-2.5 pr-3">
+                <td className="py-2 pr-3">
                   <p className="font-semibold text-orbit-text truncate max-w-[16rem]">
-                    {person.name || '—'}
+                    {displayCase(person.name) || '—'}
+                    {person.status !== 'active' && (
+                      <span className="ml-2 text-[11px] font-semibold text-orbit-muted">
+                        Inactivo
+                      </span>
+                    )}
                   </p>
                   <SecondInCommandBadges person={person} />
                   {person.school ? (
@@ -72,37 +82,32 @@ export const CollaboratorTable: React.FC<CollaboratorTableProps> = ({
                         className="h-1.5 w-1.5 shrink-0 rounded-full"
                         style={{ backgroundColor: tone.accent }}
                       />
-                      {person.school}
+                      {displayCase(person.school)}
                     </p>
                   ) : null}
                   <p className="text-xs text-orbit-muted truncate max-w-[16rem] md:hidden">
                     {person.document || 'Sin identificación'}
                   </p>
                 </td>
-                <td className="hidden py-2.5 pr-3 text-orbit-text-secondary md:table-cell">
+                <td className="hidden py-2 pr-3 text-orbit-text-secondary md:table-cell">
                   {person.document || '—'}
                 </td>
-                <td className="hidden py-2.5 pr-3 text-orbit-text-secondary lg:table-cell">
-                  {person.program || '—'}
-                </td>
-                <td className="py-2.5 pr-3">
+                {showProgram && (
+                  <td className="hidden py-2 pr-3 text-orbit-text-secondary lg:table-cell">
+                    {displayCase(person.program) || '—'}
+                  </td>
+                )}
+                <td className="py-2 pr-3">
                   <span className="inline-flex max-w-full truncate px-2 py-0.5 rounded-md bg-orbit-interactive text-[11px] font-semibold text-orbit-text-secondary">
-                    {person.role_name || 'Sin rol'}
+                    {displayCase(person.role_name) || 'Sin rol'}
                   </span>
                 </td>
-                <td className="hidden py-2.5 pr-3 sm:table-cell">
-                  <span
-                    className={cn(
-                      'text-xs font-semibold',
-                      person.status === 'active'
-                        ? 'text-orbit-success'
-                        : 'text-orbit-muted'
-                    )}
-                  >
-                    {person.status === 'active' ? 'Activo' : 'Inactivo'}
-                  </span>
+                <td className="hidden max-w-[14rem] truncate py-2 pr-3 text-xs text-orbit-text-secondary xl:table-cell">
+                  {person.edu_email?.trim() || (
+                    <span className="font-semibold text-orbit-danger">Sin correo CUN</span>
+                  )}
                 </td>
-                <td className="py-2.5 text-right">
+                <td className="py-2 text-right">
                   {canEdit ? (
                     <button
                       type="button"

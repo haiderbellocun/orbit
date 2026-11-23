@@ -1,3 +1,4 @@
+import { displayCase } from '@/src/lib/displayText';
 import React from 'react';
 import { ChevronRightIcon } from '@heroicons/react/24/solid';
 import { motion, useReducedMotion } from 'motion/react';
@@ -34,15 +35,16 @@ export const OrganizationBreadcrumb: React.FC<OrganizationBreadcrumbProps> = ({
                 type="button"
                 onClick={() => onNavigate(index)}
                 disabled={current}
+                title={displayCase(crumb.label)}
                 aria-current={current ? 'page' : undefined}
                 className={cn(
-                  'max-w-[14rem] truncate rounded-lg px-2 py-1 text-left text-xs font-semibold transition-colors',
+                  'max-w-[22rem] truncate rounded-lg px-2 py-1 text-left text-xs font-semibold transition-colors',
                   current
                     ? 'text-orbit-text'
                     : 'text-orbit-primary hover:bg-orbit-primary/10'
                 )}
               >
-                {crumb.label}
+                {displayCase(crumb.label)}
               </button>
             </motion.li>
           );

@@ -221,6 +221,27 @@ function AppShell({
   );
 }
 
+// Vista abierta en esta pestaña, para volver a ella al recargar en lugar de
+// caer siempre en la vista por defecto (Command Center).
+const LAST_VIEW_KEY = "orbit_last_view";
+
+function readLastView(): View | null {
+  try {
+    return (sessionStorage.getItem(LAST_VIEW_KEY) as View | null) || null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberView(view: View | null) {
+  try {
+    if (view) sessionStorage.setItem(LAST_VIEW_KEY, view);
+    else sessionStorage.removeItem(LAST_VIEW_KEY);
+  } catch {
+    /* almacenamiento no disponible: solo se pierde la comodidad */
+  }
+}
+
 export default function App() {
   const [view, setView] = useState<View>("login");
   const [orbitAccess, setOrbitAccess] = useState<OrbitAccess | null>(null);
@@ -235,10 +256,18 @@ export default function App() {
         const caps = auth.user.capabilities ?? [];
         setOrbitAccess(auth.user.orbitAccess ?? "full");
         setCapabilities(caps);
-        setView(getDefaultView(caps));
+        const last = readLastView();
+        setView(last && last !== "login" && canAccessView(last, caps) ? last : getDefaultView(caps));
       })
       .catch(() => clearOrbitSession());
   }, []);
+
+  useEffect(() => {
+    if (view === "login") return;
+    // El detalle de vacante depende de una selección que no sobrevive a la
+    // recarga; en ese caso se vuelve al listado.
+    rememberView(view === "vacancy-detail" ? "vacancies" : view);
+  }, [view]);
 
   useEffect(() => {
     if (view === "login") return;
@@ -249,6 +278,7 @@ export default function App() {
 
   const handleLogout = useCallback(() => {
     clearTutorialSession();
+    rememberView(null);
     void logoutOrbitSession();
     setOrbitAccess(null);
     setCapabilities([]);

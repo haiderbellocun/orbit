@@ -1,3 +1,4 @@
+import { displayCase } from '@/src/lib/displayText';
 import React from 'react';
 import {
   ChevronDownIcon,
@@ -7,6 +8,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { getRoleBand, personInitials } from '@/src/lib/roleHierarchy';
 import { TeamSummary } from '@/src/components/planta/TeamSummary';
+import { FocusInWheelButton } from '@/src/components/planta/radial/PlantaWheelContext';
 import { schoolAccent } from '@/src/lib/schoolAccent';
 import {
   isBranchNode,
@@ -90,10 +92,10 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-              {person.role_name || 'Coordinador'}
+              {displayCase(person.role_name) || 'Coordinador'}
             </p>
             <h3 className="font-display text-lg font-semibold tracking-tight text-orbit-text">
-              {person.name}
+              {displayCase(person.name)}
             </h3>
             <SecondInCommandBadges person={person} />
             {node.assignmentLabel ? (
@@ -102,7 +104,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
               </p>
             ) : null}
             <p className="mt-1 text-sm text-orbit-text-secondary">
-              {person.area || 'Sin área'}
+              {displayCase(person.area) || 'Sin área'}
               {person.school ? (
                 <>
                   {' · '}
@@ -114,7 +116,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
                       className="inline-block h-1.5 w-1.5 rounded-full"
                       style={{ backgroundColor: tone.accent }}
                     />
-                    {person.school}
+                    {displayCase(person.school)}
                   </span>
                 </>
               ) : null}
@@ -134,16 +136,11 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
                 canAssign={canEdit && canMutate}
                 onAssign={onAssign}
               />
-              <span
-                className={cn(
-                  'text-xs font-semibold',
-                  person.status === 'active'
-                    ? 'text-orbit-success'
-                    : 'text-orbit-muted'
-                )}
-              >
-                {person.status === 'active' ? 'Activo' : 'Inactivo'}
-              </span>
+              {person.status !== 'active' && (
+                <span className="text-xs font-semibold text-orbit-muted">
+                  Inactivo
+                </span>
+              )}
             </div>
           </div>
           <UnitEmblem subject={person} />
@@ -151,6 +148,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
             className="flex shrink-0 items-center gap-2 self-end sm:self-start"
             onClick={(e) => e.stopPropagation()}
           >
+            {!isApex && <FocusInWheelButton nodeKey={node.nodeKey} />}
             {canEdit ? (
               <button
                 type="button"
