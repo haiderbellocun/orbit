@@ -5,11 +5,8 @@ import {
 } from '@heroicons/react/24/solid';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/src/lib/utils';
-import {
-  canHaveDirectReports,
-  emptyTeamMessage,
-  personInitials,
-} from '@/src/lib/roleHierarchy';
+import { personInitials } from '@/src/lib/roleHierarchy';
+import { TeamSummary } from '@/src/components/planta/TeamSummary';
 import { schoolAccent } from '@/src/lib/schoolAccent';
 import {
   isBranchNode,
@@ -36,7 +33,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
     const person = node.person;
     const expanded = expandedIds.has(node.nodeKey);
     const { nested, collaborators } = splitReports(node);
-    const canExpand = true;
+    const canExpand = node.children.length > 0;
     const canEdit = person.can_edit === true;
     const tone = schoolAccent({
       schoolId: person.school_id,
@@ -111,10 +108,13 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
                   )
                 )}
               </p>
-              <p className="mt-1 text-xs text-orbit-text-secondary">
-                {node.totalReportsCount} colaborador
-                {node.totalReportsCount === 1 ? '' : 'es'}
-              </p>
+              <TeamSummary
+                node={node}
+                canAssign={canEdit && canMutate}
+                onAssign={onAssign}
+                size="sm"
+                className="mt-1"
+              />
             </div>
             <div
               className="flex shrink-0 items-center gap-1"
@@ -152,7 +152,7 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
           </div>
 
           <AnimatePresence initial={false}>
-          {expanded && (
+          {expanded && canExpand && (
             <motion.div
               key="leader-team"
               initial={reducedMotion ? false : { height: 0, opacity: 0 }}
@@ -162,30 +162,6 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
               className="overflow-hidden"
             >
             <div className="border-t border-orbit-border px-3 pb-3 sm:px-4 sm:pb-4">
-              {node.children.length === 0 ? (
-                <div className="py-4 text-sm text-orbit-muted">
-                  <p>
-                    {emptyTeamMessage({
-                      roleName: person.role_name,
-                      roleCode: person.role_code,
-                    })}
-                  </p>
-                  {canEdit &&
-                    canMutate &&
-                    canHaveDirectReports({
-                      roleName: person.role_name,
-                      roleCode: person.role_code,
-                    }) && (
-                    <button
-                      type="button"
-                      onClick={() => onAssign(person.id)}
-                      className="mt-2 text-xs font-bold text-orbit-primary hover:text-orbit-primary-hover"
-                    >
-                      Asignar colaborador
-                    </button>
-                  )}
-                </div>
-              ) : (
                 <div className="space-y-3 pt-3">
                   {nested.map((child) =>
                     isBranchNode(child) ? (
@@ -206,7 +182,6 @@ export const LeaderNode: React.FC<LeaderNodeProps> = React.memo(
                     onManage={onManage}
                   />
                 </div>
-              )}
             </div>
             </motion.div>
           )}

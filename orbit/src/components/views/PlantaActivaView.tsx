@@ -7,6 +7,7 @@ import {
   XMarkIcon,
   ChevronDownIcon,
   PlusIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -385,8 +386,32 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return () => clearTimeout(t);
   }, [filters.search, applied.search]);
 
+  // Los selectores y casillas filtran en el cliente: se aplican al instante.
+  // El texto conserva el retraso de 300 ms del efecto anterior.
+  useEffect(() => {
+    setApplied((prev) => {
+      const next = { ...filters, search: prev.search };
+      const changed = (Object.keys(next) as (keyof Filters)[]).some(
+        (k) => next[k] !== prev[k]
+      );
+      return changed ? next : prev;
+    });
+  }, [filters]);
+
   const applyFilters = () => {
     setApplied({ ...filters });
+  };
+
+  const removeFilter = (key: Exclude<keyof Filters, 'search'>) => {
+    setFilters((f) => {
+      const next: Filters = { ...f, [key]: EMPTY_FILTERS[key] };
+      if (key === 'areaId') {
+        next.schoolId = '';
+        next.programId = '';
+      }
+      if (key === 'schoolId') next.programId = '';
+      return next;
+    });
   };
 
   const clearFilters = () => {
@@ -418,9 +443,8 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
 
   const canMutateOrg = orgGraph?.can_mutate === true;
 
-  const visibleForest = useMemo(() => {
-    if (!hasActiveQuery) return forest;
-    return filterOrganizationForest(forest, (person) => {
+  const matchesFilters = useCallback(
+    (person: PlantaPerson) => {
       if (!personMatchesQuery(person, applied.search)) return false;
       if (applied.areaId && String(person.area_id ?? '') !== applied.areaId) {
         return false;
@@ -446,8 +470,40 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       if (applied.withoutEduEmail && person.edu_email?.trim()) return false;
       if (applied.withoutDocument && person.document?.trim()) return false;
       return true;
-    });
-  }, [forest, applied, hasActiveQuery]);
+    },
+    [applied]
+  );
+
+  const visibleForest = useMemo(
+    () => (hasActiveQuery ? filterOrganizationForest(forest, matchesFilters) : forest),
+    [forest, matchesFilters, hasActiveQuery]
+  );
+
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const handleExportExcel = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const { downloadPlantaExcel } = await import('@/src/lib/plantaExcelExport');
+      const people = hasActiveQuery ? rows.filter(matchesFilters) : rows;
+      const notes = [
+        applied.search.trim() && `Búsqueda: "${applied.search.trim()}"`,
+        ...activeFilterChips.map((chip) => chip.label),
+      ].filter(Boolean);
+      await downloadPlantaExcel({
+        people,
+        status: listStatus,
+        filterNote: notes.length ? notes.join(' · ') : null,
+      });
+    } catch (err) {
+      setExportError(
+        err instanceof Error ? `No se pudo generar el Excel: ${err.message}` : 'No se pudo generar el Excel.'
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const autoExpanded = useMemo(
     () => (hasActiveQuery ? collectExpandableIds(visibleForest) : new Set<string>()),
@@ -461,6 +517,9 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   }, [userExpanded, autoExpanded]);
 
   const radial = usePlantaRadial(forest);
+  // Con búsqueda o filtros la lista muestra coincidencias en toda la planta;
+  // sin ellos, la rama elegida en la rueda.
+  const listForest = hasActiveQuery ? visibleForest : radial.panelForest;
   const reducedMotion = useReducedMotion();
 
   useEffect(() => {
@@ -507,6 +566,35 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     if (!shouldExcludeLiteAndDocenteFromPlantaView(plantaAccess)) return roles;
     return roles.filter((r) => !isLiteOrDocenteRoleName(r.name));
   }, [roles, plantaAccess]);
+
+  const activeFilterChips = useMemo(() => {
+    const nameOf = (list: { id: number | string; name: string }[], id: string) =>
+      list.find((item) => String(item.id) === id)?.name ?? id;
+    const chips: { key: Exclude<keyof Filters, 'search'>; label: string }[] = [];
+    if (filters.areaId && !lockedAreaId) {
+      chips.push({ key: 'areaId', label: `Área: ${nameOf(areasForFilter, filters.areaId)}` });
+    }
+    if (filters.schoolId) {
+      chips.push({ key: 'schoolId', label: `Escuela: ${nameOf(schools, filters.schoolId)}` });
+    }
+    if (filters.programId) {
+      chips.push({ key: 'programId', label: `Programa: ${nameOf(programs, filters.programId)}` });
+    }
+    if (filters.roleId) {
+      chips.push({ key: 'roleId', label: `Rol: ${nameOf(rolesForPlanta, filters.roleId)}` });
+    }
+    const flags = [
+      ['withoutSchool', 'Sin escuela'],
+      ['withoutProgram', 'Sin programa'],
+      ['withoutRole', 'Sin rol'],
+      ['withoutEduEmail', 'Sin correo CUN'],
+      ['withoutDocument', 'Sin identificación'],
+    ] as const;
+    for (const [key, label] of flags) {
+      if (filters[key]) chips.push({ key, label });
+    }
+    return chips;
+  }, [filters, lockedAreaId, areasForFilter, schools, programs, rolesForPlanta]);
 
   const canCreate = editableAreaIds == null || editableAreaIds.length > 0;
 
@@ -831,22 +919,6 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
-      {listStatus === 'active' && orgGraph && (
-        <div className="rounded-2xl border border-orbit-border bg-orbit-surface px-4 py-3 text-sm text-orbit-text-secondary">
-          <p>
-            Árbol base:{' '}
-            <strong className="text-orbit-text">{orgGraph.version.name}</strong>
-            {orgGraph.version.period_label
-              ? ` · ${orgGraph.version.period_label}`
-              : ''}
-          </p>
-          <p className="mt-1 text-xs">
-            Puedes asignar y mover personas aquí. Esos cambios se guardan en
-            Planta Activa y no modifican el Organigrama.
-          </p>
-        </div>
-      )}
-
       {listStatus === 'active' && !loading && orgGraph == null && (
         <div className="rounded-2xl border border-orbit-warning/40 bg-orbit-warning/10 px-4 py-3 text-sm text-orbit-text">
           No se pudo cargar el organigrama. Las personas aparecen sin
@@ -873,7 +945,9 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
             }}
           />
         </div>
-        <div className="min-w-0 space-y-4">
+        {/* En md+ la columna mide lo mismo que la rueda (RadialNavigation) y la
+            lista hace scroll dentro de su recuadro en vez de alargar la página. */}
+        <div className="min-w-0 space-y-4 md:flex md:flex-col md:h-[540px] lg:h-[640px] xl:h-[720px]">
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div
@@ -902,18 +976,40 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
           ))}
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => void handleExportExcel()}
+            disabled={exporting || loading || rows.length === 0}
+            className="glass-button-secondary inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold disabled:opacity-40"
+            title={
+              hasActiveQuery
+                ? 'Descarga solo las personas que coinciden con la búsqueda y los filtros'
+                : 'Descarga toda la planta de esta pestaña'
+            }
+          >
+            <ArrowDownTrayIcon className="h-4 w-4" />
+            {exporting ? 'Generando…' : 'Descargar Excel'}
+          </button>
         {canCreate && (
           <button
             type="button"
             onClick={openCreate}
             data-tutorial="planta-create"
-            className="glass-button-primary inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold self-start sm:self-auto"
+            className="glass-button-primary inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold"
           >
             <PlusIcon className="h-4 w-4" />
             Nueva persona
           </button>
         )}
+        </div>
       </div>
+
+      {exportError && (
+        <div className="rounded-2xl border border-orbit-danger/40 bg-orbit-danger/10 px-5 py-3 text-sm text-orbit-danger">
+          {exportError}
+        </div>
+      )}
 
       {saveNotice && (
         <div className="rounded-2xl border border-orbit-success/30 bg-orbit-success/10 px-5 py-3 text-sm text-orbit-success flex items-center justify-between gap-3">
@@ -972,15 +1068,38 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                 )}
               />
             </button>
-            <button
-              type="button"
-              onClick={applyFilters}
-              className="glass-button-primary px-4 py-2.5 text-sm font-bold"
-            >
-              Buscar
-            </button>
           </div>
         </div>
+
+        {activeFilterChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {activeFilterChips.map((chip) => (
+              <span
+                key={chip.key}
+                className="inline-flex max-w-full items-center gap-1 rounded-full border border-orbit-primary/30 bg-orbit-primary/10 py-1 pl-3 pr-1 text-xs font-semibold text-orbit-primary"
+              >
+                <span className="truncate">{chip.label}</span>
+                <button
+                  type="button"
+                  onClick={() => removeFilter(chip.key)}
+                  className="rounded-full p-0.5 hover:bg-orbit-primary/15"
+                  aria-label={`Quitar filtro ${chip.label}`}
+                >
+                  <XMarkIcon className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
+            {activeFilterChips.length > 1 && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-xs font-bold text-orbit-muted hover:text-orbit-text"
+              >
+                Quitar todos
+              </button>
+            )}
+          </div>
+        )}
 
         <AnimatePresence initial={false}>
           {filtersOpen && (
@@ -1117,13 +1236,6 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                 <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
-                    onClick={applyFilters}
-                    className="glass-button-primary px-4 py-2 text-sm font-bold"
-                  >
-                    Aplicar filtros
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => {
                       clearFilters();
                       setFiltersOpen(false);
@@ -1152,6 +1264,16 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
             <p className="text-xs text-orbit-muted">
               {forest.counts.coordinators} coordinadores · {forest.counts.leaders}{' '}
               líderes · {forest.counts.collaborators} colaboradores
+              {listStatus === 'active' && orgGraph && (
+                <span
+                  title="Los cambios hechos aquí se guardan en Planta Activa y no modifican el Organigrama."
+                >
+                  {' '}· Árbol base: {orgGraph.version.name}
+                  {orgGraph.version.period_label
+                    ? ` (${orgGraph.version.period_label})`
+                    : ''}
+                </span>
+              )}
             </p>
           )}
         </div>
@@ -1187,13 +1309,23 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
         </div>
       )}
 
-          <OrganizationBreadcrumb
-            crumbs={radial.crumbs}
-            onNavigate={radial.goToCrumb}
-          />
+          <div className="flex min-h-[260px] flex-col rounded-2xl border border-orbit-border bg-orbit-surface md:flex-1">
+          <div className="shrink-0 border-b border-orbit-border px-4 py-2">
+            {hasActiveQuery ? (
+              <p className="text-xs font-bold uppercase tracking-widest text-orbit-muted">
+                Resultados en toda la planta
+              </p>
+            ) : (
+              <OrganizationBreadcrumb
+                crumbs={radial.crumbs}
+                onNavigate={radial.goToCrumb}
+              />
+            )}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
-              key={radial.contentKey}
+              key={hasActiveQuery ? 'search' : radial.contentKey}
               initial={reducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={reducedMotion ? undefined : { opacity: 0, transition: { duration: 0.15 } }}
@@ -1210,7 +1342,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                 </div>
               ) : (
                 <OrganizationHierarchy
-                  forest={radial.panelForest}
+                  forest={listForest}
                   expandedIds={expandedIds}
                   onToggle={toggleExpanded}
                   onManage={(id) => void openEdit(id)}
@@ -1219,17 +1351,17 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                   emptyMessage="No hay personas que coincidan con los filtros."
                   openUnassigned={
                     radial.mode === 'unassigned' ||
-                    (hasActiveQuery && radial.panelForest.unassigned.length > 0)
+                    (hasActiveQuery && listForest.unassigned.length > 0)
                   }
                   unassignedHeading={
                     listStatus === 'inactive' ? 'Sin área' : 'Sin responsable asignado'
                   }
                   unassignedHint={
                     listStatus === 'inactive'
-                      ? `${radial.panelForest.unassigned.length.toLocaleString('es-CO')} persona${
-                          radial.panelForest.unassigned.length === 1 ? '' : 's'
+                      ? `${listForest.unassigned.length.toLocaleString('es-CO')} persona${
+                          listForest.unassigned.length === 1 ? '' : 's'
                         } inactiva${
-                          radial.panelForest.unassigned.length === 1 ? '' : 's'
+                          listForest.unassigned.length === 1 ? '' : 's'
                         } sin área registrada`
                       : undefined
                   }
@@ -1238,6 +1370,8 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
               )}
             </motion.div>
           </AnimatePresence>
+          </div>
+          </div>
         </div>
       </div>
 

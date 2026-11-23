@@ -5,12 +5,8 @@ import {
 } from '@heroicons/react/24/solid';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/src/lib/utils';
-import {
-  canHaveDirectReports,
-  emptyTeamMessage,
-  getRoleBand,
-  personInitials,
-} from '@/src/lib/roleHierarchy';
+import { getRoleBand, personInitials } from '@/src/lib/roleHierarchy';
+import { TeamSummary } from '@/src/components/planta/TeamSummary';
 import { schoolAccent } from '@/src/lib/schoolAccent';
 import {
   isBranchNode,
@@ -22,24 +18,6 @@ import { CollaboratorTable } from '@/src/components/planta/CollaboratorTable';
 import { PersonMark, UnitEmblem } from '@/src/components/planta/UnitEmblem';
 import { unitEmblemAssets } from '@/src/lib/unitEmblem';
 import { SecondInCommandBadges } from '@/src/components/planta/SecondInCommandBadges';
-
-function subtreeCoverage(node: OrganizationNode) {
-  let coordinations = 0;
-  let leaders = 0;
-  const walk = (current: OrganizationNode) => {
-    for (const child of current.children) {
-      if (child.band === 'coordinator') coordinations += 1;
-      else if (child.band === 'leader') leaders += 1;
-      walk(child);
-    }
-  };
-  walk(node);
-  return {
-    coordinations,
-    leaders,
-    collaborators: node.totalReportsCount,
-  };
-}
 
 type CoordinatorNodeProps = {
   node: OrganizationNode;
@@ -64,10 +42,9 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
     const person = node.person;
     const isApex = variant === 'apex';
     const expanded = !isApex && expandedIds.has(node.nodeKey);
-    const coverage = isApex ? subtreeCoverage(node) : null;
     const { nested, collaborators } = splitReports(node);
     const canEdit = person.can_edit === true;
-    const canExpand = true;
+    const canExpand = !isApex && node.children.length > 0;
     const tone = schoolAccent({
       schoolId: person.school_id,
       schoolName: person.school,
@@ -94,12 +71,12 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
           className={cn(
             'unit-card-header flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:gap-4 sm:p-5',
             isApex && 'rounded-xl bg-orbit-surface m-3 mb-0',
-            canExpand && !isApex && 'cursor-pointer',
+            canExpand && 'cursor-pointer',
             node.isContextOnly && 'opacity-80'
           )}
-          onClick={isApex ? undefined : () => onToggle(node.nodeKey)}
-          role={isApex ? undefined : 'button'}
-          aria-expanded={isApex ? undefined : expanded}
+          onClick={canExpand ? () => onToggle(node.nodeKey) : undefined}
+          role={canExpand ? 'button' : undefined}
+          aria-expanded={canExpand ? expanded : undefined}
         >
           <div
             className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl text-sm font-bold"
@@ -151,46 +128,12 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
                 Sin correo CUN
               </p>
             )}
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-orbit-text-secondary">
-              {coverage ? (
-                <>
-                  <span>
-                    <strong className="font-semibold text-orbit-text">
-                      {coverage.coordinations.toLocaleString('es-CO')}
-                    </strong>{' '}
-                    {coverage.coordinations === 1 ? 'coordinación' : 'coordinaciones'}
-                  </span>
-                  <span>
-                    <strong className="font-semibold text-orbit-text">
-                      {coverage.leaders.toLocaleString('es-CO')}
-                    </strong>{' '}
-                    {coverage.leaders === 1 ? 'líder' : 'líderes'}
-                  </span>
-                  <span>
-                    <strong className="font-semibold text-orbit-text">
-                      {coverage.collaborators.toLocaleString('es-CO')}
-                    </strong>{' '}
-                    {coverage.collaborators === 1
-                      ? 'colaborador'
-                      : 'colaboradores'}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span>
-                    <strong className="font-semibold text-orbit-text">
-                      {node.leaderCount}
-                    </strong>{' '}
-                    {node.leaderCount === 1 ? 'líder' : 'líderes'}
-                  </span>
-                  <span>
-                    <strong className="font-semibold text-orbit-text">
-                      {node.totalReportsCount}
-                    </strong>{' '}
-                    colaborador{node.totalReportsCount === 1 ? '' : 'es'}
-                  </span>
-                </>
-              )}
+            <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-orbit-text-secondary">
+              <TeamSummary
+                node={node}
+                canAssign={canEdit && canMutate}
+                onAssign={onAssign}
+              />
               <span
                 className={cn(
                   'text-xs font-semibold',
@@ -220,7 +163,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
             ) : (
               <span className="text-xs text-orbit-muted">Solo lectura</span>
             )}
-            {!isApex && (
+            {canExpand && (
             <button
               type="button"
               onClick={() => onToggle(node.nodeKey)}
@@ -239,7 +182,7 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
         </div>
 
         <AnimatePresence initial={false}>
-        {expanded && (
+        {expanded && node.children.length > 0 && (
           <motion.div
             key="coordinator-team"
             initial={reducedMotion ? false : { height: 0, opacity: 0 }}
@@ -256,30 +199,6 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
                 : 'border-t border-orbit-border bg-orbit-bg-secondary/40'
             )}
           >
-            {node.children.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-orbit-border bg-orbit-surface px-4 py-6 text-sm text-orbit-muted">
-                <p>
-                  {emptyTeamMessage({
-                    roleName: person.role_name,
-                    roleCode: person.role_code,
-                  })}
-                </p>
-                {canEdit &&
-                  canMutate &&
-                  canHaveDirectReports({
-                    roleName: person.role_name,
-                    roleCode: person.role_code,
-                  }) && (
-                  <button
-                    type="button"
-                    onClick={() => onAssign(person.id)}
-                    className="mt-2 text-xs font-bold text-orbit-primary hover:text-orbit-primary-hover"
-                  >
-                    Asignar colaborador
-                  </button>
-                )}
-              </div>
-            ) : (
               <div className="relative space-y-3 pl-3 sm:pl-5">
                 <div
                   className="absolute bottom-2 left-0 top-2 w-px bg-orbit-border"
@@ -330,7 +249,6 @@ export const CoordinatorNode: React.FC<CoordinatorNodeProps> = React.memo(
                   </div>
                 )}
               </div>
-            )}
           </div>
           </motion.div>
         )}

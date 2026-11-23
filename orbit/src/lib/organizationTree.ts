@@ -175,6 +175,39 @@ function countLeaders(children: OrganizationNode[]): number {
   ).length;
 }
 
+export type TeamComposition = {
+  coordinators: number;
+  leaders: number;
+  collaborators: number;
+  total: number;
+};
+
+/**
+ * Personas a cargo (todo el subárbol, sin el nodo) separadas por banda de rol,
+ * con el mismo criterio del resumen de la vista: colaborador = quien no es
+ * coordinador ni líder. Así la suma de las tarjetas nunca supera al total.
+ */
+export function teamComposition(node: OrganizationNode): TeamComposition {
+  let coordinators = 0;
+  let leaders = 0;
+  let total = 0;
+  const walk = (current: OrganizationNode) => {
+    for (const child of current.children) {
+      total += 1;
+      if (child.band === 'coordinator') coordinators += 1;
+      else if (child.band === 'leader') leaders += 1;
+      walk(child);
+    }
+  };
+  walk(node);
+  return {
+    coordinators,
+    leaders,
+    collaborators: total - coordinators - leaders,
+    total,
+  };
+}
+
 export function isBranchNode(node: OrganizationNode): boolean {
   return (
     canHaveDirectReports(roleInput(node.person)) || node.children.length > 0

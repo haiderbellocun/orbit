@@ -15,6 +15,11 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    // exceljs solo se importa al descargar el Excel de Planta Activa. Sin esto,
+    // Vite lo descubre en ese clic, lo optimiza y recarga la página en dev.
+    optimizeDeps: {
+      include: ['exceljs'],
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

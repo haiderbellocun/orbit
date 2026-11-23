@@ -617,11 +617,14 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                     </button>
                   )}
                 </div>
-                <p className="text-sm text-orbit-text-secondary">
-                  {leaderCount} líder{leaderCount === 1 ? '' : 'es'} ·{' '}
-                  {reports.length} colaborador
-                  {reports.length === 1 ? '' : 'es'}
-                </p>
+                {reports.length > 0 && (
+                  <p className="text-sm text-orbit-text-secondary">
+                    {leaderCount} líder{leaderCount === 1 ? '' : 'es'} ·{' '}
+                    {reports.length - leaderCount} colaborador
+                    {reports.length - leaderCount === 1 ? '' : 'es'}
+                    <span className="text-orbit-muted"> directos</span>
+                  </p>
+                )}
                 {reports.length === 0 ? (
                   <p className="text-sm text-orbit-muted">
                     Aún no hay personas asignadas a este responsable.
