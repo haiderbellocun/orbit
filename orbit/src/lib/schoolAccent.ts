@@ -62,6 +62,11 @@ function has(hay: string, ...needles: string[]): boolean {
   return needles.some((n) => hay.includes(n));
 }
 
+/** Palabra completa: "IRON" no debe coincidir dentro de "VAIRON". */
+function hasWord(hay: string, word: string): boolean {
+  return ` ${hay} `.includes(` ${word} `);
+}
+
 function isFabrica(ctx: FoldedCtx): boolean {
   return has(ctx.hay, 'FABRICA');
 }
@@ -75,7 +80,7 @@ const CATALOG: CatalogRow[] = [
     match: (c) =>
       has(c.hay, 'DIRECTOR DE OPERACIONES', 'DIRECTOR OPERACIONES') ||
       has(c.role, 'DIRECTOR DE OPERACIONES') ||
-      has(c.hay, 'IRON') ||
+      hasWord(c.hay, 'IRON') ||
       (has(c.area, 'DIRECCION') &&
         has(c.area, 'OPERACIONES') &&
         !c.school &&
@@ -214,7 +219,7 @@ export function isOrgApexPerson(person: {
   const name = fold(person.name);
   return (
     has(role, 'DIRECTOR DE OPERACIONES', 'DIRECTOR OPERACIONES') ||
-    has(name, 'IRON')
+    hasWord(name, 'IRON')
   );
 }
 

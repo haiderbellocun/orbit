@@ -44,6 +44,9 @@ export function usePlantaRadial(forest: OrganizationForest) {
     }
     return null;
   }, [catalog, index]);
+  // Con dirección, el nivel más alto es ella y no se puede salir de ahí. Sin
+  // ella (acceso acotado a un área), se puede volver hasta la vista "Planta".
+  const minDepth = floorKey ? 1 : 0;
   const withFloor = useCallback(
     (keys: string[]) => (keys.length === 0 && floorKey ? [floorKey] : keys),
     [floorKey]
@@ -185,9 +188,9 @@ export function usePlantaRadial(forest: OrganizationForest) {
       clearDrill();
       setMode('tree');
       setActiveKey(null);
-      setPath((prev) => withFloor(prev).slice(0, Math.max(1, crumbIndex + 1)));
+      setPath((prev) => withFloor(prev).slice(0, Math.max(minDepth, crumbIndex + 1)));
     },
-    [clearDrill, withFloor]
+    [clearDrill, minDepth, withFloor]
   );
 
   const goBack = useCallback(() => {
@@ -213,9 +216,9 @@ export function usePlantaRadial(forest: OrganizationForest) {
     setMode('tree');
     setPath((prev) => {
       const base = withFloor(prev);
-      return base.length <= 1 ? base : base.slice(0, -1);
+      return base.length <= minDepth ? base : base.slice(0, -1);
     });
-  }, [activeKey, areaKey, clearDrill, current?.nodeKey, withFloor]);
+  }, [activeKey, areaKey, clearDrill, current?.nodeKey, minDepth, withFloor]);
 
   /**
    * Centra la rueda en un nodo elegido desde la lista. Si tiene equipo, entra
@@ -280,7 +283,7 @@ export function usePlantaRadial(forest: OrganizationForest) {
     centerSubtitle,
     centerArea,
     canGoBack:
-      visiblePath.length > 1 ||
+      visiblePath.length > minDepth ||
       areaKey != null ||
       (activeKey != null && activeKey !== current?.nodeKey),
     panelForest,

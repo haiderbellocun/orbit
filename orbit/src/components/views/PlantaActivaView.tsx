@@ -438,7 +438,12 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return n;
   }, [applied]);
 
-  const hasActiveQuery = Boolean(applied.search.trim()) || activeFilterCount > 0;
+  // El área fija de un acceso acotado no es una búsqueda: el API ya devuelve
+  // solo esa área. Si contara, la lista dejaría de seguir a la rueda.
+  const lockedAreaApplied = Boolean(lockedAreaId) && applied.areaId === lockedAreaId;
+  const hasActiveQuery =
+    Boolean(applied.search.trim()) ||
+    activeFilterCount - (lockedAreaApplied ? 1 : 0) > 0;
 
   const forest = useMemo(
     () => buildOrganizationHierarchy(rows, orgGraph),
