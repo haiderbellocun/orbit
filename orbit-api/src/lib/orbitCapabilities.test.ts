@@ -189,6 +189,7 @@ test("allowlist default includes camilo, haider, raul and zuany", () => {
     assert.equal(isEmailOnOrbitAllowlist("raul_valencia@cun.edu.co"), true);
     assert.equal(isEmailOnOrbitAllowlist("zuany_acuna@cun.edu.co"), true);
     assert.equal(isEmailOnOrbitAllowlist("nidia_prada@cun.edu.co"), true);
+    assert.equal(isEmailOnOrbitAllowlist("jose_camachoc@cun.edu.co"), true);
     assert.equal(isEmailOnOrbitAllowlist("otro@cun.edu.co"), false);
     const admin = resolveAllowlistAdminAccess();
     assert.equal(admin.orbitAccess, "full");

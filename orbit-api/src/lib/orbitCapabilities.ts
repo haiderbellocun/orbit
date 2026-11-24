@@ -81,7 +81,7 @@ export function ensureInformationManagementCapabilities(
 
 /**
  * Allowlist temporal de acceso a ORBIT (reborn).
- * Por defecto: camilo_quintero + haider_bello + raul_valencia + zuany_acuna + nidia_prada (acceso total).
+ * Por defecto: camilo_quintero + haider_bello + raul_valencia + zuany_acuna + nidia_prada + jose_camachoc (acceso total).
  * Override: ORBIT_ACCESS_ALLOWLIST=a@cun.edu.co,b@cun.edu.co
  */
 const DEFAULT_ACCESS_ALLOWLIST = [
@@ -90,6 +90,7 @@ const DEFAULT_ACCESS_ALLOWLIST = [
   "raul_valencia@cun.edu.co",
   "zuany_acuna@cun.edu.co",
   "nidia_prada@cun.edu.co",
+  "jose_camachoc@cun.edu.co",
 ] as const;
 
 /**
