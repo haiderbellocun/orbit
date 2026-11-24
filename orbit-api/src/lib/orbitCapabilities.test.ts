@@ -301,7 +301,9 @@ test("planta activa grants: sara/lorena/maria/cindy/leidy/tania", () => {
   assert.ok(leidy);
   assert.deepEqual(leidy!.viewAreaIds, [1]);
   assert.deepEqual(leidy!.extraCapabilities, [
+    "view:home",
     "view:academic_load",
+    "view:substantive_hours",
     "view:news",
   ]);
   assert.equal(canViewPlantaArea(leidy, 1), true);
