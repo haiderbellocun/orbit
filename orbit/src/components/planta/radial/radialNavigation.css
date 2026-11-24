@@ -33,3 +33,9 @@
 :root[data-theme="dark"] .radial-mascot .emblem-night {
   display: block;
 }
+
+/* Orbit Night: el disco de cada opción sobre el aro apagado, sin blanco puro. */
+:root[data-theme="dark"] .radial-mark {
+  background: #20252E;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 2px 8px rgba(0, 0, 0, 0.45);
+}

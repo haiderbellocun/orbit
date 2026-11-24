@@ -43,6 +43,38 @@ function withAlpha(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** Mezcla dos colores hex; `t` es la proporción de `b` (0..1). */
+function mixHex(a: string, b: string, t: number): string {
+  const parse = (hex: string) => {
+    const raw = hex.replace('#', '').trim();
+    if (!/^[0-9a-fA-F]{6}$/.test(raw)) return null;
+    return [0, 2, 4].map((i) => Number.parseInt(raw.slice(i, i + 2), 16));
+  };
+  const x = parse(a);
+  const y = parse(b);
+  if (!x || !y) return a;
+  return `#${x
+    .map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+/* Superficie y texto de Orbit Night (ver index.css). */
+const NIGHT_SURFACE = '#1A1E26';
+const NIGHT_TEXT = '#F3F4F6';
+
+/**
+ * En Orbit Night el color puro del emblema sobre carbón vibra demasiado:
+ * el aro se apaga hacia la superficie y el texto se aclara hacia el blanco
+ * para que conserve contraste.
+ */
+function nightTone(accent: string, dark: boolean): { ring: string; text: string } {
+  if (!dark) return { ring: accent, text: accent };
+  return {
+    ring: mixHex(accent, NIGHT_SURFACE, 0.55),
+    text: mixHex(accent, NIGHT_TEXT, 0.55),
+  };
+}
+
 function accentOf(person: PlantaPerson | null | undefined): string {
   if (!person) return NEUTRAL;
   return schoolAccent({
@@ -280,8 +312,9 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
             aria-label={centerTitle}
           >
             <defs>
+              {/* Sin glow de color en oscuro: sobre carbón se ve como neón. */}
               <filter id={`${reactId}-ring`} x="-30%" y="-30%" width="160%" height="160%">
-                <feDropShadow dx="0" dy="8" stdDeviation="10" floodColor={ringAccent} floodOpacity="0.28" />
+                <feDropShadow dx="0" dy="8" stdDeviation="10" floodColor={dark ? '#000000' : ringAccent} floodOpacity={dark ? 0.35 : 0.28} />
               </filter>
             </defs>
             <circle
@@ -289,7 +322,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
               cy={cy}
               r={midRadius + band * 0.42}
               fill="none"
-              stroke={withAlpha(catalogRing ? NEUTRAL : ringAccent, 0.16)}
+              stroke={withAlpha(catalogRing ? NEUTRAL : ringAccent, dark ? 0.07 : 0.16)}
               strokeWidth={band * 0.55}
             />
             {catalogRing ? null : (
@@ -298,7 +331,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                 cy={cy}
                 r={midRadius}
                 fill="none"
-                stroke={ringAccent}
+                stroke={nightTone(ringAccent, dark).ring}
                 strokeWidth={band}
                 filter={`url(#${reactId}-ring)`}
               />
@@ -313,7 +346,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                       <path
                         key={`tone-${entry.key}`}
                         d={wedgePath(cx, cy, inner, outer, edge.start, edge.end)}
-                        fill={entryAccent(entry, hostPerson, dark)}
+                        fill={nightTone(entryAccent(entry, hostPerson, dark), dark).ring}
                         pointerEvents="none"
                       />
                     );
@@ -388,7 +421,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                   areaName={entry.areaName}
                   label={entry.label}
                   size={iconSize}
-                  accent={accentOfEntry(entry, ringAccent, hostPerson, dark)}
+                  accent={nightTone(accentOfEntry(entry, ringAccent, hostPerson, dark), dark).text}
                   initialsOnly={entry.initials}
                 />
               </div>
@@ -425,7 +458,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                   areaName={centerPerson ? undefined : activeEntry?.areaName ?? focusArea ?? undefined}
                   label={centerLabel}
                   size={Math.round(inner * 0.72)}
-                  accent={ringAccent}
+                  accent={nightTone(ringAccent, dark).text}
                   initialsOnly={activeEntry?.initials}
                   bare
                 />
@@ -436,7 +469,11 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                     ? 'mt-1 line-clamp-2 text-center text-[11px] font-semibold leading-tight'
                     : 'text-center text-sm font-semibold leading-tight text-orbit-text'
                 }
-                style={centerPerson || focusArea || activeEntry ? { color: ringAccent } : undefined}
+                style={
+                  centerPerson || focusArea || activeEntry
+                    ? { color: nightTone(ringAccent, dark).text }
+                    : undefined
+                }
               >
                 {displayCase(centerLabel)}
               </span>
@@ -472,7 +509,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                 {entry.canDrill && (
                   <p
                     className="mt-1 text-[10px] font-bold uppercase tracking-wide"
-                    style={{ color: accentOfEntry(entry, ringAccent, hostPerson, dark) }}
+                    style={{ color: nightTone(accentOfEntry(entry, ringAccent, hostPerson, dark), dark).text }}
                   >
                     {entry.childCount.toLocaleString('es-CO')} a cargo · clic para entrar
                   </p>
@@ -634,7 +671,7 @@ function RingMark({
   if (bare) return mark;
   return (
     <span
-      className="flex items-center justify-center rounded-full bg-white shadow-[0_2px_8px_rgba(15,17,21,0.16)]"
+      className="radial-mark flex items-center justify-center rounded-full bg-white shadow-[0_2px_8px_rgba(15,17,21,0.16)]"
       style={{ width: size, height: size }}
       aria-hidden
     >
