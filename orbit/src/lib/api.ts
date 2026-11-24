@@ -218,6 +218,7 @@ const DEFAULT_ORBIT_ACCESS_ALLOWLIST = [
   "haider_bello@cun.edu.co",
   "raul_valencia@cun.edu.co",
   "zuany_acuna@cun.edu.co",
+  "nidia_prada@cun.edu.co",
 ] as const;
 
 const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
