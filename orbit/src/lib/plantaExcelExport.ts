@@ -36,6 +36,8 @@ type TreeInfo = {
   node: OrganizationNode;
   /** Responsables desde la cima hasta el jefe directo. */
   chain: string[];
+  /** Jefe directo en el árbol (el mismo que muestran la rueda y la lista). */
+  parent: PlantaPerson | null;
 };
 
 function todayStamp() {
@@ -55,14 +57,14 @@ function hasEduEmail(p: PlantaPerson) {
 /** Indexa cada persona del árbol con su nodo y su cadena de responsables. */
 function indexForest(forest: OrganizationForest): Map<string, TreeInfo> {
   const index = new Map<string, TreeInfo>();
-  const walk = (node: OrganizationNode, chain: string[]) => {
-    if (!index.has(node.person.id)) index.set(node.person.id, { node, chain });
+  const walk = (node: OrganizationNode, chain: string[], parent: PlantaPerson | null) => {
+    if (!index.has(node.person.id)) index.set(node.person.id, { node, chain, parent });
     const next = [...chain, node.person.name];
-    for (const child of node.children) walk(child, next);
+    for (const child of node.children) walk(child, next, node.person);
   };
   for (const area of forest.areas) {
     for (const school of area.schools) {
-      for (const root of school.roots) walk(root, []);
+      for (const root of school.roots) walk(root, [], null);
     }
   }
   return index;
@@ -225,11 +227,13 @@ export async function downloadPlantaExcel({
     { header: 'Correo personal', key: 'email', width: 34 },
     { header: 'Teléfono', key: 'phone', width: 16 },
     { header: 'Dirección', key: 'address', width: 32 },
+    { header: 'Contacto de emergencia', key: 'emergency_name', width: 32 },
+    { header: 'Parentesco del contacto', key: 'emergency_relationship', width: 18 },
+    { header: 'Teléfono del contacto', key: 'emergency_phone', width: 18 },
     { header: 'Responsable', key: 'manager', width: 36 },
     { header: 'Documento del responsable', key: 'manager_doc', width: 18 },
     { header: 'Cargo del responsable', key: 'manager_role', width: 32 },
     { header: 'Ruta jerárquica', key: 'chain', width: 70 },
-    { header: 'Nivel en el árbol', key: 'depth', width: 10 },
     { header: 'A cargo directo', key: 'direct', width: 10 },
     { header: 'A cargo en total', key: 'reports', width: 10 },
     { header: 'Coordinaciones a cargo', key: 'team_coord', width: 14 },
@@ -255,11 +259,15 @@ export async function downloadPlantaExcel({
       email: p.email ?? '',
       phone: p.phone ?? '',
       address: p.address ?? '',
-      manager: p.manager_name ?? '',
-      manager_doc: p.manager_document ?? '',
-      manager_role: p.manager_role_name ?? '',
+      emergency_name: p.emergency_contact_name ?? '',
+      emergency_relationship: p.emergency_contact_relationship ?? '',
+      emergency_phone: p.emergency_contact_phone ?? '',
+      // Responsable del árbol (lo que se ve en Planta); si no está en el
+      // árbol, el guardado en la ficha.
+      manager: entry?.parent?.name ?? p.manager_name ?? '',
+      manager_doc: entry?.parent ? entry.parent.document ?? '' : p.manager_document ?? '',
+      manager_role: entry?.parent ? entry.parent.role_name ?? '' : p.manager_role_name ?? '',
       chain: entry ? [...entry.chain, p.name].join(' › ') : '',
-      depth: entry ? entry.chain.length + 1 : '',
       direct: entry ? entry.node.children.length : 0,
       reports: team?.total ?? 0,
       team_coord: team?.coordinators ?? 0,

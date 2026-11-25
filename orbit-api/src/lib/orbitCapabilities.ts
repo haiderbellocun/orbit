@@ -81,7 +81,9 @@ export function ensureInformationManagementCapabilities(
 
 /**
  * Allowlist temporal de acceso a ORBIT (reborn).
- * Por defecto: camilo_quintero + haider_bello + raul_valencia + zuany_acuna + nidia_prada + jose_camachoc (acceso total).
+ * Por defecto: camilo_quintero + haider_bello + raul_valencia + zuany_acuna + nidia_prada
+ * + jose_camachoc + sara_murillofo + lorena_gomez + cindy_russi + maria_ballen (acceso total).
+ * El allowlist gana sobre los grants acotados de Planta Activa.
  * Override: ORBIT_ACCESS_ALLOWLIST=a@cun.edu.co,b@cun.edu.co
  */
 const DEFAULT_ACCESS_ALLOWLIST = [
@@ -91,6 +93,10 @@ const DEFAULT_ACCESS_ALLOWLIST = [
   "zuany_acuna@cun.edu.co",
   "nidia_prada@cun.edu.co",
   "jose_camachoc@cun.edu.co",
+  "sara_murillofo@cun.edu.co",
+  "lorena_gomez@cun.edu.co",
+  "cindy_russi@cun.edu.co",
+  "maria_ballen@cun.edu.co",
 ] as const;
 
 /**

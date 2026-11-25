@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { pool } from "../db/connection";
 import { sqlPersonIsActive } from "../sql/personActive";
 import { schoolScopeFromRequest } from "../middleware/orbitAuth";
+import { loadResponsibleIndex } from "../lib/orgResponsible";
 
 const router = Router();
 
@@ -25,6 +26,20 @@ const SQL_STUDY_LEVEL = `
     ELSE 'otro'
   END
 `;
+
+/**
+ * Docente del área de investigación: su ficha está en la escuela
+ * INVESTIGACION CUN o en el área investigativa (mismo criterio que Planta).
+ */
+const SQL_IS_RESEARCH_TEACHER = `(
+  UPPER(TRANSLATE(TRIM(COALESCE(sch.name, '')), 'ÁÉÍÓÚÜÑ', 'AEIOUUN')) = 'INVESTIGACION CUN'
+  OR EXISTS (
+    SELECT 1 FROM area ar_rt
+    WHERE ar_rt.id = COALESCE(p.area_id, sch.area_id)
+      AND (ar_rt.name ILIKE '%investigativ%'
+        OR UPPER(TRANSLATE(TRIM(ar_rt.name), 'ÁÉÍÓÚÜÑ', 'AEIOUUN')) = 'INVESTIGACION CUN')
+  )
+)`;
 
 function normalizeModalityQueryParam(value: string): {
   code: "P" | "V" | null;
@@ -133,6 +148,10 @@ router.get("/academic-load", async (req: Request, res: Response) => {
     const studyLevel = qStr(
       req.query.study_level ?? req.query.studyLevel ?? req.query.program_level
     ).toLowerCase();
+    /** "none" = solo docentes sin responsable en Planta Activa. */
+    const responsible = qStr(req.query.responsible).toLowerCase();
+    /** "only" = solo docentes de investigación; "exclude" = todos menos ellos. */
+    const research = qStr(req.query.research).toLowerCase();
 
     const conditions: string[] = [];
     const values: unknown[] = [];
@@ -213,6 +232,9 @@ router.get("/academic-load", async (req: Request, res: Response) => {
       values.push(studyLevel);
     }
 
+    if (research === "only") conditions.push(SQL_IS_RESEARCH_TEACHER);
+    else if (research === "exclude") conditions.push(`NOT ${SQL_IS_RESEARCH_TEACHER}`);
+
     const schoolScope = schoolScopeFromRequest(req);
     if (schoolScope != null) {
       conditions.push(`(p.school_id = $${i} OR pr.school_id = $${i})`);
@@ -230,7 +252,31 @@ router.get("/academic-load", async (req: Request, res: Response) => {
       values.push(areaId);
     }
 
+    // Responsable = alcanzable desde la raíz del organigrama (igual que Planta).
+    const responsibleIndex = await loadResponsibleIndex().catch((err) => {
+      console.error("academic-load: responsible index", err);
+      return null;
+    });
+    let hasResponsibleSql = "NULL::boolean";
+    if (responsibleIndex) {
+      const reachIdx = i++;
+      values.push([...responsibleIndex.reachable]);
+      hasResponsibleSql = `(p.id = ANY($${reachIdx}::bigint[]))`;
+      if (responsible === "none") conditions.push(`NOT ${hasResponsibleSql}`);
+    }
+
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const fromSql = `
+      FROM academic_workload.academic_load al
+      INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
+      LEFT JOIN program pr ON pr.id = al.program_id
+      LEFT JOIN school sch ON sch.id = p.school_id
+      LEFT JOIN academic_workload.subject s ON s.subject_code = al.subject_code
+      LEFT JOIN academic_workload.class_group cg
+        ON cg.subject_code = al.subject_code
+       AND cg.group_code = al.group_code
+      ${where}`;
+    const filterValues = [...values];
 
     const query = `
       SELECT
@@ -248,26 +294,63 @@ router.get("/academic-load", async (req: Request, res: Response) => {
         al.group_code,
         al.aca_group_id,
         (${SQL_STUDY_LEVEL}) AS study_level,
+        p.id AS person_id,
+        ${hasResponsibleSql} AS has_responsible,
         COUNT(*) OVER() AS total_count
-      FROM academic_workload.academic_load al
-      INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
-      LEFT JOIN program pr ON pr.id = al.program_id
-      LEFT JOIN school sch ON sch.id = p.school_id
-      LEFT JOIN academic_workload.subject s ON s.subject_code = al.subject_code
-      LEFT JOIN academic_workload.class_group cg
-        ON cg.subject_code = al.subject_code
-       AND cg.group_code = al.group_code
-      ${where}
-      ORDER BY p.full_name ASC NULLS LAST, s.name ASC NULLS LAST
+      ${fromSql}
+      ORDER BY ${hasResponsibleSql} ASC NULLS LAST,
+        p.full_name ASC NULLS LAST, s.name ASC NULLS LAST
       LIMIT $${i++} OFFSET $${i++}
     `;
     values.push(limitNum, offset);
 
-    const result = await pool.query(query, values);
+    const [result, unassignedR] = await Promise.all([
+      pool.query(query, values),
+      responsibleIndex
+        ? pool.query(
+            `SELECT
+               COUNT(DISTINCT p.id) FILTER (WHERE NOT ${hasResponsibleSql})::int AS teachers,
+               COUNT(*) FILTER (WHERE NOT ${hasResponsibleSql})::int AS rows
+             ${fromSql}`,
+            filterValues
+          )
+        : Promise.resolve(null),
+    ]);
     const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
 
+    // Nombre del responsable directo de cada docente de la página.
+    const parentIds = new Set<number>();
+    if (responsibleIndex) {
+      for (const row of result.rows) {
+        const parent = responsibleIndex.parentOf.get(Number(row.person_id));
+        if (parent != null) parentIds.add(parent);
+      }
+    }
+    const parentNames = new Map<number, string>();
+    if (parentIds.size > 0) {
+      const names = await pool.query(
+        `SELECT id, full_name FROM person WHERE id = ANY($1::bigint[])`,
+        [[...parentIds]]
+      );
+      for (const r of names.rows) parentNames.set(Number(r.id), String(r.full_name ?? ""));
+    }
+    const data = result.rows.map((row) => {
+      const parent = responsibleIndex?.parentOf.get(Number(row.person_id));
+      const { total_count: _total, ...rest } = row;
+      return {
+        ...rest,
+        responsible_name: parent != null ? parentNames.get(parent) ?? null : null,
+      };
+    });
+
     res.json({
-      data: result.rows,
+      data,
+      responsible_summary: unassignedR
+        ? {
+            teachers_without: Number(unassignedR.rows[0]?.teachers ?? 0),
+            rows_without: Number(unassignedR.rows[0]?.rows ?? 0),
+          }
+        : null,
       pagination: {
         total,
         page: pageNum,

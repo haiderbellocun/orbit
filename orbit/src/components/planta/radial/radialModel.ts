@@ -114,20 +114,28 @@ export function topWheelEntries(forest: OrganizationForest): WheelEntry[] {
   const entries = catalog
     ? forest.areas.map(entryFromArea)
     : listForestRoots(forest).map(entryFromNode);
-  if (forest.unassigned.length > 0) {
-    const count = forest.unassigned.length;
-    entries.push({
-      key: 'unassigned',
-      kind: 'unassigned',
-      label: catalog ? 'Sin área' : 'Sin responsable',
-      hint: `${count.toLocaleString('es-CO')} persona${count === 1 ? '' : 's'}`,
-      node: null,
-      canDrill: false,
-      childCount: count,
-      ...(catalog ? { image: 'sin_area.png' } : {}),
-    });
-  }
+  const loose = unassignedWheelEntry(forest, catalog);
+  if (loose) entries.push(loose);
   return entries;
+}
+
+/** Opción "Sin responsable" (o "Sin área" en el catálogo), si hay personas. */
+export function unassignedWheelEntry(
+  forest: OrganizationForest,
+  catalog = isAreaCatalog(forest)
+): WheelEntry | null {
+  const count = forest.unassigned.length;
+  if (count === 0) return null;
+  return {
+    key: 'unassigned',
+    kind: 'unassigned',
+    label: catalog ? 'Sin área' : 'Sin responsable',
+    hint: `${count.toLocaleString('es-CO')} persona${count === 1 ? '' : 's'}`,
+    node: null,
+    canDrill: false,
+    childCount: count,
+    image: 'sin_area.png',
+  };
 }
 
 export function childWheelEntries(node: OrganizationNode): WheelEntry[] {

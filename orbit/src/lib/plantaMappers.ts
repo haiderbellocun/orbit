@@ -38,6 +38,15 @@ export function mapPlantaFromApi(row: Record<string, unknown>): PlantaPerson {
     manager_document: row.manager_document
       ? String(row.manager_document)
       : null,
+    emergency_contact_name: row.emergency_contact_name
+      ? String(row.emergency_contact_name)
+      : null,
+    emergency_contact_phone: row.emergency_contact_phone
+      ? String(row.emergency_contact_phone)
+      : null,
+    emergency_contact_relationship: row.emergency_contact_relationship
+      ? String(row.emergency_contact_relationship)
+      : null,
     can_edit:
       typeof row.can_edit === 'boolean' ? row.can_edit : undefined,
   };

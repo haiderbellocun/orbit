@@ -8,6 +8,7 @@ import {
   ChevronDownIcon,
   PlusIcon,
   ArrowDownTrayIcon,
+  ChevronLeftIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
 import { cn } from '@/src/lib/utils';
@@ -54,6 +55,7 @@ import { usePlantaRadial } from '@/src/components/planta/radial/usePlantaRadial'
 import { PlantaWheelProvider } from '@/src/components/planta/radial/PlantaWheelContext';
 import { TeamLevelView } from '@/src/components/planta/TeamLevelView';
 import { PlantaSearchResults } from '@/src/components/planta/PlantaSearchResults';
+import { indexOrganizationNodes } from '@/src/components/planta/radial/radialModel';
 import {
   PersonManagementDrawer,
   type PlantaEditForm,
@@ -533,6 +535,23 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   // Con búsqueda o filtros la lista muestra coincidencias en toda la planta;
   // sin ellos, la rama elegida en la rueda.
   const listForest = hasActiveQuery ? visibleForest : radial.panelForest;
+
+  // Con búsqueda activa, clic en una persona abre su equipo (cards de
+  // coordinaciones, colaboradores y docentes) además de centrar la rueda.
+  const [searchFocusKey, setSearchFocusKey] = useState<string | null>(null);
+  const forestIndex = useMemo(() => indexOrganizationNodes(forest), [forest]);
+  const searchFocusNode =
+    hasActiveQuery && searchFocusKey ? forestIndex.get(searchFocusKey) ?? null : null;
+  useEffect(() => {
+    setSearchFocusKey(null);
+  }, [applied, listStatus]);
+  const focusFromSearch = useCallback(
+    (nodeKey: string) => {
+      setSearchFocusKey(nodeKey);
+      radial.focusNode(nodeKey);
+    },
+    [radial.focusNode]
+  );
   const displayedTeamLabel = useMemo(() => {
     const node = radial.displayedNode;
     if (!node) return null;
@@ -1290,9 +1309,9 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <p className="text-sm text-orbit-muted">
-            {loading
-              ? 'Cargando…'
-              : listStatus === 'active'
+            {loading ? (
+              <span className="inline-block h-4 w-40 animate-pulse rounded bg-orbit-interactive align-middle" />
+            ) : listStatus === 'active'
                 ? `${total.toLocaleString('es-CO')} persona${total === 1 ? '' : 's'} activa${total === 1 ? '' : 's'}`
                 : `${total.toLocaleString('es-CO')} persona${total === 1 ? '' : 's'} inactiva${total === 1 ? '' : 's'}`}
           </p>
@@ -1314,7 +1333,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
           )}
         </div>
         {/* En la vista por niveles no hay nada que expandir. */}
-        {!hasActiveQuery && !radial.displayedNode && (
+        {!loading && !hasActiveQuery && !radial.displayedNode && (
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -1372,20 +1391,58 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
-              key={hasActiveQuery ? 'search' : radial.contentKey}
+              key={
+                hasActiveQuery
+                  ? searchFocusNode
+                    ? `search:${searchFocusNode.nodeKey}`
+                    : 'search'
+                  : radial.contentKey
+              }
               initial={reducedMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={reducedMotion ? undefined : { opacity: 0, transition: { duration: 0.15 } }}
               transition={{ duration: reducedMotion ? 0 : 0.3, ease: 'easeOut' }}
             >
               {loading ? (
+                // Esqueleto con la forma de las cards: se lee como "cargando",
+                // no como cajas vacías.
+                <div className="space-y-4" role="status" aria-label="Cargando personas">
+                  <div className="h-3 w-48 animate-pulse rounded bg-orbit-interactive" />
+                  <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
+                    {Array.from({ length: 6 }, (_, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-2.5 rounded-xl border border-orbit-border bg-orbit-surface p-2.5"
+                        style={{ animationDelay: `${i * 90}ms` }}
+                      >
+                        <div className="h-9 w-9 shrink-0 animate-pulse rounded-lg bg-orbit-interactive" />
+                        <div className="min-w-0 flex-1 space-y-2 pt-0.5">
+                          <div className="h-2.5 w-1/3 animate-pulse rounded bg-orbit-interactive" />
+                          <div className="h-3.5 w-2/3 animate-pulse rounded bg-orbit-interactive" />
+                          <div className="h-2.5 w-1/2 animate-pulse rounded bg-orbit-interactive" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : searchFocusNode ? (
+                // Persona elegida en los resultados: su equipo, como en Activos.
                 <div className="space-y-3">
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="h-28 rounded-2xl border border-orbit-border bg-orbit-interactive/60 animate-pulse"
-                    />
-                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setSearchFocusKey(null)}
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-orbit-primary hover:bg-orbit-primary/10"
+                  >
+                    <ChevronLeftIcon className="h-4 w-4" />
+                    Volver a los resultados
+                  </button>
+                  <TeamLevelView
+                    node={searchFocusNode}
+                    onManage={(id) => void openEdit(id)}
+                    onAssign={openAssign}
+                    onEnter={focusFromSearch}
+                    canMutate={canMutateOrg}
+                  />
                 </div>
               ) : hasActiveQuery ? (
                 // Con búsqueda o filtros: lista plana de mayor a menor jerarquía.
@@ -1394,7 +1451,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                   matches={matchesFilters}
                   onManage={(id) => void openEdit(id)}
                   onAssign={openAssign}
-                  onFocus={radial.focusNode}
+                  onFocus={focusFromSearch}
                   canMutate={canMutateOrg}
                 />
               ) : radial.displayedNode ? (

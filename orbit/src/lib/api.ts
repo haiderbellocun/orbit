@@ -220,6 +220,10 @@ const DEFAULT_ORBIT_ACCESS_ALLOWLIST = [
   "zuany_acuna@cun.edu.co",
   "nidia_prada@cun.edu.co",
   "jose_camachoc@cun.edu.co",
+  "sara_murillofo@cun.edu.co",
+  "lorena_gomez@cun.edu.co",
+  "cindy_russi@cun.edu.co",
+  "maria_ballen@cun.edu.co",
 ] as const;
 
 const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
@@ -321,6 +325,8 @@ export function getStoredPlantaActivaAccess(): {
   viewAreaIds: number[] | null;
   editAreaIds: number[] | null;
 } | null {
+  // Admin (allowlist) ve y edita todo, aunque también tenga un grant acotado.
+  if (isStoredEmailOnOrbitAllowlist()) return null;
   if (typeof localStorage !== "undefined") {
     try {
       const raw = localStorage.getItem(ORBIT_USER_STORAGE_KEY);
@@ -1328,9 +1334,17 @@ export async function getAcademicLoad(params?: {
   group_code?: string;
   block?: string;
   study_level?: "pregrado" | "especializacion" | "otro" | string;
+  /** "none" = solo docentes sin responsable en Planta Activa. */
+  responsible?: "none";
+  /** "only" = pestaña Docentes investigación; "exclude" = pestaña Docentes. */
+  research?: "only" | "exclude";
   page?: number;
   limit?: number;
-}): Promise<PaginatedResponse> {
+}): Promise<
+  PaginatedResponse & {
+    responsible_summary?: { teachers_without: number; rows_without: number } | null;
+  }
+> {
   const url = new URL(`${BASE_URL}/academic-load`);
   if (params?.teacher_document) {
     url.searchParams.set("teacher_document", params.teacher_document);
@@ -1349,6 +1363,8 @@ export async function getAcademicLoad(params?: {
   if (params?.group_code) url.searchParams.set("group_code", params.group_code);
   if (params?.block) url.searchParams.set("block", params.block);
   if (params?.study_level) url.searchParams.set("study_level", params.study_level);
+  if (params?.responsible) url.searchParams.set("responsible", params.responsible);
+  if (params?.research) url.searchParams.set("research", params.research);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });

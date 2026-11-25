@@ -11,6 +11,7 @@ import {
   isAreaCatalog,
   scopeForestToNode,
   topWheelEntries,
+  unassignedWheelEntry,
   type WheelEntry,
 } from '@/src/components/planta/radial/radialModel';
 
@@ -111,10 +112,19 @@ export function usePlantaRadial(forest: OrganizationForest) {
   const displayed = mode === 'unassigned' ? null : activeNode ?? current;
 
   const entries = useMemo(() => {
-    if (current) return childWheelEntries(current);
+    if (current) {
+      const children = childWheelEntries(current);
+      // En el nivel más alto (la dirección) también va "Sin responsable":
+      // con dirección nunca se llega a la vista "Planta" donde vivía.
+      if (floorKey && current.nodeKey === floorKey) {
+        const loose = unassignedWheelEntry(forest, catalog);
+        if (loose) return [...children, loose];
+      }
+      return children;
+    }
     if (selectedArea) return areaWheelEntries(selectedArea);
     return topWheelEntries(forest);
-  }, [current, forest, selectedArea]);
+  }, [catalog, current, floorKey, forest, selectedArea]);
 
   const panelForest = useMemo(() => {
     if (mode === 'unassigned') {

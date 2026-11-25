@@ -3,7 +3,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/solid';
 import { animate, motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/src/lib/utils';
-import type { OrganizationNode } from '@/src/lib/organizationTree';
+import { teamComposition, type OrganizationNode } from '@/src/lib/organizationTree';
 import { schoolAccent } from '@/src/lib/schoolAccent';
 import { unitEmblemAssets, unitEmblemColor } from '@/src/lib/unitEmblem';
 import type { PlantaPerson } from '@/src/types';
@@ -298,6 +298,17 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
         <p className="sr-only" aria-live="polite">
           {centerTitle}. {entries.length} opciones en este nivel.
         </p>
+        {loading && entries.length === 0 ? (
+          <WheelLoading
+            width={box.width}
+            height={box.height}
+            cx={cx}
+            cy={cy}
+            radius={midRadius}
+            band={band}
+            labelX={holeX}
+          />
+        ) : (
         <motion.div
           key={levelKey}
           className="h-full"
@@ -441,7 +452,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
           {(centerPerson || centerLabel) && (
             <motion.div
               key={activeEntry?.key ?? centerNode?.nodeKey ?? centerArea ?? 'planta'}
-              className="pointer-events-none absolute z-10 flex w-28 flex-col items-center"
+              className="pointer-events-none absolute z-10 flex w-36 flex-col items-center"
               initial={
                 reduced || !activeEntry
                   ? false
@@ -493,6 +504,49 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                   {displayCase(centerSubtitle)}
                 </span>
               )}
+              {(() => {
+                // Cuánta gente hay abajo de quien está en el centro (todo su
+                // equipo, no solo los directos). Si hay otra opción resaltada,
+                // sus cifras.
+                const statsNode = activeEntry ? activeEntry.node : centerNode;
+                if (!statsNode) {
+                  if (activeEntry?.kind !== 'unassigned') return null;
+                  return (
+                    <span className="mt-1.5 text-center text-[11px] font-semibold text-orbit-muted">
+                      {activeEntry.childCount.toLocaleString('es-CO')} persona
+                      {activeEntry.childCount === 1 ? '' : 's'}
+                    </span>
+                  );
+                }
+                const team = teamComposition(statsNode);
+                if (team.total === 0) return null;
+                const parts = [
+                  team.coordinators > 0 &&
+                    `${team.coordinators.toLocaleString('es-CO')} coord.`,
+                  team.leaders > 0 &&
+                    `${team.leaders.toLocaleString('es-CO')} líder${team.leaders === 1 ? '' : 'es'}`,
+                  team.collaborators > 0 &&
+                    `${team.collaborators.toLocaleString('es-CO')} colab.`,
+                ].filter(Boolean);
+                return (
+                  <span className="mt-1.5 flex flex-col items-center text-center">
+                    <span
+                      className="font-display text-xl font-bold leading-none"
+                      style={{ color: nightTone(ringAccent, dark).text }}
+                    >
+                      {team.total.toLocaleString('es-CO')}
+                    </span>
+                    <span className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-orbit-muted">
+                      personas a cargo
+                    </span>
+                    {parts.length > 1 && (
+                      <span className="mt-0.5 text-[10px] leading-tight text-orbit-muted">
+                        {parts.join(' · ')}
+                      </span>
+                    )}
+                  </span>
+                );
+              })()}
             </motion.div>
           )}
 
@@ -549,6 +603,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
             </button>
           )}
         </motion.div>
+        )}
 
         {entries.length > WHEEL_PAGE_SIZE && (
           <div className="absolute bottom-3 right-3 flex items-center gap-1">
@@ -733,6 +788,62 @@ function AreaMascot({
       />
       {assets.night ? <img className="emblem-night" src={assetUrl(assets.night)} alt="" /> : null}
     </span>
+  );
+}
+
+/** Rueda mientras llegan los datos: aro tenue con un arco que gira. */
+function WheelLoading({
+  width,
+  height,
+  cx,
+  cy,
+  radius,
+  band,
+  labelX,
+}: {
+  width: number;
+  height: number;
+  cx: number;
+  cy: number;
+  radius: number;
+  band: number;
+  labelX: number;
+}) {
+  const circumference = 2 * Math.PI * radius;
+  return (
+    <div className="relative h-full" role="status" aria-live="polite">
+      <svg className="h-full w-full overflow-visible" viewBox={`0 0 ${width} ${height}`} aria-hidden>
+        <circle
+          cx={cx}
+          cy={cy}
+          r={radius}
+          fill="none"
+          stroke="var(--color-orbit-border, #E5E7EB)"
+          strokeOpacity={0.6}
+          strokeWidth={band}
+        />
+        <g className="animate-spin" style={{ transformOrigin: `${cx}px ${cy}px`, animationDuration: '1.6s' }}>
+          <circle
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill="none"
+            stroke="var(--color-orbit-primary, #A855F7)"
+            strokeOpacity={0.55}
+            strokeWidth={band * 0.28}
+            strokeLinecap="round"
+            strokeDasharray={`${circumference * 0.14} ${circumference}`}
+          />
+        </g>
+      </svg>
+      <div
+        className="pointer-events-none absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
+        style={{ left: labelX, top: cy }}
+      >
+        <span className="text-sm font-semibold text-orbit-text">Cargando planta…</span>
+        <span className="mt-0.5 text-[11px] text-orbit-muted">Preparando la estructura</span>
+      </div>
+    </div>
   );
 }
 

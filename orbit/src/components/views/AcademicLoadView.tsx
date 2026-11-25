@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
+  ExclamationTriangleIcon,
   MagnifyingGlassIcon,
   XMarkIcon,
 } from '@heroicons/react/24/solid';
@@ -29,6 +30,9 @@ interface AcademicLoadRow {
   type: string;
   studyLevel: "pregrado" | "especializacion" | "otro";
   studyLevelLabel: string;
+  /** null = no se pudo calcular (sin organigrama). */
+  hasResponsible: boolean | null;
+  responsibleName: string | null;
 }
 
 /** Áreas operativas de Carga Académica (solo estas dos). */
@@ -107,6 +111,12 @@ function mapRow(r: Record<string, unknown>): AcademicLoadRow {
     type: String(r.type ?? 'projection'),
     studyLevel,
     studyLevelLabel: STUDY_LEVEL_LABELS[studyLevel],
+    hasResponsible:
+      r.has_responsible == null ? null : Boolean(r.has_responsible),
+    responsibleName:
+      r.responsible_name == null || r.responsible_name === ''
+        ? null
+        : String(r.responsible_name),
   };
 }
 
@@ -120,6 +130,7 @@ type Filters = {
   subject: string;
   groupCode: string;
   block: string;
+  onlyUnassigned: boolean;
 };
 
 const EMPTY_FILTERS: Filters = {
@@ -132,6 +143,7 @@ const EMPTY_FILTERS: Filters = {
   subject: '',
   groupCode: '',
   block: '',
+  onlyUnassigned: false,
 };
 
 interface AcademicLoadViewProps {
@@ -159,6 +171,12 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  /** Los docentes del área de investigación van en su propia pestaña. */
+  const [tab, setTab] = useState<'teachers' | 'research'>('teachers');
+  const [unassigned, setUnassigned] = useState<{
+    teachers: number;
+    rows: number;
+  } | null>(null);
 
   const selectClass =
     'w-full rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary px-3 py-2.5 text-sm text-orbit-text shadow-sm focus:outline-none focus:ring-2 focus:ring-orbit-primary/30';
@@ -224,6 +242,8 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
         subject: applied.subject.trim() || undefined,
         group_code: applied.groupCode.trim() || undefined,
         block: applied.block || undefined,
+        responsible: applied.onlyUnassigned ? 'none' : undefined,
+        research: tab === 'research' ? 'only' : 'exclude',
         page: currentPage,
         limit: 100,
       });
@@ -233,14 +253,23 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
       setRows(list);
       setTotalCount(res.pagination?.total ?? 0);
       setTotalPages(res.pagination?.totalPages ?? 0);
+      setUnassigned(
+        res.responsible_summary
+          ? {
+              teachers: res.responsible_summary.teachers_without,
+              rows: res.responsible_summary.rows_without,
+            }
+          : null
+      );
     } catch {
+      setUnassigned(null);
       setRows([]);
       setTotalCount(0);
       setTotalPages(0);
     } finally {
       setLoading(false);
     }
-  }, [applied, currentPage]);
+  }, [applied, currentPage, tab]);
 
   useEffect(() => {
     void loadList();
@@ -276,6 +305,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
     if (applied.subject.trim()) n++;
     if (applied.groupCode.trim()) n++;
     if (applied.block) n++;
+    if (applied.onlyUnassigned) n++;
     return n;
   }, [applied]);
 
@@ -500,6 +530,78 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
         </div>
       </div>
 
+      <div
+        role="tablist"
+        aria-label="Tipo de docentes"
+        className="relative z-10 flex w-fit gap-1 rounded-2xl bg-orbit-interactive/80 p-1"
+      >
+        {(
+          [
+            ['teachers', 'Docentes'],
+            ['research', 'Docentes investigación'],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={tab === value}
+            onClick={() => {
+              if (tab === value) return;
+              setTab(value);
+              setCurrentPage(1);
+            }}
+            className={cn(
+              'rounded-xl px-4 py-2 text-sm font-bold transition-colors',
+              tab === value
+                ? 'bg-orbit-surface text-orbit-text shadow-sm'
+                : 'text-orbit-muted hover:text-orbit-text'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {unassigned && (unassigned.teachers > 0 || applied.onlyUnassigned) && (
+        <div
+          role="alert"
+          className="relative z-10 flex flex-col gap-3 rounded-2xl border-2 border-orbit-danger bg-orbit-danger/10 p-4 sm:flex-row sm:items-center sm:p-5"
+        >
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orbit-danger text-white">
+            <ExclamationTriangleIcon className="h-7 w-7" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-xl font-bold text-orbit-danger">
+              {unassigned.teachers.toLocaleString('es-CO')} docente
+              {unassigned.teachers === 1 ? '' : 's'} sin responsable
+            </p>
+            <p className="text-sm text-orbit-text-secondary">
+              {unassigned.rows.toLocaleString('es-CO')} asignaci
+              {unassigned.rows === 1 ? 'ón' : 'ones'} de carga sin nadie a cargo en
+              Planta Activa. Aparecen primero en la tabla, marcados en rojo.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !applied.onlyUnassigned;
+              setFilters((f) => ({ ...f, onlyUnassigned: next }));
+              setApplied((a) => ({ ...a, onlyUnassigned: next }));
+              setCurrentPage(1);
+            }}
+            className={cn(
+              'shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold transition-colors',
+              applied.onlyUnassigned
+                ? 'border border-orbit-danger bg-orbit-surface text-orbit-danger hover:bg-orbit-danger/10'
+                : 'bg-orbit-danger text-white hover:opacity-90'
+            )}
+          >
+            {applied.onlyUnassigned ? 'Ver todos' : 'Ver solo ellos'}
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="glass-panel p-20 flex flex-col items-center justify-center text-center relative z-10">
           <p className="text-sm font-medium text-orbit-text-secondary">
@@ -519,10 +621,11 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
       ) : (
         <>
           <div className="glass-panel overflow-x-auto relative z-10">
-            <table className="w-full text-left text-sm min-w-[1080px]">
+            <table className="w-full text-left text-sm min-w-[1240px]">
               <thead>
                 <tr className="border-b border-orbit-border text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
                   <th className="py-4 px-4">Docente</th>
+                  <th className="py-4 px-4">Responsable</th>
                   <th className="py-4 px-4">Área</th>
                   <th className="py-4 px-4">Programa</th>
                   <th className="py-4 px-4">Materia</th>
@@ -537,10 +640,27 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                 {rows.map((r) => (
                   <tr
                     key={r.id}
-                    className="border-b border-orbit-border/60 hover:bg-orbit-interactive/60 transition-colors"
+                    className={cn(
+                      'border-b transition-colors',
+                      r.hasResponsible === false
+                        ? 'border-orbit-danger/20 bg-orbit-danger/[0.07] shadow-[inset_4px_0_0_var(--color-orbit-danger,#ef4444)] hover:bg-orbit-danger/[0.12]'
+                        : 'border-orbit-border/60 hover:bg-orbit-interactive/60'
+                    )}
                   >
                     <td className="py-3 px-4 font-medium text-orbit-text">
                       {r.teacherName || '—'}
+                    </td>
+                    <td className="py-3 px-4">
+                      {r.hasResponsible === false ? (
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-orbit-danger px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
+                          <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                          Sin responsable
+                        </span>
+                      ) : (
+                        <span className="text-orbit-text-secondary">
+                          {r.responsibleName || '—'}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       <span

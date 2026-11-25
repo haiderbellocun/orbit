@@ -40,6 +40,9 @@ export interface PlantaPerson {
   manager_name?: string | null;
   manager_role_name?: string | null;
   manager_document?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
   /** Si el usuario actual puede editar esta persona (API). */
   can_edit?: boolean;
 }
