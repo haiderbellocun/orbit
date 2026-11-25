@@ -1320,6 +1320,21 @@ export async function getAcademicLoadFilterOptions(): Promise<AcademicLoadFilter
   };
 }
 
+/**
+ * Todo lo del Excel de Carga Académica cruzado con Balance carga (sin
+ * paginar). Acepta los mismos filtros que `getAcademicLoad`.
+ */
+export async function getAcademicLoadExport(
+  params?: Omit<NonNullable<Parameters<typeof getAcademicLoad>[0]>, 'page' | 'limit'>
+): Promise<import("@/src/lib/academicLoadExcelExport").AcademicLoadExport> {
+  const url = new URL(`${BASE_URL}/academic-load/export`);
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value != null && value !== "") url.searchParams.set(key, String(value));
+  }
+  const response = await authFetch(url.toString(), { headers: jsonHeaders });
+  return handleJson(response);
+}
+
 export async function getAcademicLoad(params?: {
   teacher_document?: string;
   period?: string;
@@ -1338,11 +1353,18 @@ export async function getAcademicLoad(params?: {
   responsible?: "none";
   /** "only" = pestaña Docentes investigación; "exclude" = pestaña Docentes. */
   research?: "only" | "exclude";
+  /** "teacher" = pagina por docente y trae todas sus asignaciones. */
+  group?: "teacher";
+  /** Solo docentes con esta alerta. */
+  alert?: import("@/src/lib/teacherAlerts").TeacherAlertKey;
   page?: number;
   limit?: number;
 }): Promise<
   PaginatedResponse & {
     responsible_summary?: { teachers_without: number; rows_without: number } | null;
+    totals?: { rows: number; teachers: number };
+    alerts_summary?: import("@/src/lib/teacherAlerts").AlertsSummary | null;
+    teacher_alerts?: Record<string, import("@/src/lib/teacherAlerts").TeacherAlertInfo> | null;
   }
 > {
   const url = new URL(`${BASE_URL}/academic-load`);
@@ -1365,6 +1387,8 @@ export async function getAcademicLoad(params?: {
   if (params?.study_level) url.searchParams.set("study_level", params.study_level);
   if (params?.responsible) url.searchParams.set("responsible", params.responsible);
   if (params?.research) url.searchParams.set("research", params.research);
+  if (params?.group) url.searchParams.set("group", params.group);
+  if (params?.alert) url.searchParams.set("alert", params.alert);
   if (params?.page != null) url.searchParams.set("page", String(params.page));
   if (params?.limit != null) url.searchParams.set("limit", String(params.limit));
   const response = await authFetch(url.toString(), { headers: jsonHeaders });
@@ -1392,6 +1416,8 @@ export type SubstantiveHoursTeacher = {
   preparationHours: number;
   substantiveHoursAssigned: number;
   substantiveHoursRemaining: number | null;
+  /** Alertas del docente (mismas de Carga Académica y el Excel). */
+  alerts?: import("@/src/lib/teacherAlerts").TeacherAlertInfo | null;
 };
 
 export type SubstantiveHoursCategory = {
@@ -1426,10 +1452,17 @@ export async function getSubstantiveHoursTeachers(params?: {
   has_catedra?: boolean;
   has_substantive?: boolean;
   without_edu_email?: boolean;
+  /** Solo docentes con esta alerta. */
+  alert?: import("@/src/lib/teacherAlerts").TeacherAlertKey;
   page?: number;
   limit?: number;
-}): Promise<PaginatedResponse<SubstantiveHoursTeacher>> {
+}): Promise<
+  PaginatedResponse<SubstantiveHoursTeacher> & {
+    alerts_summary?: import("@/src/lib/teacherAlerts").AlertsSummary | null;
+  }
+> {
   const url = new URL(`${BASE_URL}/substantive-hours/teachers`);
+  if (params?.alert) url.searchParams.set("alert", params.alert);
   if (params?.search) url.searchParams.set("search", params.search);
   if (params?.area_id != null)
     url.searchParams.set("area_id", String(params.area_id));

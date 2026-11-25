@@ -11,6 +11,8 @@ import {
   PencilSquareIcon,
 } from '@heroicons/react/24/solid';
 import { Header } from '@/src/components/layout/Header';
+import { TeacherAlertChips, TeacherAlertsPanel } from '@/src/components/alerts/TeacherAlerts';
+import type { AlertsSummary, TeacherAlertKey } from '@/src/lib/teacherAlerts';
 import { cn } from '@/src/lib/utils';
 import type { Vacancy, Teacher, Coordinator } from '@/src/types';
 import {
@@ -76,6 +78,9 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [actionMode, setActionMode] = useState<ActionMode>('substantive');
   const [rows, setRows] = useState<SubstantiveHoursTeacher[]>([]);
+  /** Alerta elegida en el panel (filtra la lista) y conteo de cada una. */
+  const [alertFilter, setAlertFilter] = useState<TeacherAlertKey | null>(null);
+  const [alertsSummary, setAlertsSummary] = useState<AlertsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -175,20 +180,23 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
             ? undefined
             : applied.hasSubstantive === 'true',
         without_edu_email: applied.withoutEduEmail || undefined,
+        alert: alertFilter ?? undefined,
         page: currentPage,
         limit: 50,
       });
       setRows(Array.isArray(res.data) ? res.data : []);
+      setAlertsSummary(res.alerts_summary ?? null);
       setTotalCount(res.pagination?.total ?? 0);
       setTotalPages(res.pagination?.totalPages ?? 0);
     } catch {
       setRows([]);
+      setAlertsSummary(null);
       setTotalCount(0);
       setTotalPages(0);
     } finally {
       setLoading(false);
     }
-  }, [applied, currentPage]);
+  }, [applied, currentPage, alertFilter]);
 
   useEffect(() => {
     void loadList();
@@ -211,6 +219,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   const clearFilters = () => {
     setFilters(EMPTY_FILTERS);
     setApplied(EMPTY_FILTERS);
+    setAlertFilter(null);
     setCurrentPage(1);
   };
 
@@ -643,6 +652,18 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
         </AnimatePresence>
       </div>
 
+      {alertsSummary && (
+        <TeacherAlertsPanel
+          summary={alertsSummary}
+          active={alertFilter}
+          periodChosen={Boolean(applied.period)}
+          onChange={(next) => {
+            setAlertFilter(next);
+            setCurrentPage(1);
+          }}
+        />
+      )}
+
       <div className="glass-panel overflow-hidden relative z-10">
         <div className="px-5 py-3 border-b border-orbit-border/60 flex items-center justify-between">
           <p className="text-sm text-orbit-muted font-medium">
@@ -696,6 +717,12 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
                         </span>
                       )}
                     </div>
+                    {/* "Sin correo CUN" ya se marca en rojo arriba. */}
+                    <TeacherAlertChips
+                      info={row.alerts}
+                      hide={['no_edu_email']}
+                      className="mt-1.5"
+                    />
                   </td>
                   <td className="px-5 py-4 hidden md:table-cell text-orbit-text-secondary">
                     <div>{row.area || '—'}</div>

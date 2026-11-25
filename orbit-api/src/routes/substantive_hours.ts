@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { sqlPeriodIsCurrent } from "../sql/currentPeriods";
 import { pool } from "../db/connection";
 import { resolveCoreSchemaMode } from "../lib/coreSchema";
 import {
@@ -9,6 +10,11 @@ import {
 } from "../lib/substantiveHours";
 import { schoolScopeFromRequest } from "../middleware/orbitAuth";
 import { sqlPersonIsActive } from "../sql/personActive";
+import {
+  computeTeacherAlerts,
+  parseTeacherAlertKey,
+  summarizeAlerts,
+} from "../lib/teacherAlerts";
 
 const router = Router();
 
@@ -211,23 +217,7 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
       conditions.push(`(${contractHoursExpr}) IS NULL`);
     }
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-
-    const query = `
-      SELECT
-        p.id,
-        p.document,
-        p.full_name AS name,
-        NULLIF(TRIM(p.edu_email), '') AS email,
-        a.name AS area,
-        s.name AS school,
-        ct.name AS contract_type,
-        ct.work_schedule,
-        COALESCE(cp.class_preparation_hours, ${DEFAULT_CLASS_PREPARATION_HOURS})
-          AS preparation_hours,
-        COALESCE(cath.catedra_hours, 0) AS catedra_hours,
-        COALESCE(sub.substantive_hours, 0) AS substantive_hours_assigned,
-        COUNT(*) OVER() AS total_count
+    const fromSql = `
       FROM ${prefix}person p
       LEFT JOIN ${prefix}school s ON s.id = p.school_id
       LEFT JOIN ${prefix}area a ON a.id = COALESCE(p.area_id, s.area_id)
@@ -253,13 +243,51 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         FROM academic_workload.academic_load al
         LEFT JOIN academic_workload.subject subj
           ON subj.subject_code = al.subject_code
-        WHERE al.person_id = p.id${periodSql}
+        WHERE al.person_id = p.id AND ${sqlPeriodIsCurrent("al")}${periodSql}
       ) cath ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(a.hours_quantity), 0) AS substantive_hours
         FROM substantive_hours.assignment a
         WHERE a.person_id = p.id
-      ) sub ON true
+      ) sub ON true`;
+
+    // Alertas de todos los docentes del filtro (el panel cuenta el total) y,
+    // con `alert`, solo quienes la tienen.
+    const alertFilter = parseTeacherAlertKey(req.query.alert);
+    const baseWhere = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const idsR = await pool.query(`SELECT p.id ${fromSql} ${baseWhere}`, values);
+    const alertsByPerson = await computeTeacherAlerts(
+      idsR.rows.map((r) => Number(r.id)),
+      period || null
+    );
+    const alertsSummary = summarizeAlerts(alertsByPerson.values());
+    if (alertFilter) {
+      const keep = [...alertsByPerson.entries()]
+        .filter(([, info]) => info.alerts.includes(alertFilter))
+        .map(([id]) => id);
+      conditions.push(`p.id = ANY($${i}::bigint[])`);
+      values.push(keep);
+      i++;
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const query = `
+      SELECT
+        p.id,
+        p.document,
+        p.full_name AS name,
+        NULLIF(TRIM(p.edu_email), '') AS email,
+        a.name AS area,
+        s.name AS school,
+        ct.name AS contract_type,
+        ct.work_schedule,
+        COALESCE(cp.class_preparation_hours, ${DEFAULT_CLASS_PREPARATION_HOURS})
+          AS preparation_hours,
+        COALESCE(cath.catedra_hours, 0) AS catedra_hours,
+        COALESCE(sub.substantive_hours, 0) AS substantive_hours_assigned,
+        COUNT(*) OVER() AS total_count
+      ${fromSql}
       ${where}
       ORDER BY p.full_name ASC NULLS LAST
       LIMIT $${i++} OFFSET $${i++}
@@ -300,11 +328,14 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         preparationHours,
         substantiveHoursAssigned: substantiveAssigned,
         substantiveHoursRemaining: remaining,
+        alerts: alertsByPerson.get(Number(r.id)) ?? null,
       };
     });
 
     res.json({
       data,
+      alert: alertFilter,
+      alerts_summary: alertsSummary,
       pagination: {
         total,
         page: pageNum,
@@ -585,7 +616,7 @@ router.put(
            FROM academic_workload.academic_load al
            LEFT JOIN academic_workload.subject subj
              ON subj.subject_code = al.subject_code
-           WHERE al.person_id = $1`,
+           WHERE al.person_id = $1 AND ${sqlPeriodIsCurrent("al")}`,
           [personId]
         ),
         pool.query(
