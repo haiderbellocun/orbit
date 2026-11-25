@@ -535,7 +535,15 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
               onClick={onBack}
               aria-label={`Volver. Nivel actual: ${centerTitle}. ${centerSubtitle}`}
               className="absolute z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-orbit-border bg-white text-orbit-text shadow-sm outline-none"
-              style={{ left: Math.max(4, holeX - 92), top: cy - 46 }}
+              style={(() => {
+                // A la izquierda del logo central (36px de botón + 12px de aire);
+                // si no cabe, sube por encima del logo para no taparlo.
+                const logoHalf = Math.round(inner * 0.72) / 2;
+                const left = holeX - logoHalf - 48;
+                return left >= 4
+                  ? { left, top: cy }
+                  : { left: 4, top: Math.max(24, cy - logoHalf - 28) };
+              })()}
             >
               <ChevronLeftIcon className="h-5 w-5" />
             </button>
