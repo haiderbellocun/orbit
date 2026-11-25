@@ -52,6 +52,62 @@ export function Mark({ node, size }: { node: OrganizationNode; size: 'sm' | 'md'
   );
 }
 
+/** Tarjeta compacta de una persona sin equipo a cargo (colaborador). */
+export function PersonCard({
+  node,
+  onManage,
+}: {
+  node: OrganizationNode;
+  onManage: (personId: string) => void;
+}) {
+  const childTone = toneOf(node);
+  const p = node.person;
+  return (
+    <div
+      className="flex h-full items-start gap-2.5 rounded-xl border bg-orbit-surface p-2.5"
+      style={{
+        borderColor: childTone.border,
+        borderLeftWidth: 3,
+        borderLeftColor: childTone.accent,
+      }}
+    >
+      <Mark node={node} size="sm" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[10px] font-bold uppercase tracking-wider text-orbit-muted">
+          {displayCase(p.role_name) || 'Sin cargo'}
+        </p>
+        <p className="truncate text-sm font-semibold text-orbit-text">
+          {displayCase(p.name)}
+          {p.status !== 'active' && (
+            <span className="ml-2 text-[11px] font-semibold text-orbit-muted">Inactivo</span>
+          )}
+        </p>
+        <SecondInCommandBadges person={p} />
+        <p className="truncate text-xs text-orbit-muted" title={p.edu_email || undefined}>
+          {p.edu_email?.trim() || (
+            <span className="font-semibold text-orbit-danger">Sin correo CUN</span>
+          )}
+        </p>
+        <p className="truncate text-[11px] text-orbit-muted">
+          {p.document || 'Sin identificación'}
+          {p.program ? ` · ${displayCase(p.program)}` : ''}
+        </p>
+      </div>
+      {p.can_edit !== false && (
+        <button
+          type="button"
+          onClick={() => onManage(p.id)}
+          className="shrink-0 rounded-lg p-1.5 text-orbit-primary hover:bg-orbit-primary/10"
+          aria-label={`Gestionar a ${displayCase(p.name)}`}
+          title="Gestionar"
+        >
+          <PencilSquareIcon className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 /**
  * Lista de Planta Activa para el nivel que muestra la rueda: quien está en el
  * centro (una línea), su equipo en tarjetas compactas y sus colaboradores
@@ -213,57 +269,9 @@ export const TeamLevelView: React.FC<TeamLevelViewProps> = ({
             Colaboradores directos · {staff.length.toLocaleString('es-CO')}
           </h4>
           <div className="grid auto-rows-fr gap-2 sm:grid-cols-2 2xl:grid-cols-3">
-            {staff.slice(0, staffShown).map((child) => {
-              const childTone = toneOf(child);
-              const p = child.person;
-              return (
-                <div
-                  key={child.nodeKey}
-                  className="flex h-full items-start gap-2.5 rounded-xl border bg-orbit-surface p-2.5"
-                  style={{
-                    borderColor: childTone.border,
-                    borderLeftWidth: 3,
-                    borderLeftColor: childTone.accent,
-                  }}
-                >
-                  <Mark node={child} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[10px] font-bold uppercase tracking-wider text-orbit-muted">
-                      {displayCase(p.role_name) || 'Sin cargo'}
-                    </p>
-                    <p className="truncate text-sm font-semibold text-orbit-text">
-                      {displayCase(p.name)}
-                      {p.status !== 'active' && (
-                        <span className="ml-2 text-[11px] font-semibold text-orbit-muted">
-                          Inactivo
-                        </span>
-                      )}
-                    </p>
-                    <SecondInCommandBadges person={p} />
-                    <p className="truncate text-xs text-orbit-muted" title={p.edu_email || undefined}>
-                      {p.edu_email?.trim() || (
-                        <span className="font-semibold text-orbit-danger">Sin correo CUN</span>
-                      )}
-                    </p>
-                    <p className="truncate text-[11px] text-orbit-muted">
-                      {p.document || 'Sin identificación'}
-                      {p.program ? ` · ${displayCase(p.program)}` : ''}
-                    </p>
-                  </div>
-                  {p.can_edit !== false && (
-                    <button
-                      type="button"
-                      onClick={() => onManage(p.id)}
-                      className="shrink-0 rounded-lg p-1.5 text-orbit-primary hover:bg-orbit-primary/10"
-                      aria-label={`Gestionar a ${displayCase(p.name)}`}
-                      title="Gestionar"
-                    >
-                      <PencilSquareIcon className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+            {staff.slice(0, staffShown).map((child) => (
+              <PersonCard key={child.nodeKey} node={child} onManage={onManage} />
+            ))}
           </div>
           {staff.length > staffShown && (
             <div className="pt-2 text-center">

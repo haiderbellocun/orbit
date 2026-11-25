@@ -1433,6 +1433,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                       : undefined
                   }
                   unassignedTone={listStatus === 'inactive' ? 'muted' : 'warning'}
+                  unassignedIcon={listStatus === 'inactive' ? 'sin_area.png' : undefined}
                 />
                 </PlantaWheelProvider>
               )}

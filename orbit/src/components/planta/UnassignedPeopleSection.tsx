@@ -16,6 +16,8 @@ type UnassignedPeopleSectionProps = {
   heading?: string;
   hint?: string;
   tone?: 'warning' | 'muted';
+  /** Logo (ruta en /public) a la izquierda del título. */
+  icon?: string;
 };
 
 const PAGE_SIZE = 40;
@@ -53,6 +55,7 @@ export const UnassignedPeopleSection: React.FC<
   heading = 'Sin responsable asignado',
   hint,
   tone = 'warning',
+  icon,
 }) => {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -83,7 +86,14 @@ export const UnassignedPeopleSection: React.FC<
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-3 px-4 py-4 text-left sm:px-5"
       >
-        {tone === 'warning' ? (
+        {icon ? (
+          <img
+            src={`${import.meta.env.BASE_URL}${icon}`}
+            alt=""
+            aria-hidden
+            className="h-10 w-10 shrink-0 rounded-xl bg-white object-contain"
+          />
+        ) : tone === 'warning' ? (
           <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-orbit-warning" />
         ) : null}
         <div className="min-w-0 flex-1">

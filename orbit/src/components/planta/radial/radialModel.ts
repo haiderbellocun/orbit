@@ -10,6 +10,8 @@ export type WheelEntry = {
   node: OrganizationNode | null;
   areaName?: string;
   initials?: boolean;
+  /** Logo fijo (ruta en /public) cuando la opción no tiene emblema propio. */
+  image?: string;
   canDrill: boolean;
   childCount: number;
 };
@@ -122,6 +124,7 @@ export function topWheelEntries(forest: OrganizationForest): WheelEntry[] {
       node: null,
       canDrill: false,
       childCount: count,
+      ...(catalog ? { image: 'sin_area.png' } : {}),
     });
   }
   return entries;

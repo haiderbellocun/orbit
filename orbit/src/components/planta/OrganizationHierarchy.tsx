@@ -10,6 +10,8 @@ import type {
 import { CoordinatorNode } from '@/src/components/planta/CoordinatorNode';
 import { LeaderNode } from '@/src/components/planta/LeaderNode';
 import { UnassignedPeopleSection } from '@/src/components/planta/UnassignedPeopleSection';
+import { PersonCard } from '@/src/components/planta/TeamLevelView';
+import { isAreaCatalog } from '@/src/components/planta/radial/radialModel';
 
 type OrganizationHierarchyProps = {
   forest: OrganizationForest;
@@ -23,6 +25,7 @@ type OrganizationHierarchyProps = {
   unassignedHeading?: string;
   unassignedHint?: string;
   unassignedTone?: 'warning' | 'muted';
+  unassignedIcon?: string;
 };
 
 function normalizeLabel(value: string | null | undefined): string {
@@ -119,8 +122,32 @@ export const OrganizationHierarchy: React.FC<OrganizationHierarchyProps> = ({
   unassignedHeading,
   unassignedHint,
   unassignedTone,
+  unassignedIcon,
 }) => {
   const { apex, areas } = splitApex(forest);
+  // Sin organigrama (p. ej. Inactivos) nadie tiene equipo: se listan con la
+  // misma tarjeta compacta en grilla que los colaboradores de Activos.
+  const catalog = isAreaCatalog(forest);
+  const renderRoots = (roots: OrganizationNode[]) =>
+    catalog ? (
+      <div className="grid auto-rows-fr gap-2 sm:grid-cols-2 2xl:grid-cols-3">
+        {roots.map((node) => (
+          <PersonCard key={node.nodeKey} node={node} onManage={onManage} />
+        ))}
+      </div>
+    ) : (
+      roots.map((node) => (
+        <BranchNode
+          key={node.nodeKey}
+          node={node}
+          expandedIds={expandedIds}
+          onToggle={onToggle}
+          onManage={onManage}
+          onAssign={onAssign}
+          canMutate={canMutate}
+        />
+      ))
+    );
   const hasTree =
     apex.length > 0 ||
     areas.some((a) => a.schools.some((s) => s.roots.length > 0));
@@ -166,17 +193,7 @@ export const OrganizationHierarchy: React.FC<OrganizationHierarchyProps> = ({
               if (school.schoolName === 'Sin escuela') {
                 return (
                   <div key={school.key} className="space-y-3">
-                    {school.roots.map((node) => (
-                      <BranchNode
-                        key={node.nodeKey}
-                        node={node}
-                        expandedIds={expandedIds}
-                        onToggle={onToggle}
-                        onManage={onManage}
-                        onAssign={onAssign}
-                        canMutate={canMutate}
-                      />
-                    ))}
+                    {renderRoots(school.roots)}
                   </div>
                 );
               }
@@ -204,17 +221,7 @@ export const OrganizationHierarchy: React.FC<OrganizationHierarchyProps> = ({
                       </span>
                     </h3>
                   )}
-                  {school.roots.map((node) => (
-                    <BranchNode
-                      key={node.nodeKey}
-                      node={node}
-                      expandedIds={expandedIds}
-                      onToggle={onToggle}
-                      onManage={onManage}
-                      onAssign={onAssign}
-                      canMutate={canMutate}
-                    />
-                  ))}
+                  {renderRoots(school.roots)}
                 </div>
               );
             })}
@@ -228,6 +235,7 @@ export const OrganizationHierarchy: React.FC<OrganizationHierarchyProps> = ({
         heading={unassignedHeading}
         hint={unassignedHint}
         tone={unassignedTone}
+        icon={unassignedIcon}
       />
     </div>
   );

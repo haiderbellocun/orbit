@@ -325,28 +325,37 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
               stroke={withAlpha(catalogRing ? NEUTRAL : ringAccent, dark ? 0.07 : 0.16)}
               strokeWidth={band * 0.55}
             />
-            {catalogRing ? null : (
-              <circle
-                cx={cx}
-                cy={cy}
-                r={midRadius}
-                fill="none"
-                stroke={nightTone(ringAccent, dark).ring}
-                strokeWidth={band}
-                filter={`url(#${reactId}-ring)`}
-              />
-            )}
+            {/* Catálogo de áreas: aro neutro continuo (mismo lenguaje que la rueda
+                con jerarquía); el color de cada área aparece solo al enfocarla. */}
+            <circle
+              cx={cx}
+              cy={cy}
+              r={midRadius}
+              fill="none"
+              stroke={
+                catalogRing
+                  ? dark
+                    ? mixHex(NEUTRAL, NIGHT_SURFACE, 0.7)
+                    : mixHex(NEUTRAL, '#FFFFFF', 0.72)
+                  : nightTone(ringAccent, dark).ring
+              }
+              strokeWidth={band}
+              filter={catalogRing ? undefined : `url(#${reactId}-ring)`}
+            />
 
             <g transform={`rotate(${deg} ${cx} ${cy})`}>
               {catalogRing
                 ? windowed.items.map((entry, index) => {
                     const edge = edges[index];
                     if (!edge) return null;
+                    const lit = entry.key === hoverKey || entry.key === activeKey;
                     return (
                       <path
                         key={`tone-${entry.key}`}
                         d={wedgePath(cx, cy, inner, outer, edge.start, edge.end)}
                         fill={nightTone(entryAccent(entry, hostPerson, dark), dark).ring}
+                        fillOpacity={lit ? 0.9 : 0}
+                        style={{ transition: 'fill-opacity 200ms ease' }}
                         pointerEvents="none"
                       />
                     );
@@ -423,6 +432,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                   size={iconSize}
                   accent={nightTone(accentOfEntry(entry, ringAccent, hostPerson, dark), dark).text}
                   initialsOnly={entry.initials}
+                  image={entry.image}
                 />
               </div>
             );
@@ -460,6 +470,7 @@ export const RadialNavigation: React.FC<RadialNavigationProps> = ({
                   size={Math.round(inner * 0.72)}
                   accent={nightTone(ringAccent, dark).text}
                   initialsOnly={activeEntry?.initials}
+                  image={centerPerson ? undefined : activeEntry?.image}
                   bare
                 />
               ) : null}
@@ -643,6 +654,7 @@ function RingMark({
   accent,
   bare = false,
   initialsOnly = false,
+  image,
 }: {
   person: PlantaPerson | null;
   host?: PlantaPerson | null;
@@ -652,11 +664,20 @@ function RingMark({
   accent: string;
   bare?: boolean;
   initialsOnly?: boolean;
+  image?: string;
 }) {
   const subject = initialsOnly ? null : emblemSubject(person, areaName);
   const hostSubject = host ? emblemSubject(host) : null;
   const hasMascot = Boolean(subject && unitEmblemAssets(subject, hostSubject));
-  const mark = hasMascot ? (
+  const mark = image ? (
+    <span
+      className="radial-mascot shrink-0"
+      style={{ width: bare ? size : Math.round(size * 0.92), height: bare ? size : Math.round(size * 0.92) }}
+      aria-hidden
+    >
+      <img src={assetUrl(image)} alt="" />
+    </span>
+  ) : hasMascot ? (
     <AreaMascot
       person={person}
       host={host}
