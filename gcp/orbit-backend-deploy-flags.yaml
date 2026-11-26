@@ -5,7 +5,9 @@
   ALLOW_LOCAL_EMAIL_AUTH: "0"
   SESSION_COOKIE_SAME_SITE: none
   ORBIT_FRONTEND_URL: https://orbit-frontend-526995286786.us-central1.run.app
-  ORBIT_ACCESS_ALLOWLIST: "camilo_quintero@cun.edu.co,haider_bello@cun.edu.co,raul_valencia@cun.edu.co,zuany_acuna@cun.edu.co,nidia_prada@cun.edu.co,jose_camachoc@cun.edu.co,sara_murillofo@cun.edu.co,lorena_gomez@cun.edu.co,cindy_russi@cun.edu.co,maria_ballen@cun.edu.co"
+  ORBIT_ACCESS_ALLOWLIST: "camilo_quintero@cun.edu.co,haider_bello@cun.edu.co,raul_valencia@cun.edu.co,zuany_acuna@cun.edu.co,nidia_prada@cun.edu.co,jose_camachoc@cun.edu.co,sara_murillofo@cun.edu.co,lorena_gomez@cun.edu.co,cindy_russi@cun.edu.co,maria_ballen@cun.edu.co,johan_dazasar@cun.edu.co"
+  ORBIT_VACANCY_ADMIN_ALLOWLIST: "camilo_quintero@cun.edu.co,yesid_rocha@cun.edu.co,sara_murillofo@cun.edu.co,cindy_russi@cun.edu.co,lorena_gomez@cun.edu.co,johan_dazasar@cun.edu.co"
+  ORBIT_ROLE_MANAGEMENT_ALLOWLIST: "camilo_quintero@cun.edu.co,haider_bello@cun.edu.co,zuany_acuna@cun.edu.co,sara_murillofo@cun.edu.co,cindy_russi@cun.edu.co,lorena_gomez@cun.edu.co,johan_dazasar@cun.edu.co"
   SMTP_SERVICE: gmail
   SMTP_HOST: smtp.gmail.com
   SMTP_PORT: "587"
