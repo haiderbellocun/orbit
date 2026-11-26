@@ -197,14 +197,19 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
       conditions.push(`(p.edu_email IS NULL OR TRIM(p.edu_email) = '')`);
     }
 
-    // Balance carga: excluir Área investigativa (Harvey).
+    // Balance carga: excluir docentes de investigación (área investigativa /
+    // Harvey o escuela INVESTIGACION CUN), mismo criterio que Carga académica.
     conditions.push(`(
       a.id IS NULL
       OR (
         COALESCE(a.name, '') NOT ILIKE '%investigativ%'
         AND COALESCE(a.name, '') NOT ILIKE '%harvey%'
+        AND UPPER(TRANSLATE(TRIM(a.name), 'ÁÉÍÓÚÜÑ', 'AEIOUUN')) <> 'INVESTIGACION CUN'
       )
     )`);
+    conditions.push(
+      `UPPER(TRANSLATE(TRIM(COALESCE(s.name, '')), 'ÁÉÍÓÚÜÑ', 'AEIOUUN')) <> 'INVESTIGACION CUN'`
+    );
 
     const remainingExpr = `
       (${contractHoursExpr})

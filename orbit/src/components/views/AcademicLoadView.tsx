@@ -257,8 +257,11 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
   const [alertFilter, setAlertFilter] = useState<TeacherAlertKey | null>(null);
   const [alertsSummary, setAlertsSummary] = useState<AlertsSummary | null>(null);
   const [teacherAlerts, setTeacherAlerts] = useState<Record<string, TeacherAlertInfo>>({});
-  /** Los docentes del área de investigación van en su propia pestaña. */
-  const [tab, setTab] = useState<'teachers' | 'research'>('teachers');
+  /**
+   * Los docentes de investigación iban en su propia pestaña; por ahora esa
+   * data está oculta y la vista queda fija en docentes.
+   */
+  const tab = 'teachers' as 'teachers' | 'research';
   const [unassigned, setUnassigned] = useState<{
     teachers: number;
     rows: number;
@@ -673,39 +676,8 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
         </div>
       </div>
 
-      <div
-        role="tablist"
-        aria-label="Tipo de docentes"
-        className="relative z-10 flex w-fit gap-1 rounded-2xl bg-orbit-interactive/80 p-1"
-      >
-        {(
-          [
-            ['teachers', 'Docentes'],
-            ['research', 'Docentes investigación'],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            aria-selected={tab === value}
-            onClick={() => {
-              if (tab === value) return;
-              setTab(value);
-              setAlertFilter(null);
-              setCurrentPage(1);
-            }}
-            className={cn(
-              'rounded-xl px-4 py-2 text-sm font-bold transition-colors',
-              tab === value
-                ? 'bg-orbit-surface text-orbit-text shadow-sm'
-                : 'text-orbit-muted hover:text-orbit-text'
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Pestaña "Docentes investigación" oculta por ahora: solo se muestran
+          docentes (research=exclude). */}
 
       {unassigned && (unassigned.teachers > 0 || applied.onlyUnassigned) && (
         <div

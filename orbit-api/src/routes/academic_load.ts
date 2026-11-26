@@ -55,6 +55,17 @@ const SQL_IS_RESEARCH_TEACHER = `(
   )
 )`;
 
+/**
+ * Docentes de investigación ocultos por ahora: siempre se excluyen sin
+ * importar lo que pida el cliente. Volver a `false` para reactivar la pestaña.
+ */
+const RESEARCH_TEACHERS_HIDDEN = true;
+
+function researchParam(req: Request): string {
+  if (RESEARCH_TEACHERS_HIDDEN) return "exclude";
+  return qStr(req.query.research).toLowerCase();
+}
+
 function normalizeModalityQueryParam(value: string): {
   code: "P" | "V" | null;
   literal: string | null;
@@ -98,7 +109,7 @@ router.get("/academic-load/filter-options", async (req: Request, res: Response) 
   try {
     const { sql: schoolSql, params } = await personScopeSql(req, 1);
     /** Pestaña: "only" = investigación; "exclude" = docentes. Sin valor = todas. */
-    const research = qStr(req.query.research).toLowerCase();
+    const research = researchParam(req);
     const researchSql =
       research === "only"
         ? ` AND ${SQL_IS_RESEARCH_TEACHER}`
@@ -205,7 +216,7 @@ async function buildAcademicLoadFilter(req: Request) {
   /** "none" = solo docentes sin responsable en Planta Activa. */
   const responsible = qStr(req.query.responsible).toLowerCase();
   /** "only" = solo docentes de investigación; "exclude" = todos menos ellos. */
-  const research = qStr(req.query.research).toLowerCase();
+  const research = researchParam(req);
 
   // Solo periodos vigentes (los terminados hace más de PERIOD_GRACE_DAYS días se ocultan).
   const conditions: string[] = [sqlPeriodIsCurrent("al")];
