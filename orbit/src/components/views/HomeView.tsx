@@ -184,6 +184,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
       hasCapability(getStoredCapabilities(), ORBIT_CAPABILITY.PLANTA_ACTIVA),
     []
   );
+  const canNews = useMemo(
+    () => hasCapability(getStoredCapabilities(), ORBIT_CAPABILITY.NEWS),
+    []
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -541,17 +545,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 <ChevronRightIcon className="h-4 w-4 text-orbit-muted" />
               </button>
 
-              <button
-                type="button"
-                onClick={() => setView("news")}
-                className="flex w-full items-center justify-between rounded-[10px] px-3 py-2.5 text-left text-sm text-orbit-text-secondary transition-colors duration-150 hover:bg-orbit-interactive hover:text-orbit-text"
-              >
-                <span className="flex items-center gap-2.5">
-                  <BellIcon className="h-4 w-4 text-orbit-muted" />
-                  Ir a Novedades
-                </span>
-                <ChevronRightIcon className="h-4 w-4 text-orbit-muted" />
-              </button>
+              {canNews && (
+                <button
+                  type="button"
+                  onClick={() => setView("news")}
+                  className="flex w-full items-center justify-between rounded-[10px] px-3 py-2.5 text-left text-sm text-orbit-text-secondary transition-colors duration-150 hover:bg-orbit-interactive hover:text-orbit-text"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <BellIcon className="h-4 w-4 text-orbit-muted" />
+                    Ir a Novedades
+                  </span>
+                  <ChevronRightIcon className="h-4 w-4 text-orbit-muted" />
+                </button>
+              )}
             </div>
           </div>
 

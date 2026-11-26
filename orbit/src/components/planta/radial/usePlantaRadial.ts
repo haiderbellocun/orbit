@@ -29,7 +29,11 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-export function usePlantaRadial(forest: OrganizationForest) {
+export function usePlantaRadial(
+  forest: OrganizationForest,
+  /** Persona que hace de piso de la rueda (p. ej. el LITE con su equipo). */
+  floorPersonId?: string | null
+) {
   const [path, setPath] = useState<string[]>([]);
   const [areaKey, setAreaKey] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -41,10 +45,14 @@ export function usePlantaRadial(forest: OrganizationForest) {
   const floorKey = useMemo(() => {
     if (catalog) return null;
     for (const node of index.values()) {
-      if (isOrgApexPerson(node.person)) return node.nodeKey;
+      if (floorPersonId != null) {
+        if (node.person.id === floorPersonId) return node.nodeKey;
+      } else if (isOrgApexPerson(node.person)) {
+        return node.nodeKey;
+      }
     }
     return null;
-  }, [catalog, index]);
+  }, [catalog, index, floorPersonId]);
   // Con dirección, el nivel más alto es ella y no se puede salir de ahí. Sin
   // ella (acceso acotado a un área), se puede volver hasta la vista "Planta".
   const minDepth = floorKey ? 1 : 0;

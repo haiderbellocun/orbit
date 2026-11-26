@@ -11,10 +11,8 @@ import {
   type NewsScope,
 } from "../lib/newsScope";
 import { sqlPersonIsActive } from "../sql/personActive";
-import {
-  liteTeacherScopeFromRequest,
-  schoolScopeFromRequest,
-} from "../middleware/orbitAuth";
+import { schoolScopeFromRequest } from "../middleware/orbitAuth";
+import { teamPersonIds } from "../lib/liteScope";
 
 const router = Router();
 
@@ -107,7 +105,7 @@ async function getActiveTeachersCount(req: Request): Promise<number> {
   const personT = qualifiedCoreTable(mode, "person");
   const schoolT = qualifiedCoreTable(mode, "school");
   const areaT = qualifiedCoreTable(mode, "area");
-  const lite = liteTeacherScopeFromRequest(req);
+  const liteTeam = await teamPersonIds(req);
   const schoolScope = schoolScopeFromRequest(req);
   const u = req.orbitUser;
   const viewAreaIds =
@@ -117,30 +115,9 @@ async function getActiveTeachersCount(req: Request): Promise<number> {
   const values: unknown[] = [];
   let i = 1;
 
-  if (lite != null) {
-    conditions.push(`p.school_id = $${i}`);
-    values.push(lite.schoolId);
-    i++;
-    const ppaReg = await pool.query(
-      `SELECT to_regclass('${mode}.person_program_assignments') AS t`
-    );
-    const ppaT = ppaReg.rows[0]?.t
-      ? qualifiedCoreTable(mode, "person_program_assignments")
-      : null;
-    if (ppaT) {
-      conditions.push(`(
-        p.program_id = ANY($${i}::integer[])
-        OR EXISTS (
-          SELECT 1
-          FROM ${ppaT} ppa
-          WHERE ppa.person_id = p.id
-            AND COALESCE(ppa.programs_id, ARRAY[]::integer[]) && $${i}::integer[]
-        )
-      )`);
-    } else {
-      conditions.push(`p.program_id = ANY($${i}::integer[])`);
-    }
-    values.push(lite.programIds);
+  if (liteTeam != null) {
+    conditions.push(`p.id = ANY($${i}::bigint[])`);
+    values.push(liteTeam);
     i++;
   } else if (schoolScope != null) {
     conditions.push(`p.school_id = $${i}`);
@@ -430,7 +407,10 @@ router.get("/dashboard/summary", async (req, res) => {
       activeTeachers: {
         value: activeTeachers,
         ...NO_TREND,
-        detail: "Personas activas en planta",
+        detail:
+          (req.orbitUser?.orbitAccess === "lite" || req.orbitUser?.orbitAccess === "coordinator")
+            ? "Personas a tu cargo"
+            : "Personas activas en planta",
         capacityPercentage: null,
       },
       openVacancies: vacancyMetrics.openVacancies,

@@ -6,7 +6,9 @@ export type NewsScope =
   | { kind: "school"; schoolId: number }
   | { kind: "area"; areaId: number }
   /** Varias áreas (grants Planta Activa: Leidy, Tania, etc.). */
-  | { kind: "areas"; areaIds: number[] };
+  | { kind: "areas"; areaIds: number[] }
+  /** Equipo del coordinador académico / LITE (personas de su subárbol). */
+  | { kind: "people"; personIds: number[] };
 
 /** Roles con novedades filtradas por `person.area_id` / escuelas del área (JWT `areaId`). */
 export function getNewsAreaRoleIds(): number[] {
@@ -45,6 +47,11 @@ export function areaIdFromRequest(req: Request): number | null {
 export function newsScopeFromRequest(req: Request): NewsScope | null {
   const u = req.orbitUser;
   if (!u) return null;
+
+  // Coordinador académico / LITE: solo las personas de su equipo.
+  if (u.orbitAccess === "coordinator" || u.orbitAccess === "lite") {
+    return { kind: "people", personIds: u.teamPersonIds ?? [] };
+  }
 
   const schoolScope = schoolScopeFromRequest(req);
   if (schoolScope != null) {
@@ -98,6 +105,13 @@ export function newsScopeSql(
     return {
       clause: `COALESCE(${aliasAp}.area_id, ${aliasS}.area_id) = $${startIdx}`,
       values: [scope.areaId],
+      nextIdx: startIdx + 1,
+    };
+  }
+  if (scope.kind === "people") {
+    return {
+      clause: `${aliasAp}.id = ANY($${startIdx}::bigint[])`,
+      values: [scope.personIds],
       nextIdx: startIdx + 1,
     };
   }

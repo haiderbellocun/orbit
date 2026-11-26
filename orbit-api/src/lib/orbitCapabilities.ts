@@ -6,7 +6,7 @@ import { getLiteRoleId } from "./orbitRoles";
 import { isNewsAreaRoleId } from "./newsScope";
 import { isEmailOnPlantaActivaGrant } from "./plantaActivaAccess";
 
-export type OrbitAccess = "lite" | "full" | "school";
+export type OrbitAccess = "lite" | "full" | "school" | "coordinator";
 
 export const ORBIT_CAPABILITY = {
   HOME: "view:home",
@@ -182,8 +182,21 @@ export function resolvePlantaActivaGrantAccess(
   };
 }
 
-const LITE_CAPABILITIES: readonly OrbitCapability[] = [
+/** LITE: paneles de su equipo directo (datos recortados en cada ruta). */
+export const LITE_CAPABILITIES: readonly OrbitCapability[] = [
   ORBIT_CAPABILITY.HOME,
+  ORBIT_CAPABILITY.PLANTA_ACTIVA,
+  ORBIT_CAPABILITY.ACADEMIC_LOAD,
+  ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
+];
+
+/**
+ * Coordinador académico: lo del LITE un nivel arriba (todo su subárbol)
+ * + Novedades de su equipo. El catálogo de roles no depende de capability.
+ */
+export const ACADEMIC_COORDINATOR_CAPABILITIES: readonly OrbitCapability[] = [
+  ...LITE_CAPABILITIES,
+  ORBIT_CAPABILITY.NEWS,
 ];
 
 const DEFAULT_FULL_ACCESS_ROLE_IDS = [1, 10, 13, 19, 42, 43, 44, 45, 46];

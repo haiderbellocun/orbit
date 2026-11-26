@@ -74,8 +74,12 @@ function AppShell({
 }) {
   const tutorial = useTutorialOptional();
   const sidebarNavItems = useMemo(
-    () => filterNavItems(NAV_ITEMS, capabilities),
-    [capabilities]
+    () =>
+      filterNavItems(NAV_ITEMS, capabilities).filter(
+        // LITE: solo los paneles de su equipo (el catálogo de roles no aplica).
+        (item) => !(orbitAccess === "lite" && item.id === "roles")
+      ),
+    [capabilities, orbitAccess]
   );
   const canVacancies = canManageVacancies(capabilities);
 

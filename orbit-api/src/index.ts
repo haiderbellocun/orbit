@@ -19,6 +19,7 @@ import {
   orbitAuthMiddleware,
   orbitCapabilityByPathMiddleware,
 } from "./middleware/orbitAuth";
+import { orbitTeamScopeMiddleware } from "./lib/liteScope";
 
 const app = express();
 const port = Number.parseInt(process.env.PORT ?? "4000", 10);
@@ -48,6 +49,7 @@ app.use(express.json());
 
 app.use("/api", authRouter);
 app.use("/api", orbitAuthMiddleware);
+app.use("/api", orbitTeamScopeMiddleware);
 app.use("/api", orbitCapabilityByPathMiddleware);
 app.use("/api", dashboardRouter);
 app.use("/api", catalogRouter);

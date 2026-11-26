@@ -24,6 +24,7 @@ import {
   getCatalogPrograms,
   getCatalogRoles,
   getStoredPlantaActivaAccess,
+  getStoredOrbitAccess,
   type CatalogArea,
   type CatalogSchool,
   type CatalogProgram,
@@ -122,6 +123,12 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
   onOpenVacancyFromNotification,
 }) => {
   const plantaAccess = useMemo(() => getStoredPlantaActivaAccess(), []);
+  // LITE: ve su equipo directo; edita datos, pero no crea ni mueve estructura.
+  // LITE y coordinador académico: datos recortados a su equipo.
+  const isLiteUser = useMemo(() => {
+    const access = getStoredOrbitAccess();
+    return access === 'lite' || access === 'coordinator';
+  }, []);
   const editableAreaIds = plantaAccess?.editAreaIds ?? null;
   const viewableAreaIds = plantaAccess?.viewAreaIds ?? null;
   const catalogAreaIds = viewableAreaIds;
@@ -531,7 +538,11 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return next;
   }, [userExpanded, autoExpanded]);
 
-  const radial = usePlantaRadial(forest);
+  // LITE: la rueda arranca en él y muestra directamente a su equipo.
+  const radial = usePlantaRadial(
+    forest,
+    isLiteUser && orgGraph ? String(orgGraph.root_person_id) : null
+  );
   // Con búsqueda o filtros la lista muestra coincidencias en toda la planta;
   // sin ellos, la rama elegida en la rueda.
   const listForest = hasActiveQuery ? visibleForest : radial.panelForest;
@@ -649,7 +660,8 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
     return chips;
   }, [filters, lockedAreaId, areasForFilter, schools, programs, rolesForPlanta]);
 
-  const canCreate = editableAreaIds == null || editableAreaIds.length > 0;
+  const canCreate =
+    !isLiteUser && (editableAreaIds == null || editableAreaIds.length > 0);
 
   const rememberFormOpener = () => {
     formOpenerRef.current =
@@ -1531,6 +1543,7 @@ export const PlantaActivaView: React.FC<PlantaActivaViewProps> = ({
                   canEditPerson={personCanEditDrawer}
                   graph={orgGraph}
                   canMutateOrg={canMutateOrg}
+                  lockStructure={isLiteUser}
                 />
             )}
             {assignFor && (

@@ -8,6 +8,8 @@ import {
   isEmailOnOrbitAllowlist,
   isEmailVacancyAdmin,
   isInformationManagementUser,
+  ACADEMIC_COORDINATOR_CAPABILITIES,
+  LITE_CAPABILITIES,
   ORBIT_CAPABILITY,
   resolvePlantaActivaGrantAccess,
   SUPER_ADMIN_CAPABILITIES,
@@ -40,6 +42,8 @@ export type OrbitJwtUser = {
   plantaViewAreaIds: number[] | null;
   /** `null` = puede editar cualquier área (admin). */
   plantaEditAreaIds: number[] | null;
+  /** LITE / coordinador: personas de su equipo (lo llena orbitTeamScopeMiddleware). */
+  teamPersonIds?: number[];
 };
 
 declare global {
@@ -118,14 +122,18 @@ export function orbitAuthMiddleware(
     if (
       decoded.orbitAccess !== "lite" &&
       decoded.orbitAccess !== "full" &&
-      decoded.orbitAccess !== "school"
+      decoded.orbitAccess !== "school" &&
+      decoded.orbitAccess !== "coordinator"
     ) {
       res.status(401).json({ error: "Token inválido o expirado" });
       return;
     }
 
     const email = String(decoded.email ?? "").trim().toLowerCase();
-    if (!isEmailAuthorizedForOrbit(email)) {
+    // LITE / coordinador: el login verificó el rol; el token firmado es la autorización.
+    const isLiteToken = decoded.orbitAccess === "lite";
+    const isCoordinatorToken = decoded.orbitAccess === "coordinator";
+    if (!isEmailAuthorizedForOrbit(email) && !isLiteToken && !isCoordinatorToken) {
       res.status(401).json({
         error:
           "ORBIT está en reestructuración. Tu cuenta aún no tiene acceso autorizado.",
@@ -151,6 +159,12 @@ export function orbitAuthMiddleware(
         capabilities = [...VACANCIES_ADMIN_CAPABILITIES];
       } else if (isInformationManagementUser(email)) {
         capabilities = [];
+      } else if (isCoordinatorToken) {
+        orbitAccess = "coordinator";
+        capabilities = [...ACADEMIC_COORDINATOR_CAPABILITIES];
+      } else if (isLiteToken) {
+        orbitAccess = "lite";
+        capabilities = [...LITE_CAPABILITIES];
       } else {
         res.status(401).json({
           error:
@@ -248,6 +262,12 @@ export function orbitCapabilityByPathMiddleware(
     return;
   }
 
+  // El catálogo de roles se puede leer, pero un LITE no lo modifica.
+  if (path.startsWith("/roles") && req.method !== "GET" && u.orbitAccess === "lite") {
+    res.status(403).json({ error: "No tienes permiso para este recurso" });
+    return;
+  }
+
   // Selector de personas en Novedades (GET /personal).
   if (path.startsWith("/personal")) {
     if (
@@ -321,7 +341,7 @@ export function requireFullOrbitAccess(
     res.status(401).json({ error: "Se requiere autenticación" });
     return;
   }
-  if (u.orbitAccess === "lite") {
+  if (u.orbitAccess === "lite" || u.orbitAccess === "coordinator") {
     res.status(403).json({ error: "No tienes permiso para este recurso" });
     return;
   }

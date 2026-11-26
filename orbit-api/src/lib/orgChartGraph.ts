@@ -223,6 +223,40 @@ export function serializeOrgChartGraph(graph: OrgChartGraph) {
   };
 }
 
+/**
+ * Grafo de Planta para un LITE / coordinador: él en la raíz y su equipo debajo
+ * (aristas de su subárbol). No expone el resto del organigrama y no permite
+ * reasignar (`can_mutate`).
+ */
+export function serializeTeamGraph(
+  graph: OrgChartGraph,
+  rootPersonId: number,
+  edges: ReadonlyArray<{ parent: number; child: number }>
+) {
+  const visible = new Set<number>([rootPersonId, ...edges.map((e) => e.child)]);
+  return {
+    version: {
+      id: graph.version.id,
+      code: graph.version.code,
+      name: graph.version.name,
+      period_label: graph.version.periodLabel,
+      is_locked: graph.version.isLocked,
+    },
+    root_person_id: rootPersonId,
+    can_mutate: false,
+    relations: edges.map((e, idx) => ({
+      id: idx + 1,
+      parent_person_id: e.parent,
+      child_person_id: e.child,
+      visual_level: null,
+    })),
+    position_children: [],
+    person_overrides: graph.personOverrides.filter((o) => visible.has(o.person_id)),
+    relation_overrides: [],
+    planta_overrides: [],
+  };
+}
+
 async function plantaOverrideTable(): Promise<string | null> {
   const mode = await resolveCoreSchemaMode();
   if (mode == null) return null;

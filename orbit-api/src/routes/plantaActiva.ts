@@ -21,6 +21,7 @@ import {
   deletePlantaOrgOverride,
   listPlantaOrgOverrides,
   loadOrgChartGraph,
+  serializeTeamGraph,
   serializeOrgChartGraph,
   upsertPlantaOrgOverride,
 } from "../lib/orgChartGraph";
@@ -34,6 +35,14 @@ import {
   orbitPersonIdFromRequest,
   schoolScopeFromRequest,
 } from "../middleware/orbitAuth";
+import {
+  isTeamScopedRequest,
+  teamPersonIds,
+  personInTeamScope,
+  loadTeamTree,
+  teamTreeDepth,
+} from "../lib/liteScope";
+import { invalidateResponsibleIndex } from "../lib/orgResponsible";
 import { notifyVacancyCreated } from "../services/vacancyNotifyService";
 import {
   sqlPersonIsActive,
@@ -276,6 +285,15 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
     const values: unknown[] = [];
     let i = 1;
 
+    // LITE: él mismo (raíz de su rueda) + su equipo directo.
+    const liteTeam = await teamPersonIds(req);
+    const litePersonId = liteTeam != null ? orbitPersonIdFromRequest(req) : null;
+    if (liteTeam != null) {
+      conditions.push(`p.id = ANY($${i}::bigint[])`);
+      values.push(litePersonId != null ? [litePersonId, ...liteTeam] : liteTeam);
+      i++;
+    }
+
     if (schoolScope != null) {
       conditions.push(`p.school_id = $${i}`);
       values.push(schoolScope.schoolId);
@@ -412,11 +430,14 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
         typeof rest.role_code === "string" ? rest.role_code : null;
       return {
         ...rest,
-        can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
-          roleId,
-          roleName,
-          roleCode,
-        }),
+        can_edit:
+          liteTeam != null
+            ? liteTeam.includes(Number(rest.id))
+            : canEditPlantaPerson(plantaGrant, effectiveArea, {
+                roleId,
+                roleName,
+                roleCode,
+              }),
       };
     });
 
@@ -430,9 +451,15 @@ router.get("/planta-activa", async (req: Request, res: Response) => {
       },
       ...(includeOrg
         ? {
-            org: await loadOrgChartGraph().then((g) =>
-              g ? serializeOrgChartGraph(g) : null
-            ),
+            org: await loadOrgChartGraph().then(async (g) => {
+              if (!g) return null;
+              if (liteTeam != null) {
+                if (litePersonId == null) return null;
+                const tree = await loadTeamTree(litePersonId, teamTreeDepth(req));
+                return serializeTeamGraph(g, litePersonId, tree.edges);
+              }
+              return serializeOrgChartGraph(g);
+            }),
           }
         : {}),
     });
@@ -491,6 +518,18 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
       return;
     }
 
+    // LITE: solo su ficha y la de su equipo; edita solo al equipo.
+    const liteTeam = await teamPersonIds(req);
+    const inLiteTeam = liteTeam?.includes(id) ?? false;
+    if (
+      liteTeam != null &&
+      !inLiteTeam &&
+      id !== orbitPersonIdFromRequest(req)
+    ) {
+      res.status(403).json({ error: "No tienes permiso para este recurso" });
+      return;
+    }
+
     const roleId = row.role_id != null ? Number(row.role_id) : null;
     const roleName = String(row.role_name ?? "");
     if (
@@ -509,12 +548,16 @@ router.get("/planta-activa/:id", async (req: Request, res: Response) => {
     res.json({
       ...rest,
       role_code: roleCode,
-      can_edit: canEditPlantaPerson(plantaGrant, effectiveArea, {
-        roleId,
-        roleName,
-        roleCode: String(roleCode ?? ""),
-      }),
-      direct_reports: directReports,
+      can_edit:
+        liteTeam != null
+          ? inLiteTeam
+          : canEditPlantaPerson(plantaGrant, effectiveArea, {
+              roleId,
+              roleName,
+              roleCode: String(roleCode ?? ""),
+            }),
+      // El equipo de un LITE ya está en su rueda; no se exponen otros.
+      direct_reports: liteTeam != null ? [] : directReports,
       assigned_programs: assignedPrograms,
     });
   } catch (e) {
@@ -548,6 +591,10 @@ router.post("/planta-activa", async (req: Request, res: Response) => {
       return;
     }
     const prefix = mode === "core" ? "core." : "";
+    if (isTeamScopedRequest(req)) {
+      res.status(403).json({ error: "No puedes crear personal desde tu perfil" });
+      return;
+    }
     const schoolScope = schoolScopeFromRequest(req);
     const plantaGrant = plantaGrantFromRequest(req);
     const b = (req.body ?? {}) as Record<string, unknown>;
@@ -814,6 +861,12 @@ router.patch(
         res.status(400).json({ error: "Invalid id" });
         return;
       }
+      if (isTeamScopedRequest(req)) {
+        res.status(403).json({
+          error: "No puedes cambiar la jerarquía desde tu perfil",
+        });
+        return;
+      }
       const graph = await loadOrgChartGraph();
       if (graph == null) {
         res.status(503).json({ error: "Organigrama no está disponible" });
@@ -886,6 +939,7 @@ router.patch(
 
       if (followOrganigrama) {
         await deletePlantaOrgOverride(childId);
+        invalidateResponsibleIndex();
         res.json({
           ok: true,
           child_person_id: childId,
@@ -936,6 +990,7 @@ router.patch(
       }
 
       await upsertPlantaOrgOverride(childId, parentId);
+      invalidateResponsibleIndex();
       const overrides = await listPlantaOrgOverrides();
       res.json({
         ok: true,
@@ -972,6 +1027,7 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
     const existing = await pool.query(
       `SELECT
          p.id,
+         p.area_id,
          p.school_id,
          p.program_id,
          p.role_id,
@@ -993,6 +1049,7 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
     }
 
     const current = existing.rows[0] as {
+      area_id: number | null;
       school_id: number | null;
       program_id: number | null;
       role_id: number | null;
@@ -1030,6 +1087,33 @@ router.patch("/planta-activa/:id", async (req: Request, res: Response) => {
     }
 
     const b = (req.body ?? {}) as Record<string, unknown>;
+
+    // LITE: solo su equipo directo, sin moverlo de área, escuela ni rol
+    // (lo sacaría de su alcance). El formulario reenvía los valores actuales.
+    if (isTeamScopedRequest(req)) {
+      if (!(await personInTeamScope(req, id))) {
+        res.status(403).json({ error: "Esta persona no está a tu cargo" });
+        return;
+      }
+      const sameAs = (keys: readonly string[], currentValue: number | null) => {
+        const key = keys.find((k) => k in b);
+        if (key == null) return true;
+        const next = parsePositiveInt(b[key]);
+        const cur = currentValue != null ? Number(currentValue) : null;
+        return next === cur;
+      };
+      if (
+        !sameAs(["area_id", "areaId"], current.area_id) ||
+        !sameAs(["school_id", "schoolId"], current.school_id) ||
+        !sameAs(["role_id", "roleId"], current.role_id)
+      ) {
+        res.status(403).json({
+          error: "No puedes cambiar el área, la escuela ni el rol de tu equipo",
+        });
+        return;
+      }
+    }
+
     const sets: string[] = [];
     const values: unknown[] = [];
     let i = 1;

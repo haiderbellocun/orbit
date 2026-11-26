@@ -13,6 +13,8 @@ export type ResponsibleIndex = {
   reachable: Set<number>;
   /** person_id → person_id de su responsable directo. */
   parentOf: Map<number, number>;
+  /** person_id → personas a su cargo directo (equipo que ve en Planta). */
+  childrenOf: Map<number, Set<number>>;
 };
 
 const CACHE_MS = 60_000;
@@ -23,6 +25,11 @@ export async function loadResponsibleIndex(): Promise<ResponsibleIndex | null> {
   const value = await computeResponsibleIndex();
   cache = { at: Date.now(), value };
   return value;
+}
+
+/** Tras cambiar un responsable en Planta, el siguiente uso recalcula el índice. */
+export function invalidateResponsibleIndex(): void {
+  cache = null;
 }
 
 async function computeResponsibleIndex(): Promise<ResponsibleIndex | null> {
@@ -38,6 +45,7 @@ async function computeResponsibleIndex(): Promise<ResponsibleIndex | null> {
 
   const reachable = new Set<number>();
   const parentOf = new Map<number, number>();
+  const childrenOf = new Map<number, Set<number>>();
   const seen = new Set<string>();
   const root = graph.rootPersonId;
   const stack: Array<{ personId: number; relationId: number | null }> = [
@@ -76,9 +84,15 @@ async function computeResponsibleIndex(): Promise<ResponsibleIndex | null> {
       if (child.personId === current.personId) continue;
       reachable.add(child.personId);
       if (!parentOf.has(child.personId)) parentOf.set(child.personId, current.personId);
+      let team = childrenOf.get(current.personId);
+      if (!team) {
+        team = new Set();
+        childrenOf.set(current.personId, team);
+      }
+      team.add(child.personId);
       stack.push(child);
     }
   }
 
-  return { reachable, parentOf };
+  return { reachable, parentOf, childrenOf };
 }

@@ -9,6 +9,7 @@ import {
   weeklyContractHoursFromLabels,
 } from "../lib/substantiveHours";
 import { schoolScopeFromRequest } from "../middleware/orbitAuth";
+import { teamPersonIds, personInTeamScope } from "../lib/liteScope";
 import { sqlPersonIsActive } from "../sql/personActive";
 import {
   computeTeacherAlerts,
@@ -124,6 +125,13 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
     const conditions: string[] = [sqlPersonIsActive("p")];
     const values: unknown[] = [];
     let i = 1;
+
+    const liteTeam = await teamPersonIds(req);
+    if (liteTeam != null) {
+      conditions.push(`p.id = ANY($${i}::bigint[])`);
+      values.push(liteTeam);
+      i++;
+    }
 
     if (schoolScope != null) {
       conditions.push(`p.school_id = $${i}`);
@@ -359,6 +367,10 @@ router.get(
         res.status(400).json({ error: "personId inválido" });
         return;
       }
+      if (!(await personInTeamScope(req, personId))) {
+        res.status(403).json({ error: "Este docente no está a tu cargo" });
+        return;
+      }
 
       const assignments = await pool.query(
         `SELECT
@@ -443,6 +455,10 @@ router.post("/substantive-hours/assignments", async (req: Request, res: Response
 
     if (personId == null) {
       res.status(400).json({ error: "personId es obligatorio" });
+      return;
+    }
+    if (!(await personInTeamScope(req, personId))) {
+      res.status(403).json({ error: "Este docente no está a tu cargo" });
       return;
     }
     if (hoursQuantity == null) {
@@ -554,6 +570,10 @@ router.put(
       const personId = parsePositiveInt(req.params.personId);
       if (personId == null) {
         res.status(400).json({ error: "personId inválido" });
+        return;
+      }
+      if (!(await personInTeamScope(req, personId))) {
+        res.status(403).json({ error: "Este docente no está a tu cargo" });
         return;
       }
 

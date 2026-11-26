@@ -9,6 +9,8 @@ import {
   isEmailOnOrbitAllowlist,
   isEmailVacancyAdmin,
   isInformationManagementUser,
+  ACADEMIC_COORDINATOR_CAPABILITIES,
+  LITE_CAPABILITIES,
   resolveAllowlistAdminAccess,
   resolvePlantaActivaGrantAccess,
   VACANCIES_ADMIN_CAPABILITIES,
@@ -16,6 +18,7 @@ import {
   type OrbitCapability,
 } from "../lib/orbitCapabilities";
 import { getPlantaActivaGrant } from "../lib/plantaActivaAccess";
+import { isAcademicCoordinatorRoleId, isLitePersonRole } from "../lib/liteScope";
 import { recordAppLoginAsync } from "../lib/loginAppsLog";
 import { orbitAuthMiddleware } from "../middleware/orbitAuth";
 
@@ -229,7 +232,9 @@ async function gateOrbitRoleAndLite(
   // Reborn: allowlist admin (acceso total) o grant acotado de Planta Activa.
   const authorized =
     isEmailAuthorizedForOrbit(emailNorm) ||
-    isEmailAuthorizedForOrbit(personEmailNorm);
+    isEmailAuthorizedForOrbit(personEmailNorm) ||
+    isLitePersonRole({ roleCode: person.role_code, roleName: person.role_name }) ||
+    isAcademicCoordinatorRoleId(person.role_id);
   if (!authorized) {
     return {
       ok: false,
@@ -300,6 +305,34 @@ async function gateOrbitRoleAndLite(
       ok: true,
       orbitAccess: "full",
       capabilities: ensureInformationManagementCapabilities([], emailNorm || personEmailNorm),
+      schoolId: null,
+      areaId: null,
+      programIds: [],
+      plantaViewAreaIds: null,
+      plantaEditAreaIds: null,
+    };
+  }
+
+  // Coordinadores de escuela / especializaciones: su subárbol + Novedades.
+  if (isAcademicCoordinatorRoleId(person.role_id)) {
+    return {
+      ok: true,
+      orbitAccess: "coordinator",
+      capabilities: [...ACADEMIC_COORDINATOR_CAPABILITIES],
+      schoolId: null,
+      areaId: null,
+      programIds: [],
+      plantaViewAreaIds: null,
+      plantaEditAreaIds: null,
+    };
+  }
+
+  // Todo LITE activo entra con los paneles de su equipo directo.
+  if (isLitePersonRole({ roleCode: person.role_code, roleName: person.role_name })) {
+    return {
+      ok: true,
+      orbitAccess: "lite",
+      capabilities: [...LITE_CAPABILITIES],
       schoolId: null,
       areaId: null,
       programIds: [],

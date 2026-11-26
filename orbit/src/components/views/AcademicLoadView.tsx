@@ -14,8 +14,7 @@ import {
   getAcademicLoad,
   getAcademicLoadExport,
   getAcademicLoadFilterOptions,
-  getCatalogSchools,
-  type CatalogSchool,
+  getStoredOrbitAccess,
 } from '@/src/lib/api';
 import type {
   AlertsSummary,
@@ -243,7 +242,7 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
   const [periodOptions, setPeriodOptions] = useState<string[]>([]);
   const [blockOptions, setBlockOptions] = useState<string[]>([]);
   const [programOptions, setProgramOptions] = useState<string[]>([]);
-  const [schools, setSchools] = useState<CatalogSchool[]>([]);
+  const [schools, setSchools] = useState<{ id: number; name: string }[]>([]);
   const [rows, setRows] = useState<AcademicLoadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -268,19 +267,33 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
   const selectClass =
     'w-full rounded-xl border border-orbit-border/80 bg-orbit-bg-secondary px-3 py-2.5 text-sm text-orbit-text shadow-sm focus:outline-none focus:ring-2 focus:ring-orbit-primary/30';
 
+  // LITE y coordinador académico: datos recortados a su equipo.
+  const isLiteUser = useMemo(() => {
+    const access = getStoredOrbitAccess();
+    return access === 'lite' || access === 'coordinator';
+  }, []);
+
+  // Escuelas con carga vigente en el alcance del usuario (no el catálogo
+  // institucional), separadas por pestaña: docentes o investigación.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [opts, s] = await Promise.all([
-          getAcademicLoadFilterOptions(),
-          getCatalogSchools(),
-        ]);
+        const opts = await getAcademicLoadFilterOptions({
+          research: tab === 'research' ? 'only' : 'exclude',
+        });
         if (cancelled) return;
         setPeriodOptions(opts.periods);
         setBlockOptions(opts.blocks);
         setProgramOptions(opts.programs);
-        setSchools(Array.isArray(s) ? s : []);
+        setSchools(opts.schools);
+        const keep = (id: string) =>
+          id && opts.schools.some((s) => String(s.id) === id) ? id : '';
+        // Un LITE con una sola escuela la ve ya seleccionada.
+        const only =
+          isLiteUser && opts.schools.length === 1 ? String(opts.schools[0].id) : '';
+        setFilters((f) => ({ ...f, schoolId: only || keep(f.schoolId) }));
+        setApplied((f) => ({ ...f, schoolId: only || keep(f.schoolId) }));
       } catch {
         /* catálogos opcionales */
       }
@@ -288,33 +301,9 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tab, isLiteUser]);
 
-  const schoolOptions = useMemo(() => {
-    if (filters.area === "especializaciones") {
-      return schools.filter((s) => {
-        const name = String(s.name ?? "")
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toUpperCase();
-        return (
-          String(s.area_id ?? "") === "9" || name.includes("ESPECIALIZ")
-        );
-      });
-    }
-    if (filters.area === "operacion_academica") {
-      return schools.filter((s) => {
-        const name = String(s.name ?? "")
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toUpperCase();
-        return (
-          String(s.area_id ?? "") !== "9" && !name.includes("ESPECIALIZ")
-        );
-      });
-    }
-    return schools;
-  }, [schools, filters.area]);
+  const schoolOptions = schools;
 
   /** Filtros aplicados, iguales para la tabla y el Excel. */
   const queryParams = useMemo(

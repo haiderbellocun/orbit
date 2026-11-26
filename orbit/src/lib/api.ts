@@ -51,7 +51,7 @@ export type PaginatedResponse<T = unknown> = {
 const DEFAULT_FETCH_TIMEOUT_MS = 120_000;
 /** Solo subida del archivo al POST /import/docentes?async=1; el progreso sigue por SSE */
 
-export type OrbitAccess = "lite" | "full" | "school";
+export type OrbitAccess = "lite" | "full" | "school" | "coordinator";
 
 export const ORBIT_JWT_STORAGE_KEY = "orbit_jwt";
 export const ORBIT_USER_STORAGE_KEY = "orbit_user";
@@ -125,7 +125,8 @@ export function isStoredJwtValid(): boolean {
   if (
     p.orbitAccess !== "lite" &&
     p.orbitAccess !== "full" &&
-    p.orbitAccess !== "school"
+    p.orbitAccess !== "school" &&
+    p.orbitAccess !== "coordinator"
   ) {
     return false;
   }
@@ -299,7 +300,8 @@ export function getStoredOrbitAccess(): OrbitAccess | null {
         if (
           u.orbitAccess === "lite" ||
           u.orbitAccess === "full" ||
-          u.orbitAccess === "school"
+          u.orbitAccess === "school" ||
+          u.orbitAccess === "coordinator"
         ) {
           return u.orbitAccess;
         }
@@ -313,7 +315,8 @@ export function getStoredOrbitAccess(): OrbitAccess | null {
   if (
     p?.orbitAccess === "lite" ||
     p?.orbitAccess === "full" ||
-    p?.orbitAccess === "school"
+    p?.orbitAccess === "school" ||
+    p?.orbitAccess === "coordinator"
   ) {
     return p.orbitAccess;
   }
@@ -1288,14 +1291,23 @@ export type AcademicLoadFilterOptions = {
   programs: string[];
   modalities: { value: string; label: string }[];
   studyLevels: { value: string; label: string }[];
+  /** Escuelas con carga vigente en el alcance del usuario. */
+  schools: { id: number; name: string }[];
 };
 
-export async function getAcademicLoadFilterOptions(): Promise<AcademicLoadFilterOptions> {
-  const response = await authFetch(`${BASE_URL}/academic-load/filter-options`, {
+export async function getAcademicLoadFilterOptions(params?: {
+  research?: "only" | "exclude";
+}): Promise<AcademicLoadFilterOptions> {
+  const url = new URL(`${BASE_URL}/academic-load/filter-options`);
+  if (params?.research) url.searchParams.set("research", params.research);
+  const response = await authFetch(url.toString(), {
     headers: jsonHeaders,
   });
   const json = (await handleJson(response)) as Partial<AcademicLoadFilterOptions>;
   return {
+    schools: Array.isArray(json.schools)
+      ? json.schools.map((s) => ({ id: Number(s.id), name: String(s.name) }))
+      : [],
     periods: Array.isArray(json.periods) ? json.periods.map(String) : [],
     blocks: Array.isArray(json.blocks) ? json.blocks.map(String) : [],
     programs: Array.isArray(json.programs) ? json.programs.map(String) : [],

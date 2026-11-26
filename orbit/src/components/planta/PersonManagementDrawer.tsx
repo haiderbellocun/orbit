@@ -55,6 +55,8 @@ type PersonManagementDrawerProps = {
   canEditPerson: boolean;
   graph: OrgChartGraphPayload | null;
   canMutateOrg: boolean;
+  /** LITE: no puede mover a su equipo de área, escuela ni rol. */
+  lockStructure?: boolean;
 };
 
 export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
@@ -80,6 +82,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
   canEditPerson,
   graph,
   canMutateOrg,
+  lockStructure = false,
 }) => {
   const reducedMotion = useReducedMotion();
   const asideRef = useRef<HTMLElement>(null);
@@ -476,7 +479,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                     }
                     className={PLANTA_SELECT_CLASS}
                     required={areaRequired}
-                    disabled={!canEditPerson}
+                    disabled={!canEditPerson || lockStructure}
                   >
                     {showEmptyAreaOption && <option value="">Sin área</option>}
                     {!showEmptyAreaOption && (
@@ -505,7 +508,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                       }))
                     }
                     className={PLANTA_SELECT_CLASS}
-                    disabled={!canEditPerson}
+                    disabled={!canEditPerson || lockStructure}
                   >
                     <option value="">Sin escuela</option>
                     {schools.map((s) => (
@@ -548,7 +551,7 @@ export const PersonManagementDrawer: React.FC<PersonManagementDrawerProps> = ({
                       setForm((f) => ({ ...f, role_id: e.target.value }))
                     }
                     className={PLANTA_SELECT_CLASS}
-                    disabled={!canEditPerson}
+                    disabled={!canEditPerson || lockStructure}
                   >
                     <option value="">Sin rol</option>
                     {roles.map((r) => (

@@ -4,6 +4,7 @@ import { pool } from "../db/connection";
 import { sqlPersonIsActive } from "../sql/personActive";
 import { schoolScopeFromRequest } from "../middleware/orbitAuth";
 import { loadResponsibleIndex } from "../lib/orgResponsible";
+import { teamPersonIds } from "../lib/liteScope";
 import {
   computeTeacherAlerts,
   parseTeacherAlertKey,
@@ -71,15 +72,41 @@ function normalizeModalityQueryParam(value: string): {
   return { code: null, literal: trimmed };
 }
 
+/**
+ * Recorte por usuario (coordinador de escuela o equipo LITE) como ` AND …`
+ * sobre `p` (docente) y `pr` (programa de la carga), con parámetros desde `startIdx`.
+ */
+async function personScopeSql(
+  req: Request,
+  startIdx: number
+): Promise<{ sql: string; params: unknown[] }> {
+  const liteTeam = await teamPersonIds(req);
+  if (liteTeam != null) {
+    return { sql: ` AND p.id = ANY($${startIdx}::bigint[])`, params: [liteTeam] };
+  }
+  const schoolScope = schoolScopeFromRequest(req);
+  if (schoolScope != null) {
+    return {
+      sql: ` AND (p.school_id = $${startIdx} OR pr.school_id = $${startIdx})`,
+      params: [schoolScope.schoolId],
+    };
+  }
+  return { sql: "", params: [] };
+}
+
 router.get("/academic-load/filter-options", async (req: Request, res: Response) => {
   try {
-    const schoolScope = schoolScopeFromRequest(req);
-    const schoolSql = schoolScope
-      ? ` AND (p.school_id = $1 OR pr.school_id = $1)`
-      : "";
-    const params = schoolScope ? [schoolScope.schoolId] : [];
+    const { sql: schoolSql, params } = await personScopeSql(req, 1);
+    /** Pestaña: "only" = investigación; "exclude" = docentes. Sin valor = todas. */
+    const research = qStr(req.query.research).toLowerCase();
+    const researchSql =
+      research === "only"
+        ? ` AND ${SQL_IS_RESEARCH_TEACHER}`
+        : research === "exclude"
+          ? ` AND NOT ${SQL_IS_RESEARCH_TEACHER}`
+          : "";
 
-    const [periodsR, blocksR, programsR] = await Promise.all([
+    const [periodsR, blocksR, programsR, schoolsR] = await Promise.all([
       pool.query(
         `
         SELECT DISTINCT al.period_code AS period
@@ -119,12 +146,27 @@ router.get("/academic-load/filter-options", async (req: Request, res: Response) 
         `,
         params
       ),
+      // Escuelas con carga vigente en el alcance del usuario (solo académicas,
+      // no todo el catálogo institucional).
+      pool.query(
+        `
+        SELECT DISTINCT sch.id, sch.name
+        FROM academic_workload.academic_load al
+        INNER JOIN person p ON p.id = al.person_id AND ${sqlPersonIsActive("p")}
+        INNER JOIN school sch ON sch.id = p.school_id
+        LEFT JOIN program pr ON pr.id = al.program_id
+        WHERE ${sqlPeriodIsCurrent("al")}${schoolSql}${researchSql}
+        ORDER BY sch.name ASC
+        `,
+        params
+      ),
     ]);
 
     res.json({
       periods: periodsR.rows.map((r) => String(r.period)).filter(Boolean),
       blocks: blocksR.rows.map((r) => String(r.block)).filter(Boolean),
       programs: programsR.rows.map((r) => String(r.program)).filter(Boolean),
+      schools: schoolsR.rows.map((r) => ({ id: Number(r.id), name: String(r.name) })),
       modalities: [
         { value: "P", label: "Presencial" },
         { value: "V", label: "Virtual" },
@@ -248,6 +290,12 @@ async function buildAcademicLoadFilter(req: Request) {
   if (research === "only") conditions.push(SQL_IS_RESEARCH_TEACHER);
   else if (research === "exclude") conditions.push(`NOT ${SQL_IS_RESEARCH_TEACHER}`);
 
+  const liteTeam = await teamPersonIds(req);
+  if (liteTeam != null) {
+    conditions.push(`p.id = ANY($${i}::bigint[])`);
+    values.push(liteTeam);
+    i++;
+  }
   const schoolScope = schoolScopeFromRequest(req);
   if (schoolScope != null) {
     conditions.push(`(p.school_id = $${i} OR pr.school_id = $${i})`);
@@ -592,6 +640,11 @@ router.get("/academic-load/export", async (req: Request, res: Response) => {
     ];
     if (research === "only") personConds.push(SQL_IS_RESEARCH_TEACHER);
     else if (research === "exclude") personConds.push(`NOT ${SQL_IS_RESEARCH_TEACHER}`);
+    const liteTeam = await teamPersonIds(req);
+    if (liteTeam != null) {
+      personValues.push(liteTeam);
+      personConds.push(`p.id = ANY($${personValues.length}::bigint[])`);
+    }
     const schoolScope = schoolScopeFromRequest(req);
     const schoolId = schoolScope?.schoolId ?? parsePositiveInt(req.query.school_id ?? req.query.schoolId);
     if (schoolId != null) {
@@ -874,11 +927,7 @@ router.get("/academic-load/export", async (req: Request, res: Response) => {
 
 router.get("/academic-load/summary", async (req: Request, res: Response) => {
   try {
-    const schoolScope = schoolScopeFromRequest(req);
-    const schoolSql = schoolScope
-      ? ` AND (p.school_id = $1 OR pr.school_id = $1)`
-      : "";
-    const params = schoolScope ? [schoolScope.schoolId] : [];
+    const { sql: schoolSql, params } = await personScopeSql(req, 1);
     const result = await pool.query(
       `
       SELECT
@@ -908,12 +957,9 @@ router.get("/academic-load/summary", async (req: Request, res: Response) => {
 
 router.get("/academic-load/teacher/:document", async (req: Request, res: Response) => {
   try {
-    const schoolScope = schoolScopeFromRequest(req);
-    const schoolSql = schoolScope
-      ? ` AND (p.school_id = $2 OR pr.school_id = $2)`
-      : "";
-    const params: unknown[] = [req.params.document];
-    if (schoolScope) params.push(schoolScope.schoolId);
+    const scope = await personScopeSql(req, 2);
+    const schoolSql = scope.sql;
+    const params: unknown[] = [req.params.document, ...scope.params];
 
     const result = await pool.query(
       `

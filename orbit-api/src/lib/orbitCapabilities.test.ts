@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  ACADEMIC_COORDINATOR_CAPABILITIES,
   ALL_ORBIT_CAPABILITIES,
   ORBIT_CAPABILITY,
   ROLE_51_STAFF_CAPABILITIES,
@@ -26,6 +27,7 @@ import {
   canViewPlantaArea,
   getPlantaActivaGrant,
 } from "./plantaActivaAccess";
+import { isAcademicCoordinatorRoleId } from "./liteScope";
 
 function test(name: string, fn: () => void): void {
   try {
@@ -144,6 +146,9 @@ test("LITE by configured role id (not 9)", () => {
     assert.equal(r.orbitAccess, "lite");
     assert.deepEqual(r.capabilities, [
       ORBIT_CAPABILITY.HOME,
+      ORBIT_CAPABILITY.PLANTA_ACTIVA,
+      ORBIT_CAPABILITY.ACADEMIC_LOAD,
+      ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
     ]);
   } finally {
     if (prev === undefined) delete process.env.ORBIT_LITE_ROLE_ID;
@@ -353,6 +358,22 @@ test("planta activa grants: sara/lorena/maria/cindy/leidy/tania", () => {
   );
 
   assert.equal(getPlantaActivaGrant("camilo_quintero@cun.edu.co"), null);
+});
+
+test("academic coordinator roles (escuelas + especializaciones)", () => {
+  for (const id of [58, 204, 205, 206, 207, 208]) {
+    assert.equal(isAcademicCoordinatorRoleId(id), true);
+  }
+  assert.equal(isAcademicCoordinatorRoleId(9), false);
+  assert.equal(isAcademicCoordinatorRoleId(12), false);
+  assert.equal(isAcademicCoordinatorRoleId(null), false);
+  assert.deepEqual(ACADEMIC_COORDINATOR_CAPABILITIES, [
+    ORBIT_CAPABILITY.HOME,
+    ORBIT_CAPABILITY.PLANTA_ACTIVA,
+    ORBIT_CAPABILITY.ACADEMIC_LOAD,
+    ORBIT_CAPABILITY.SUBSTANTIVE_HOURS,
+    ORBIT_CAPABILITY.NEWS,
+  ]);
 });
 
 test("isEmailAuthorizedForOrbit includes planta grants", () => {
