@@ -55,6 +55,7 @@ const DEFAULT_INFORMATION_MANAGEMENT_ALLOWLIST = [
   "camilo_quintero@cun.edu.co",
   "sara_martinezl@cun.edu.co",
   "johan_dazasar@cun.edu.co",
+  "danna_poveda@cun.edu.co",
 ] as const;
 
 export function getInformationManagementAllowlist(): string[] {
@@ -99,6 +100,7 @@ const DEFAULT_ACCESS_ALLOWLIST = [
   "cindy_russi@cun.edu.co",
   "maria_ballen@cun.edu.co",
   "johan_dazasar@cun.edu.co",
+  "danna_poveda@cun.edu.co",
 ] as const;
 
 /**
@@ -113,6 +115,7 @@ const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
   "maria_ballen@cun.edu.co",
   "cindy_russi@cun.edu.co",
   "johan_dazasar@cun.edu.co",
+  "danna_poveda@cun.edu.co",
 ] as const;
 
 export function getOrbitAccessAllowlist(): string[] {

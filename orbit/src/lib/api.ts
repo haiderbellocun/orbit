@@ -176,6 +176,7 @@ const DEFAULT_INFORMATION_MANAGEMENT_ALLOWLIST = [
   "camilo_quintero@cun.edu.co",
   "sara_martinezl@cun.edu.co",
   "johan_dazasar@cun.edu.co",
+  "danna_poveda@cun.edu.co",
 ];
 
 function isStoredEmailInformationManagementUser(): boolean {
@@ -227,6 +228,7 @@ const DEFAULT_ORBIT_ACCESS_ALLOWLIST = [
   "cindy_russi@cun.edu.co",
   "maria_ballen@cun.edu.co",
   "johan_dazasar@cun.edu.co",
+  "danna_poveda@cun.edu.co",
 ] as const;
 
 const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
@@ -236,6 +238,7 @@ const DEFAULT_VACANCY_ADMIN_ALLOWLIST = [
   "maria_ballen@cun.edu.co",
   "cindy_russi@cun.edu.co",
   "johan_dazasar@cun.edu.co",
+  "danna_poveda@cun.edu.co",
 ] as const;
 
 /** Misma allowlist de reborn que el API. Override: VITE_ORBIT_ACCESS_ALLOWLIST */
