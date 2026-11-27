@@ -5,6 +5,7 @@ export const TEACHER_ALERT_KEYS = [
   'no_schedule',
   'no_responsible',
   'no_edu_email',
+  'virtual_students_over',
 ] as const;
 
 export type TeacherAlertKey = (typeof TEACHER_ALERT_KEYS)[number];
@@ -15,6 +16,10 @@ export type TeacherAlertInfo = {
   preparation_hours: number;
   preparation_registered: boolean;
   substantive_hours: number;
+  /** Estudiantes en grupos virtuales vigentes. */
+  virtual_students?: number;
+  /** Tope según jornada: 520 (42 h) / 250 (21 h). */
+  virtual_students_max?: number | null;
   difference: number | null;
   alerts: TeacherAlertKey[];
 };
@@ -56,12 +61,21 @@ export const TEACHER_ALERTS: Record<TeacherAlertKey, AlertMeta> = {
     chip: 'border-sky-300 bg-sky-50 text-sky-800',
     active: 'border-sky-600 bg-sky-600 text-white',
   },
+  virtual_students_over: {
+    label: 'Tope virtual',
+    description: 'Supera el máximo de estudiantes virtuales: 520 (tiempo completo) / 250 (medio tiempo).',
+    chip: 'border-violet-300 bg-violet-50 text-violet-800',
+    active: 'border-violet-600 bg-violet-600 text-white',
+  },
 };
 
 /** Texto del chip: la sobrecarga lleva cuántas horas se pasa. */
 export function alertChipLabel(key: TeacherAlertKey, info?: TeacherAlertInfo | null): string {
   if (key === 'overload' && info?.difference != null) {
     return `Sobrecarga ${Math.abs(info.difference)} h`;
+  }
+  if (key === 'virtual_students_over' && info?.virtual_students != null) {
+    return `Tope virtual ${info.virtual_students}/${info.virtual_students_max ?? '—'}`;
   }
   return TEACHER_ALERTS[key].label;
 }
@@ -70,6 +84,9 @@ export function alertChipLabel(key: TeacherAlertKey, info?: TeacherAlertInfo | n
 export function alertChipTitle(key: TeacherAlertKey, info?: TeacherAlertInfo | null): string {
   if (key === 'overload' && info && info.contract_hours != null) {
     return `Contrato ${info.contract_hours} h − cátedra ${info.catedra_hours} − preparación ${info.preparation_hours} − sustantivas ${info.substantive_hours} = ${info.difference} h`;
+  }
+  if (key === 'virtual_students_over' && info) {
+    return `${info.virtual_students ?? 0} estudiantes virtuales; máximo ${info.virtual_students_max ?? '—'}.`;
   }
   return TEACHER_ALERTS[key].description;
 }

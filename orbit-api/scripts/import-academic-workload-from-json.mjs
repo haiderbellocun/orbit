@@ -138,6 +138,22 @@ function resolveSubjectHours(assignment) {
   return 0;
 }
 
+/**
+ * Horas de carga académica de la asignación (misma regla que Orbit):
+ *  - Virtual: estudiantes ÷ 50 × 2.
+ *  - Presencial: créditos de la asignatura; si no trae, las horas resueltas.
+ */
+function resolveLoadHours(assignment, subjectHours) {
+  const modality = String(assignment?.class_group?.modality ?? "").trim().toLowerCase();
+  if (modality === "v" || modality.startsWith("vir")) {
+    const students = Number(assignment?.class_group?.enrolled_quantity) || 0;
+    return Math.round((students / 50) * 2 * 100) / 100;
+  }
+  const credits = Number(assignment?.subject?.credits_quantity);
+  if (Number.isFinite(credits) && credits > 0) return credits;
+  return subjectHours;
+}
+
 function parseDateDMY(value) {
   if (!value) return null;
   const s = String(value).trim();
@@ -537,6 +553,7 @@ function buildNormalizedRows(assignments, personMaps) {
       subjectCode,
       groupCode,
       subjectHours,
+      loadHours: resolveLoadHours(a, subjectHours),
       enrolledQuantity:
         a.class_group?.enrolled_quantity == null
           ? null

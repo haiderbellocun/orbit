@@ -15,6 +15,8 @@ import {
 import {
   DEFAULT_CLASS_PREPARATION_HOURS,
   PLACEHOLDER_SUBSTANTIVE_CATEGORY,
+  sqlAssignmentLoadHours,
+  sqlAssignmentLoadJoins,
   weeklyContractHoursFromLabels,
 } from "../lib/substantiveHours";
 
@@ -601,6 +603,7 @@ router.get("/academic-load/export", async (req: Request, res: Response) => {
          s.credits_quantity AS credits,
          s.hours_quantity AS subject_hours,
          al.substantive_hours_quantity AS load_hours,
+         ${sqlAssignmentLoadHours("al", "s", "cg")} AS academic_load_hours,
          al.group_code,
          al.aca_group_id,
          al.enrolled_quantity,
@@ -708,19 +711,19 @@ router.get("/academic-load/export", async (req: Request, res: Response) => {
       ),
       pool.query(
         `SELECT al.person_id,
-           COALESCE(SUM(COALESCE(NULLIF(subj.hours_quantity, 0), NULLIF(al.substantive_hours_quantity, 0), 0)), 0) AS catedra_hours
+           COALESCE(SUM(${sqlAssignmentLoadHours()}), 0) AS catedra_hours
          FROM academic_workload.academic_load al
-         LEFT JOIN academic_workload.subject subj ON subj.subject_code = al.subject_code
+         ${sqlAssignmentLoadJoins()}
          WHERE al.person_id = ANY($1::bigint[]) AND ${sqlPeriodIsCurrent("al")}${period ? " AND al.period_code = $2" : ""}
          GROUP BY al.person_id`,
         period ? [allPersonIds, period] : [allPersonIds]
       ),
       pool.query(
         `SELECT al.person_id, al.period_code,
-           COALESCE(SUM(COALESCE(NULLIF(subj.hours_quantity, 0), NULLIF(al.substantive_hours_quantity, 0), 0)), 0) AS hours,
+           COALESCE(SUM(${sqlAssignmentLoadHours()}), 0) AS hours,
            COUNT(*)::int AS assignments
          FROM academic_workload.academic_load al
-         LEFT JOIN academic_workload.subject subj ON subj.subject_code = al.subject_code
+         ${sqlAssignmentLoadJoins()}
          WHERE al.person_id = ANY($1::bigint[]) AND ${sqlPeriodIsCurrent("al")}
          GROUP BY al.person_id, al.period_code`,
         [allPersonIds]

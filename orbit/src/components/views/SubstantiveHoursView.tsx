@@ -70,6 +70,25 @@ const PLACEHOLDER_CATEGORY = 'PEDIR LISTA CATEGORIAS HORAS SUSTANTIVAS';
 
 type ActionMode = 'substantive' | 'preparation';
 
+/** Pestañas por área: Operación Académica se muestra como "Pregrado". */
+type AreaTab = 'pregrado' | 'especializaciones';
+
+const AREA_TABS: { key: AreaTab; label: string; match: (name: string) => boolean }[] = [
+  {
+    key: 'pregrado',
+    label: 'Pregrado',
+    match: (n) => n.includes('operacion') && n.includes('academica'),
+  },
+  {
+    key: 'especializaciones',
+    label: 'Especializaciones',
+    match: (n) => n.includes('especializacion'),
+  },
+];
+
+const normName = (v: string) =>
+  v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
 export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   onOpenVacancyFromNotification,
 }) => {
@@ -77,6 +96,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [actionMode, setActionMode] = useState<ActionMode>('substantive');
+  const [areaTab, setAreaTab] = useState<AreaTab>('pregrado');
   const [rows, setRows] = useState<SubstantiveHoursTeacher[]>([]);
   /** Alerta elegida en el panel (filtra la lista) y conteo de cada una. */
   const [alertFilter, setAlertFilter] = useState<TeacherAlertKey | null>(null);
@@ -153,6 +173,25 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
     };
   }, []);
 
+  /** id del área de cada pestaña (por nombre del catálogo). */
+  const areaIdByTab = useMemo(() => {
+    const out: Partial<Record<AreaTab, string>> = {};
+    for (const tab of AREA_TABS) {
+      const found = areas.find((a) => tab.match(normName(a.name ?? '')));
+      if (found) out[tab.key] = String(found.id);
+    }
+    return out;
+  }, [areas]);
+
+  // La pestaña manda sobre el área: al cambiarla (o al cargar el catálogo)
+  // se aplica de inmediato y se limpia la escuela.
+  useEffect(() => {
+    const areaId = areaIdByTab[areaTab] ?? '';
+    setFilters((f) => (f.areaId === areaId ? f : { ...f, areaId, schoolId: '' }));
+    setApplied((a) => (a.areaId === areaId ? a : { ...a, areaId, schoolId: '' }));
+    setCurrentPage(1);
+  }, [areaTab, areaIdByTab]);
+
   const schoolOptions = useMemo(() => {
     if (!filters.areaId) return schools;
     return schools.filter((s) => String(s.area_id ?? '') === filters.areaId);
@@ -217,15 +256,15 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
   };
 
   const clearFilters = () => {
-    setFilters(EMPTY_FILTERS);
-    setApplied(EMPTY_FILTERS);
+    const areaId = areaIdByTab[areaTab] ?? '';
+    setFilters({ ...EMPTY_FILTERS, areaId });
+    setApplied({ ...EMPTY_FILTERS, areaId });
     setAlertFilter(null);
     setCurrentPage(1);
   };
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
-    if (applied.areaId) n++;
     if (applied.schoolId) n++;
     if (applied.period) n++;
     if (applied.contractHours) n++;
@@ -388,6 +427,7 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
 
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 relative z-10">
       <div
         data-tutorial="substantive-modes"
         className="glass-panel p-1.5 relative z-10 inline-flex w-full sm:w-auto gap-1 rounded-2xl"
@@ -416,6 +456,31 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
         >
           Preparación clase
         </button>
+      </div>
+
+      <div
+        role="tablist"
+        aria-label="Nivel"
+        className="glass-panel p-1.5 relative z-10 inline-flex w-full sm:w-auto gap-1 rounded-2xl"
+      >
+        {AREA_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={areaTab === tab.key}
+            onClick={() => setAreaTab(tab.key)}
+            className={cn(
+              'flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-sm font-bold transition-colors',
+              areaTab === tab.key
+                ? 'bg-orbit-primary text-white shadow-sm '
+                : 'text-orbit-text-secondary hover:bg-orbit-interactive'
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
       </div>
       <div data-tutorial="substantive-filters" className="glass-panel p-4 space-y-3 relative z-10">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -490,29 +555,6 @@ export const SubstantiveHoursView: React.FC<SubstantiveHoursViewProps> = ({
               className="overflow-hidden"
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-orbit-border/60">
-                <label className="space-y-1">
-                  <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
-                    Área
-                  </span>
-                  <select
-                    className={selectClass}
-                    value={filters.areaId}
-                    onChange={(e) =>
-                      setFilters((f) => ({
-                        ...f,
-                        areaId: e.target.value,
-                        schoolId: '',
-                      }))
-                    }
-                  >
-                    <option value="">Todas</option>
-                    {areas.map((a) => (
-                      <option key={a.id} value={String(a.id)}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
                 <label className="space-y-1">
                   <span className="text-xs font-bold text-orbit-muted uppercase tracking-wide">
                     Escuela

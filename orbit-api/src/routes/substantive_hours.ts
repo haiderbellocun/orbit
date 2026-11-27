@@ -6,6 +6,8 @@ import {
   DEFAULT_CLASS_PREPARATION_HOURS,
   PLACEHOLDER_SUBSTANTIVE_CATEGORY,
   parsePositiveIntHours,
+  sqlAssignmentLoadHours,
+  sqlAssignmentLoadJoins,
   weeklyContractHoursFromLabels,
 } from "../lib/substantiveHours";
 import { schoolScopeFromRequest } from "../middleware/orbitAuth";
@@ -243,19 +245,9 @@ router.get("/substantive-hours/teachers", async (req: Request, res: Response) =>
         LIMIT 1
       ) cp ON true
       LEFT JOIN LATERAL (
-        SELECT COALESCE(
-          SUM(
-            COALESCE(
-              NULLIF(subj.hours_quantity, 0),
-              NULLIF(al.substantive_hours_quantity, 0),
-              0
-            )
-          ),
-          0
-        ) AS catedra_hours
+        SELECT COALESCE(SUM(${sqlAssignmentLoadHours()}), 0) AS catedra_hours
         FROM academic_workload.academic_load al
-        LEFT JOIN academic_workload.subject subj
-          ON subj.subject_code = al.subject_code
+        ${sqlAssignmentLoadJoins()}
         WHERE al.person_id = p.id AND ${sqlPeriodIsCurrent("al")}${periodSql}
       ) cath ON true
       LEFT JOIN LATERAL (
@@ -628,19 +620,9 @@ router.put(
 
       const [catedraR, substR] = await Promise.all([
         pool.query(
-          `SELECT COALESCE(
-             SUM(
-               COALESCE(
-                 NULLIF(subj.hours_quantity, 0),
-                 NULLIF(al.substantive_hours_quantity, 0),
-                 0
-               )
-             ),
-             0
-           ) AS catedra_hours
+          `SELECT COALESCE(SUM(${sqlAssignmentLoadHours()}), 0) AS catedra_hours
            FROM academic_workload.academic_load al
-           LEFT JOIN academic_workload.subject subj
-             ON subj.subject_code = al.subject_code
+           ${sqlAssignmentLoadJoins()}
            WHERE al.person_id = $1 AND ${sqlPeriodIsCurrent("al")}`,
           [personId]
         ),

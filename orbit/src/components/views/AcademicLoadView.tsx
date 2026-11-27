@@ -49,7 +49,7 @@ interface AcademicLoadRow {
 const AREA_OPTIONS = [
   {
     value: "operacion_academica",
-    label: "Operación Académica",
+    label: "Pregrado",
     studyLevel: "pregrado" as const,
     catalogAreaId: "1",
   },
@@ -64,7 +64,7 @@ const AREA_OPTIONS = [
 type AcademicAreaValue = (typeof AREA_OPTIONS)[number]["value"] | "";
 
 const STUDY_LEVEL_LABELS: Record<AcademicLoadRow["studyLevel"], string> = {
-  pregrado: "Operación Académica",
+  pregrado: "Pregrado",
   especializacion: "Especializaciones",
   otro: "Sin clasificar",
 };
@@ -214,7 +214,7 @@ const EMPTY_FILTERS: Filters = {
   search: '',
   period: '',
   modality: '',
-  area: '',
+  area: 'operacion_academica',
   schoolId: '',
   program: '',
   subject: '',
@@ -420,8 +420,9 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
   };
 
   const clearFilters = () => {
-    setFilters(EMPTY_FILTERS);
-    setApplied(EMPTY_FILTERS);
+    // La pestaña de área (Pregrado / Especializaciones) se conserva.
+    setFilters({ ...EMPTY_FILTERS, area: applied.area });
+    setApplied({ ...EMPTY_FILTERS, area: applied.area });
     setAlertFilter(null);
     setCurrentPage(1);
   };
@@ -430,7 +431,6 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
     let n = 0;
     if (applied.period) n++;
     if (applied.modality) n++;
-    if (applied.area) n++;
     if (applied.schoolId) n++;
     if (applied.program) n++;
     if (applied.subject.trim()) n++;
@@ -454,6 +454,35 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
         subtitle="Asignación docente por periodo"
         onOpenVacancyFromNotification={onOpenVacancyFromNotification}
       />
+
+      <div
+        role="tablist"
+        aria-label="Nivel"
+        className="glass-panel p-1.5 relative z-10 inline-flex w-full sm:w-auto gap-1 rounded-2xl"
+      >
+        {AREA_OPTIONS.map((a) => (
+          <button
+            key={a.value}
+            type="button"
+            role="tab"
+            aria-selected={applied.area === a.value}
+            onClick={() => {
+              setFilters((f) => ({ ...f, area: a.value, schoolId: '' }));
+              setApplied((f) => ({ ...f, area: a.value, schoolId: '' }));
+              setCurrentPage(1);
+              setExpanded(new Set());
+            }}
+            className={cn(
+              'flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-sm font-bold transition-colors',
+              applied.area === a.value
+                ? 'bg-orbit-primary text-white shadow-sm '
+                : 'text-orbit-text-secondary hover:bg-orbit-interactive'
+            )}
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
 
       <div data-tutorial="academic-filters" className="glass-panel p-4 space-y-3 relative z-10">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -524,30 +553,6 @@ export const AcademicLoadView: React.FC<AcademicLoadViewProps> = ({
                       {periodOptions.map((p) => (
                         <option key={p} value={p}>
                           {p}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-orbit-muted">
-                      Área
-                    </span>
-                    <select
-                      className={selectClass}
-                      value={filters.area}
-                      onChange={(e) =>
-                        setFilters((f) => ({
-                          ...f,
-                          area: e.target.value as AcademicAreaValue,
-                          schoolId: '',
-                        }))
-                      }
-                    >
-                      <option value="">Todas</option>
-                      {AREA_OPTIONS.map((a) => (
-                        <option key={a.value} value={a.value}>
-                          {a.label}
                         </option>
                       ))}
                     </select>

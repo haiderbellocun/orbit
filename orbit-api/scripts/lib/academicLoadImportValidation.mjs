@@ -3,7 +3,7 @@
  * Mirror de src/lib/academicLoadValidation.ts + substantiveHours contract labels.
  */
 
-export const DEFAULT_CLASS_PREPARATION_HOURS = 4;
+export const DEFAULT_CLASS_PREPARATION_HOURS = 2;
 
 export function weeklyContractHoursFromLabels(workSchedule, contractName) {
   const blob = `${workSchedule ?? ""} ${contractName ?? ""}`
@@ -183,11 +183,17 @@ export function findHoursBalanceIssues(rows, contexts) {
     const ctx = contexts.get(personId);
     const sample = personRows[0];
     const catedraHours = personRows.reduce(
-      (sum, r) => sum + (Number.isFinite(r.subjectHours) ? r.subjectHours : 0),
+      (sum, r) => {
+        const h = r.loadHours ?? r.subjectHours;
+        return sum + (Number.isFinite(h) ? h : 0);
+      },
       0
     );
     const missingHours = personRows.filter(
-      (r) => !Number.isFinite(r.subjectHours) || r.subjectHours <= 0
+      (r) => {
+        const h = r.loadHours ?? r.subjectHours;
+        return !Number.isFinite(h) || h <= 0;
+      }
     );
     if (missingHours.length > 0) {
       issues.push({
@@ -196,7 +202,7 @@ export function findHoursBalanceIssues(rows, contexts) {
         personId,
         document: sample?.document,
         personName: sample?.personName ?? ctx?.fullName ?? null,
-        message: `${missingHours.length} asignación(es) sin hours_quantity de materia (> 0)`,
+        message: `${missingHours.length} asignación(es) sin horas de carga (presencial sin créditos o virtual sin estudiantes)`,
         detail: {
           count: missingHours.length,
           samples: missingHours.slice(0, 5).map((r) => ({

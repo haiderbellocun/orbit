@@ -266,9 +266,9 @@ El import (`scripts/import-academic-workload-from-json.mjs`) corre validaciones 
 |---|---|---|
 | `over_capacity` | Matriculados > cupo | `enrolled_quantity > capacity` |
 | `schedule_conflict` | Cruce de horario del mismo docente/periodo | Mismo `block` (si ambos tienen), rangos de fecha solapados y `[start_time, end_time)` solapados |
-| `hours_overload` | Tope contractual | `cátedra + prep + sustantivas > contrato (42/21)` — mismo balance que Horas Sustantivas |
+| `hours_overload` | Tope contractual | `carga académica (créditos / virtual) + prep + sustantivas > contrato (42/21)` — mismo balance que Horas Sustantivas |
 | `missing_contract_hours` | No se infiere jornada | Sin etiqueta medio/completo en contrato |
-| `missing_subject_hours` | Materia sin horas | `subject.hours_quantity` ausente o ≤ 0 |
+| `missing_subject_hours` | Asignación sin horas de carga | Presencial sin créditos (ni horas) o virtual sin estudiantes |
 
 Además el reimport **actualiza** `subject.hours_quantity` / créditos / nombre y persiste `class_group.start_time` / `end_time` (antes solo iba texto a `schedule_type`).
 
@@ -292,9 +292,22 @@ horas_contrato
 | Concepto | Origen | Regla |
 |---|---|---|
 | Contrato | etiquetas de contrato / jornada | Completo = **42**, medio = **21** |
-| Cátedra | `SUM(COALESCE(NULLIF(subject.hours_quantity,0), academic_load.substantive_hours_quantity))` | Depende de horas pobladas en import |
-| Preparación | `class_preparation.class_preparation_hours` | Default **4** si no hay fila |
+| Cátedra (carga académica) | Por asignación, según modalidad del grupo (`class_group.modality`) | **Presencial:** créditos de la asignatura (1 crédito = 1 h); si no trae créditos, `subject.hours_quantity` como respaldo. **Virtual:** estudiantes ÷ 50 × 2 (50 est. = 2 h, 100 est. = 4 h) |
+| Preparación | `class_preparation.class_preparation_hours` | Default **2** si no hay fila |
 | Sustantivas | `substantive_hours.assignment` | Módulo aparte |
+
+Fuente única del cálculo: `src/lib/substantiveHours.ts` (`sqlAssignmentLoadHours`, `assignmentLoadHours`).
+
+**Distribución de referencia (lineamiento institucional):**
+
+| Jornada | Total | Carga académica | Preparación | Función sustantiva |
+|---|---|---|---|---|
+| Tiempo completo | 42 h | 28 h | 2 h | 12 h |
+| Medio tiempo | 21 h | 19 h (el resto) | 2 h | Normalmente 0 (excepción: carga muy baja) |
+
+La distribución carga/sustantiva puede ajustarse respetando el total de la jornada. Un facilitador suele tener 1 función sustantiva (máximo 2). Internacionalización, Proyección Social y Acreditación/Calidad siguen el plan de trabajo de su área y pueden superar la carga académica.
+
+**Tope de estudiantes virtuales:** 520 (tiempo completo) / 250 (medio tiempo). Si se supera, el docente muestra la alerta `virtual_students_over` ("Tope virtual").
 
 ---
 

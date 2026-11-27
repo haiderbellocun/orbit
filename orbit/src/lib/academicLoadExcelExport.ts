@@ -36,7 +36,7 @@ const ALERT_FILL = 'FFFDE2E7';
 const WARN_FILL = 'FFFEF3C7';
 
 const STUDY_LEVEL: Record<string, string> = {
-  pregrado: 'Operación Académica',
+  pregrado: 'Pregrado',
   especializacion: 'Especializaciones',
   otro: 'Sin clasificar',
 };
@@ -154,7 +154,7 @@ function balanceValues(r: Row) {
     contract_hours: n(r.contract_hours),
     catedra_hours: n(r.catedra_hours),
     preparation_hours: n(r.preparation_hours),
-    preparation_registered: r.preparation_registered ? 'Sí' : 'No (4 h por defecto)',
+    preparation_registered: r.preparation_registered ? 'Sí' : 'No (2 h por defecto)',
     substantive_hours: n(r.substantive_hours),
     available_hours: n(r.available_hours),
     difference: n(r.difference),
@@ -231,8 +231,10 @@ export async function downloadAcademicLoadExcel({
   summary.addRow(['Cómo se calcula el balance']).font = { bold: true };
   for (const line of [
     'Horas contrato: tiempo completo = 42 h/semana, medio tiempo = 21 h (según tipo de contrato y jornada).',
-    'Horas cátedra: horas de la materia; si la materia no las tiene, las horas de la fila de carga.',
-    'Horas preparación: la registrada para el docente; si no hay registro, 4 h por defecto.',
+    'Horas cátedra (carga académica): presencial = créditos de la asignatura (1 crédito = 1 h); virtual = estudiantes ÷ 50 × 2 (50 est. = 2 h).',
+    'Si una asignatura presencial no trae créditos, se usan sus horas importadas como respaldo.',
+    'Tope de estudiantes virtuales: 520 (tiempo completo) / 250 (medio tiempo).',
+    'Horas preparación: la registrada para el docente; si no hay registro, 2 h por defecto.',
     'Diferencia = contrato − cátedra − preparación − sustantivas. Negativa = sobrecarga.',
     'Horas disponibles = la diferencia, mínimo 0 (como en Balance carga).',
   ]) {
@@ -269,6 +271,7 @@ export async function downloadAcademicLoadExcel({
     { header: 'Créditos', key: 'credits', width: 9 },
     { header: 'Horas materia', key: 'subject_hours', width: 9 },
     { header: 'Horas en carga', key: 'load_hours', width: 9 },
+    { header: 'Horas carga académica', key: 'academic_load_hours', width: 11 },
     { header: 'Grupo', key: 'group_code', width: 12 },
     { header: 'ID grupo ACA', key: 'aca_group_id', width: 14 },
     { header: 'Inscritos', key: 'enrolled_quantity', width: 9 },
@@ -301,6 +304,7 @@ export async function downloadAcademicLoadExcel({
       credits: n(r.credits),
       subject_hours: n(r.subject_hours),
       load_hours: n(r.load_hours),
+      academic_load_hours: n(r.academic_load_hours),
       group_code: s(r.group_code),
       aca_group_id: s(r.aca_group_id),
       enrolled_quantity: n(r.enrolled_quantity),
